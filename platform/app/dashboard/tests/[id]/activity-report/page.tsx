@@ -61,7 +61,7 @@ export default async function ActivityReportPage({
         </p>
         <h1 className="font-serif text-3xl font-bold text-da-text">{test.name}</h1>
         <p className="mt-1 text-sm text-da-muted">
-          Where the class is on each learning target, from Clev&apos;s Marks.
+          Where the class is on each learning target, from ClevMarks.
           {rubric.kind === "exploration"
             ? " This was sat before the lesson, so Not yet is an expected answer, not a bad one."
             : ""}

@@ -169,11 +169,13 @@ function fakeDb(seed: {
   student_marks?: Row[];
   ai_grade_results?: Row[];
   mark_changes?: Row[];
+  remark_requests?: Row[];
   student_self_scores?: Row[];
 }) {
   const tables: Record<string, Row[]> = {
     ai_grade_results: [],
     mark_changes: [],
+    remark_requests: [],
     student_marks: [],
     student_self_scores: [],
     ...seed,
@@ -306,6 +308,7 @@ describe("syncTestItems", () => {
     for (const table of [
       "ai_grade_results",
       "mark_changes",
+      "remark_requests",
       "student_self_scores",
     ] as const) {
       const db = fakeDb({

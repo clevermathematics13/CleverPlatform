@@ -1,14 +1,28 @@
 "use client";
 
 import { Fragment, useState } from "react";
-import type { ReflectionItem, SelfScore } from "@/lib/reflection-types";
+import type { ReflectionItem, ReflectionRemark, SelfScore } from "@/lib/reflection-types";
 import { computeDisagreement } from "@/lib/reflection-utils";
+import { pendingRemarkItemIds, remarkEligibility } from "@/lib/remark-requests";
 import { MarkSchemePart } from "./MarkSchemePart";
+import { RemarkRequestRow, type RemarkRowMode } from "./RemarkRequestRow";
 
 interface ScoreTableProps {
   items: ReflectionItem[];
   editable: boolean;
   onSave?: (scores: SelfScore[]) => Promise<void>;
+  /** Parts left out of the disagreement % because a re-mark request on them
+   *  is waiting for the teacher. Defaults to the pending requests on
+   *  `items`; the teacher dashboard, whose items carry none, passes its own. */
+  excusedItemIds?: ReadonlySet<string>;
+  /** Re-mark requests on this table: whether one can be made here, and who
+   *  to tell when one is sent, reworded or withdrawn. Without it no request
+   *  is shown or offered. */
+  remark?: {
+    mode: RemarkRowMode;
+    canWithdraw: boolean;
+    onChange?: (testItemId: string, remark: ReflectionRemark | null) => void;
+  };
   /** False when the student has not self-graded at all.
    *
    *  Every self-mark read below falls back to 0 when it is null, which is
@@ -23,7 +37,14 @@ interface ScoreTableProps {
   selfMarksEntered?: boolean;
 }
 
-export function ScoreTable({ items, editable, onSave, selfMarksEntered = true }: ScoreTableProps) {
+export function ScoreTable({
+  items,
+  editable,
+  onSave,
+  selfMarksEntered = true,
+  excusedItemIds,
+  remark,
+}: ScoreTableProps) {
   // "" is a question the student left blank -- no attempt -- which the
   // self-grade form treats as distinct from a 0 they earned, and which
   // student_self_scores now stores as NULL. Seeding these boxes with 0 would
@@ -66,7 +87,13 @@ export function ScoreTable({ items, editable, onSave, selfMarksEntered = true }:
     ...item,
     self_marks: selfMarkFor(item),
   }));
-  const disagreement = selfMarksEntered ? computeDisagreement(liveItems) : null;
+  // Parts waiting for a re-mark are the teacher's to settle, not the
+  // student's, so they sit outside the number that unlocks the upload.
+  const excused = excusedItemIds ?? pendingRemarkItemIds(items);
+  const disagreement = selfMarksEntered ? computeDisagreement(liveItems, excused) : null;
+  // Asked of the SAVED marks, as the route asks it: a number typed here and
+  // not yet saved is not something a re-mark request can be made against.
+  const hasSelfAssessed = selfMarksEntered && items.some((i) => i.self_marks !== null);
 
   const handleSave = async () => {
     if (!onSave) return;
@@ -119,6 +146,13 @@ export function ScoreTable({ items, editable, onSave, selfMarksEntered = true }:
             {disagreement === 0
               ? " — ready to upload corrections"
               : ""}
+            {excused.size > 0 && (
+              <span className="block text-xs font-normal opacity-80">
+                {excused.size === 1
+                  ? "1 part waiting for a re-mark isn't counted."
+                  : `${excused.size} parts waiting for a re-mark aren't counted.`}
+              </span>
+            )}
           </span>
         </div>
       )}
@@ -126,8 +160,8 @@ export function ScoreTable({ items, editable, onSave, selfMarksEntered = true }:
       {disagreement === null && (
         <div className="rounded-lg border border-da-border/50 bg-da-surface px-4 py-3 text-sm text-da-muted">
           {selfMarksEntered
-            ? "⏳ Waiting for teacher marks — disagreement will appear once grading is complete."
-            : "Self-grade this test to see how your judgement compares with Clev's Marks."}
+            ? "⏳ Waiting for ClevMarks — disagreement will appear once marking is complete."
+            : "Self-grade this test to see how your judgement compares with ClevMarks."}
         </div>
       )}
 
@@ -137,7 +171,7 @@ export function ScoreTable({ items, editable, onSave, selfMarksEntered = true }:
             <tr className="border-b border-da-border/40 bg-da-surface">
               <th className="px-3 py-2 text-left font-bold text-da-amber">Question</th>
               <th className="px-3 py-2 text-center font-bold text-da-amber">Max</th>
-              <th className="px-3 py-2 text-center font-bold text-da-amber">Teacher</th>
+              <th className="px-3 py-2 text-center font-bold text-da-amber">ClevMarks</th>
               <th className="px-3 py-2 text-center font-bold text-da-amber">Self</th>
               <th className="px-3 py-2 text-center font-bold text-da-amber">Diff</th>
             </tr>
@@ -154,9 +188,21 @@ export function ScoreTable({ items, editable, onSave, selfMarksEntered = true }:
                   ? (self ?? 0) - item.marks_awarded
                   : null;
               const rowShade = selfMarksEntered ? getDiffClass(item.marks_awarded, self) : "";
+              // A request already made always shows, with its answer; a new
+              // one is offered only where it could be made.
+              const existingRemark = item.remark_request ?? null;
+              const canAsk =
+                remarkEligibility({
+                  hasSelfAssessed,
+                  marksAwarded: item.marks_awarded,
+                  savedSelfMarks: item.self_marks,
+                  existingStatus: existingRemark?.status ?? null,
+                }) === "ok";
+              const showRemark =
+                !!remark && (!!existingRemark || (canAsk && remark.mode !== "readonly"));
               return (
                 <Fragment key={item.test_item_id}>
-                <tr className={`${item.mark_scheme ? "" : "border-b"} ${rowShade}`}>
+                <tr className={`${item.mark_scheme || showRemark ? "" : "border-b"} ${rowShade}`}>
                   <td className="px-3 py-2">
                     <div className="relative inline-block">
                       <button
@@ -255,9 +301,28 @@ export function ScoreTable({ items, editable, onSave, selfMarksEntered = true }:
                     width under its part and in the same shade, so a student
                     changing a mark here to settle a disagreement can see why. */}
                 {item.mark_scheme && (
-                  <tr className={`border-b ${rowShade}`}>
+                  <tr className={`${showRemark ? "" : "border-b"} ${rowShade}`}>
                     <td colSpan={5} className="px-3 pb-3">
                       <MarkSchemePart scheme={item.mark_scheme} />
+                    </td>
+                  </tr>
+                )}
+                {/* Where a student who thinks ClevMarks are wrong on this
+                    part says why, and later reads the answer. */}
+                {showRemark && remark && (
+                  <tr className={`border-b ${rowShade}`}>
+                    <td colSpan={5} className="px-3 pb-3">
+                      <RemarkRequestRow
+                        testItemId={item.test_item_id}
+                        remark={existingRemark}
+                        canAsk={canAsk}
+                        mode={remark.mode}
+                        canWithdraw={remark.canWithdraw}
+                        savedMarkAgrees={
+                          item.marks_awarded !== null && (item.self_marks ?? 0) === item.marks_awarded
+                        }
+                        onChange={remark.onChange}
+                      />
                     </td>
                   </tr>
                 )}

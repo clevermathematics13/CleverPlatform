@@ -28,8 +28,22 @@ import type { ReflectionItem } from "@/lib/reflection-types";
  * of the flow for following the form's own instructions: Upload Corrections
  * only unlocks at 0%, and a blank they can never take back kept them above
  * it forever.
+ *
+ * `excusedItemIds` are parts left out of both sums: the parts where the
+ * student has asked for a re-mark and the teacher has not answered yet
+ * (pendingRemarkItemIds in lib/remark-requests.ts). Asking is the second way
+ * to settle a disagreement the Upload step has always listed, beside
+ * changing your own mark, so a part waiting on the teacher does not hold the
+ * student back; once it is answered it counts again. Whether the student has
+ * self-graded, and whether anything is marked, are still read from every
+ * part -- a student whose only self mark sits on an excused part has still
+ * self-graded, and a test whose marked parts are all excused is at 0, not
+ * "not marked yet".
  */
-export function computeDisagreement(items: ReflectionItem[]): number | null {
+export function computeDisagreement(
+  items: ReflectionItem[],
+  excusedItemIds?: ReadonlySet<string>
+): number | null {
   let totalDiff = 0;
   let totalMax = 0;
   let hasTeacherMark = false;
@@ -37,6 +51,7 @@ export function computeDisagreement(items: ReflectionItem[]): number | null {
 
   for (const item of items) {
     if (item.marks_awarded !== null) hasTeacherMark = true;
+    if (excusedItemIds?.has(item.test_item_id)) continue;
     // "Did not attempt" is a claim of zero marks, once we know the student
     // actually filled the form in.
     const selfMarks =

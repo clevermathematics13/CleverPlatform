@@ -20,7 +20,7 @@ const SAMPLE_MODULE: CurriculumModule = {
   title: "Foundations of Calculus: A Function-Family Approach to Limits",
   course: "IBDP Mathematics AA HL",
   target_grade_level: 12,
-  assessment_tracker: "Clev's Marks",
+  assessment_tracker: "ClevMarks",
   pedagogical_goal:
     "Progressive mastery of limits, continuity, and differentiability, strictly restricting derivative shortcuts until formally proven via the difference quotient.",
   stages: [

@@ -45,6 +45,7 @@ describe("getNavigation", () => {
         "/dashboard/gradebook",
         "/dashboard/seating",
         "/dashboard/classroom",
+        "/dashboard/remark-requests",
       ]) {
         expect(hrefs).not.toContain(teacherOnly);
       }

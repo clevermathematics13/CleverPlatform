@@ -235,7 +235,7 @@ export function ClassroomClient({
                   Files
                 </th>
                 <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-da-muted">
-                  Clev&apos;s Marks
+                  ClevMarks
                 </th>
                 <th className="px-4 py-3" />
               </tr>
@@ -354,7 +354,7 @@ export function ClassroomClient({
                                   className="rounded-lg border border-blue-600 px-3 py-1 text-xs font-medium text-blue-300 hover:bg-blue-500/25 disabled:opacity-50"
                                 >
                                   Apply {analysis.suggested_marks} as draft
-                                  Clev&apos;s Marks
+                                  ClevMarks
                                 </button>
                               )}
                             </div>

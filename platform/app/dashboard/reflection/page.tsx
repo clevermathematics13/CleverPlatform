@@ -8,10 +8,19 @@ import {
   getReflectionItemsForInvitedStudent,
   getPdfUpload,
   attachStudentMarkScheme,
+  attachRemarkRequests,
 } from "@/lib/exam-service";
 import { resolveViewAs } from "@/lib/view-as";
 import type { ReflectionItem } from "@/lib/reflection-types";
 import { ReflectionClient } from "./reflection-client";
+
+/** One part's share of the key the client is remounted on: everything its
+ *  state is seeded from, including a re-mark request the teacher may have
+ *  answered since the page was last rendered. */
+function itemStateKey(i: ReflectionItem): string {
+  const remark = i.remark_request ? `${i.remark_request.status}@${i.remark_request.updated_at}` : "-";
+  return `${i.test_item_id}:${i.self_marks ?? "-"}:${i.marks_awarded ?? "-"}:${remark}`;
+}
 
 export default async function ReflectionPage({
   searchParams,
@@ -62,16 +71,24 @@ export default async function ReflectionPage({
       // ungated grading view.
       const selectedTest = tests.find((t) => t.id === selectedTestId);
       const selfAssessmentRequired = selectedTest?.require_self_assessment ?? true;
+      let marksHidden = false;
       if (selfAssessmentRequired) {
         const hasSelfAssessed = items.some((i) => i.self_marks !== null);
         if (!hasSelfAssessed) {
           items = items.map((i) => ({ ...i, marks_awarded: null }));
+          marksHidden = true;
         }
       }
 
       // Each part's mark scheme beside its self-grade box, exactly as the
       // student will see it.
       items = await attachStudentMarkScheme(items, selectedTest);
+
+      // Their re-mark requests, as they will see them -- only where their
+      // marks are showing, since a request carries the marks it is about.
+      if (!marksHidden && viewAs.hasAccount && viewAs.profileId) {
+        items = await attachRemarkRequests(items, viewAs.profileId);
+      }
 
       if (viewAs.hasAccount && viewAs.profileId) {
         pdfUpload = await getPdfUpload(viewAs.profileId, selectedTestId);
@@ -83,7 +100,7 @@ export default async function ReflectionPage({
       viewAs.invitedStudentId,
       selectedTestId ?? "none",
       pdfUpload?.id ?? "no-upload",
-      ...(items ?? []).map((i) => `${i.test_item_id}:${i.self_marks ?? "-"}:${i.marks_awarded ?? "-"}`),
+      ...(items ?? []).map(itemStateKey),
     ].join("|");
 
     return (
@@ -144,16 +161,22 @@ export default async function ReflectionPage({
     const selectedTest = tests.find((t) => t.id === selectedTestId);
     const viewerIsStudent = !isTeacher;
     const selfAssessmentRequired = selectedTest?.require_self_assessment ?? true;
+    let marksHidden = false;
     if (viewerIsStudent && selfAssessmentRequired && items) {
       const hasSelfAssessed = items.some((i) => i.self_marks !== null);
       if (!hasSelfAssessed) {
         items = items.map((i) => ({ ...i, marks_awarded: null }));
+        marksHidden = true;
       }
     }
 
     // Each part's mark scheme beside its self-grade box, when the test's
     // released mark scheme is the platform's own student page.
     if (items) items = await attachStudentMarkScheme(items, selectedTest);
+
+    // The student's re-mark requests, beside the parts they are about. Not
+    // when the gate has just blanked the marks: a request carries them.
+    if (items && !marksHidden) items = await attachRemarkRequests(items, effectiveStudentId);
   }
 
   // Key the client on the data it seeds its state from. After a student
@@ -166,7 +189,7 @@ export default async function ReflectionPage({
     selectedTestId ?? "none",
     effectiveStudentId ?? "none",
     pdfUpload?.id ?? "no-upload",
-    ...(items ?? []).map((i) => `${i.test_item_id}:${i.self_marks ?? "-"}:${i.marks_awarded ?? "-"}`),
+    ...(items ?? []).map(itemStateKey),
   ].join("|");
 
   return (

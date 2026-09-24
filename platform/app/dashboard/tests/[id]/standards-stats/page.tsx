@@ -127,7 +127,7 @@ export default async function StandardsStatsPage({
         </p>
         <h1 className="font-serif text-3xl font-bold text-da-text">{test.name}</h1>
         <p className="mt-1 text-sm text-da-muted">
-          Class averages from Clev&apos;s Marks, by question and by part.
+          Class averages from ClevMarks, by question and by part.
           {test.testDate ? ` Sat ${test.testDate}.` : ""} {roster.total} student
           {roster.total === 1 ? "" : "s"} in scope · {roster.marked} with marks · {roster.complete} fully
           marked · {roster.absent} absent.

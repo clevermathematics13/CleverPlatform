@@ -25,8 +25,9 @@ READ THIS BEFORE USING IT ON A NEW PACKET:
    that prints unnumbered (A.2's Part 0 Desmos activity) still occupies a slot,
    so the two run out of step from that point on. The config states the mapping
    outright, and --sql verifies every entry against the printed "Clev's Marks:
-   N" label before writing anything. Do not skip that check: it is the whole
-   reason A.2's mapping is trustworthy (21 of 21 agreed).
+   N" label (spelled "ClevMarks: N" on packets generated after the rename)
+   before writing anything. Do not skip that check: it is the whole reason
+   A.2's mapping is trustworthy (21 of 21 agreed).
 
 3. page_count IS THE PRINTED LENGTH, NOT THE DOCUMENT'S OWN PAGE TOTAL. Both
    packets so far print short of what the generator produced (A.1: 26 pages
@@ -190,7 +191,9 @@ def read_labels(doc: pymupdf.Document) -> tuple[list[tuple[int, float, int]], li
     # and its title ("Part 0 - Warming the Engine"); written as an escape so
     # this file stays pure ASCII.
     part = re.compile("^Part (\\d)\\s*[\u00b7.]")
-    marks_pill = re.compile(r"Clev.s Marks:\s*(\d+)")
+    # Both spellings: masters printed before the rename say "Clev's Marks:",
+    # packets generated since say "ClevMarks:".
+    marks_pill = re.compile(r"Clev(?:.s )?Marks:\s*(\d+)")
     labels: list[tuple[int, float, int]] = []
     parts: list[tuple[int, float, str]] = []
     pills: list[tuple[int, float, int]] = []

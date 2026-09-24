@@ -31,6 +31,7 @@ export function getNavigation(role: string, isGrade9 = false): NavigationItem[] 
       { href: "/dashboard/tests", label: "Tests", icon: "\u{1F4DD}" },
       { href: "/dashboard/placement", label: "Placement Tests", icon: "\u{1F9ED}" },
       { href: "/dashboard/reflection", label: "Exam Reflection", icon: "\u{1FA9E}" },
+      { href: "/dashboard/remark-requests", label: "Re-mark Requests", icon: "\u{1F64B}" },
       { href: "/dashboard/mastery", label: "Mastery", icon: "\u{1F3AF}" },
       { href: "/dashboard/seating", label: "Seating Chart", icon: "\u{1FA91}" },
       { href: "/dashboard/na-review/scan-test", label: "Scan Pipeline", icon: "\u{1F5A8}\uFE0F" },

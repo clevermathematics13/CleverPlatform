@@ -25,8 +25,9 @@ export function HowItWorks() {
           </li>
           <li>
             <strong>Step 2 — Compare:</strong> See your self-assessment
-            side-by-side with your teacher&apos;s marks. Identify where your
-            understanding differs.
+            side-by-side with ClevMarks. Identify where your understanding
+            differs. If you think ClevMarks are wrong on a part, ask for a
+            re-mark and explain why.
           </li>
           <li>
             <strong>Step 3 — Upload Corrections:</strong> Upload a PDF of your

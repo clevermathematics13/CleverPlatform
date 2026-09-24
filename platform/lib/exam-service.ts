@@ -8,6 +8,7 @@ import { correctionsKey } from "@/lib/storage-keys";
 import { resolveSelfAssessmentRequired } from "@/lib/self-assessment-gate";
 import { paperQuestionPrefixes } from "@/lib/assignments";
 import { studentMarkSchemePath, studentMarkSchemeParts } from "@/lib/student-mark-scheme";
+import { REMARK_STUDENT_COLUMNS, toReflectionRemark } from "@/lib/remark-requests";
 import type { GradeBoundary } from "@/lib/grade-bands";
 import type {
   ReflectionTest,
@@ -377,6 +378,46 @@ export async function attachStudentMarkScheme(
   if (parts.size === 0) return items;
 
   return items.map((item) => ({ ...item, mark_scheme: parts.get(item.test_item_id) ?? null }));
+}
+
+/**
+ * Each part's re-mark request, when this student has made one, on the item
+ * it is about (lib/remark-requests.ts). Read in the viewer's own session: a
+ * student sees their own requests, the teacher those on tests they own.
+ *
+ * Only pass items whose ClevMarks the viewer may see. A request carries
+ * marks -- the one it disputes and the teacher's answer -- so attaching it
+ * to items the self-assessment gate has blanked would hand those out anyway.
+ *
+ * A failed read, including the table not existing yet, leaves the items as
+ * they are: the page is poorer without its requests, and far better off than
+ * a 500.
+ */
+export async function attachRemarkRequests(
+  items: ReflectionItem[],
+  studentProfileId: string
+): Promise<ReflectionItem[]> {
+  if (items.length === 0) return items;
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .from("remark_requests")
+    .select(REMARK_STUDENT_COLUMNS)
+    .eq("student_id", studentProfileId)
+    .in("test_item_id", items.map((i) => i.test_item_id));
+  if (error) {
+    console.warn("[attachRemarkRequests] not read; showing none", error.message);
+    return items;
+  }
+  if (!data || data.length === 0) return items;
+
+  const byItem = new Map(
+    data.map((row) => {
+      const remark = toReflectionRemark(row as Record<string, unknown>);
+      return [remark.test_item_id, remark] as const;
+    })
+  );
+  return items.map((item) => ({ ...item, remark_request: byItem.get(item.test_item_id) ?? null }));
 }
 
 /** Submit student self-assessment scores.
@@ -764,6 +805,35 @@ export async function getClassReflectionData(
     (uploads ?? []).map((u) => [u.student_id, u])
   );
 
+  // The parts each student has a re-mark request waiting on. They are left
+  // out of that student's disagreement here exactly as on their own page, so
+  // this grid never shows a student locked out of an upload their page has
+  // opened. Best effort: if the read fails nothing is excused, which is how
+  // the grid read before re-mark requests existed.
+  type PendingRemarkRow = { student_id: string; test_item_id: string };
+  let pendingRemarks: PendingRemarkRow[] = [];
+  if (profileIds.length) {
+    try {
+      pendingRemarks = await fetchAllRows<PendingRemarkRow>((from, to) =>
+        supabase
+          .from("remark_requests")
+          .select("student_id, test_item_id")
+          .eq("status", "pending")
+          .in("student_id", profileIds)
+          .in("test_item_id", itemIds)
+          .order("id", { ascending: true })
+          .range(from, to)
+      );
+    } catch (e) {
+      console.warn("[getClassReflectionData] re-mark requests not read", e);
+    }
+  }
+  const pendingByStudent = new Map<string, Set<string>>();
+  for (const r of pendingRemarks) {
+    if (!pendingByStudent.has(r.student_id)) pendingByStudent.set(r.student_id, new Set());
+    pendingByStudent.get(r.student_id)!.add(r.test_item_id);
+  }
+
   // Build rows with disagreement computed server-side
   const rows: StudentReflectionRow[] = roster.map((s) => {
     const marks = markMap.get(s.invitedId);
@@ -790,7 +860,8 @@ export async function getClassReflectionData(
       marks_awarded: ri.marks_awarded,
       self_marks: ri.self_marks,
     }));
-    const disagreement = computeDisagreement(reflectionItems);
+    const pendingRemarkIds = s.profileId ? pendingByStudent.get(s.profileId) : undefined;
+    const disagreement = computeDisagreement(reflectionItems, pendingRemarkIds);
 
     const upload = s.profileId ? uploadMap.get(s.profileId) : undefined;
     // Build a public-style path; the client can create a signed URL if needed
@@ -810,6 +881,7 @@ export async function getClassReflectionData(
       pdf_url,
       disagreement,
       hidden: s.profileId ? hiddenProfiles.has(s.profileId) : false,
+      pending_remark_item_ids: pendingRemarkIds ? [...pendingRemarkIds] : [],
     };
   });
 

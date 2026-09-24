@@ -725,7 +725,7 @@ function QuestionCard({ q }: { q: PlacementQuestion }) {
         </h3>
         {q.mark ? (
           <span className="text-sm font-semibold text-da-text">
-            {q.mark.marks_awarded} / {q.mark.max_marks} Clev&apos;s Marks
+            {q.mark.marks_awarded} / {q.mark.max_marks} ClevMarks
           </span>
         ) : (
           <span className="text-xs text-da-muted">Not yet graded</span>

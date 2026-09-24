@@ -323,7 +323,7 @@ export function NaFeedbackClient({
           {selectedScan && (
             <p className="mb-4 text-xs text-da-muted">
               Released {new Date(selectedScan.releasedAt).toLocaleDateString()} — {totalMarksAwarded} /{" "}
-              {totalMarksAvailable} Clev&apos;s Marks.
+              {totalMarksAvailable} ClevMarks.
             </p>
           )}
 
@@ -333,7 +333,7 @@ export function NaFeedbackClient({
           <div className="space-y-2">
             {onlyLostMarks && lostMarks.length === 0 && (
               <p className="rounded-lg border border-dashed border-da-border px-4 py-3 text-sm text-da-muted">
-                Nothing to review — you have full Clev&apos;s Marks on every question here.
+                Nothing to review — you have full ClevMarks on every question here.
               </p>
             )}
             {groups.map((group) => {
@@ -358,7 +358,7 @@ export function NaFeedbackClient({
                         {group.items.length === 1
                           ? `${labelOf(group.items[0])} — not attempted`
                           : `${labelOf(group.items[0])} to ${labelOf(group.items[group.items.length - 1])} — ${group.items.length} questions not attempted`}
-                        {gapMarks > 0 ? ` (${gapMarks} Clev's Marks)` : ""}
+                        {gapMarks > 0 ? ` (${gapMarks} ClevMarks)` : ""}
                       </span>
                       <span className="ml-2 text-xs text-da-accent">{open ? "Hide" : "Show these"}</span>
                     </button>

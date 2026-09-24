@@ -56,7 +56,7 @@ export default async function AiGradePage({
         <h1 className="font-serif text-3xl font-bold text-da-text">{test.name}</h1>
         <p className="mt-1 text-sm text-da-muted">
           Mark scanned student work against the mark scheme held in the PPQ bank.
-          Suggestions are staged for your review — nothing enters Clev&apos;s Marks
+          Suggestions are staged for your review — nothing enters ClevMarks
           until you accept it.
         </p>
 

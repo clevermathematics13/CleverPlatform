@@ -95,7 +95,7 @@ async function TeacherDashboard({
     .eq("registered", true);
   if (!showHidden) invitedQuery = invitedQuery.eq("hidden", false);
 
-  const [studentsRes, invitedRes, assignmentsRes, questionsRes, coursesRes] = await Promise.all([
+  const [studentsRes, invitedRes, assignmentsRes, questionsRes, coursesRes, remarksRes] = await Promise.all([
     studentsQuery,
     invitedQuery,
     supabase.from("assignments").select("id", { count: "exact", head: true }).eq("status", "active"),
@@ -104,6 +104,9 @@ async function TeacherDashboard({
       .select("id", { count: "exact", head: true })
       .or("google_doc_id.not.is.null,source_pdf_path.not.is.null"),
     supabase.from("courses").select("id", { count: "exact", head: true }),
+    // Re-mark requests waiting for an answer, on this teacher's tests (the
+    // table's policy scopes it).
+    supabase.from("remark_requests").select("id", { count: "exact", head: true }).eq("status", "pending"),
   ]);
 
   const enrolledEmails = new Set(
@@ -134,6 +137,12 @@ async function TeacherDashboard({
         value={String(assignmentsRes.count ?? 0)}
         description="Active assignments"
         href="/dashboard/assignments"
+      />
+      <DashboardCard
+        title="Re-mark Requests"
+        value={String(remarksRes.count ?? 0)}
+        description="Waiting for your answer"
+        href="/dashboard/remark-requests"
       />
       {/* A count, not a conditional tile: this is the teacher's stat grid,
           where "0" is a fact worth showing, the way Assignments shows it. */}
@@ -190,7 +199,7 @@ async function StudentDashboard({
       />
       <StudentTile
         title="My Feedback"
-        description="See Clev's Marks feedback on your work"
+        description="See ClevMarks feedback on your work"
         href={`/dashboard/na-feedback${q}`}
         icon={<FeedbackIcon />}
       />
@@ -250,7 +259,7 @@ function getRoleDescription(role: string): string {
     case "teacher":
       return "Manage your courses, students, and assignments.";
     case "student":
-      return "Work through your practice set, grade your own work, read Clev's Marks feedback, or join the live game.";
+      return "Work through your practice set, grade your own work, read ClevMarks feedback, or join the live game.";
     case "parent":
       return "View your student's progress and grades.";
     default:

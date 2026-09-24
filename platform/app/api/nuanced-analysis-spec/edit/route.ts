@@ -33,7 +33,7 @@ HARD RULES — violating any of these makes your output unusable:
 6. Respect field length limits: rule texts under 1200 characters, guidance strings under 600, names under 160.
 7. Update identity.specVersion to today's date with a bumped suffix (format YYYY-MM-DD.N).
 8. If the instruction asks for something these rules forbid, apply the closest allowed change and leave the rest of the spec untouched.
-9. Preserve the platform copy rules verbatim (the "Clev's Marks" and "intersects" rules) unless the instruction explicitly targets them.`;
+9. Preserve the platform copy rules verbatim (the "ClevMarks" and "intersects" rules) unless the instruction explicitly targets them.`;
 
 function extractJsonObject(text: string): string | null {
   const start = text.indexOf("{");

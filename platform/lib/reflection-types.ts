@@ -28,6 +28,40 @@ export interface ReflectionItem {
    * lib/exam-service.ts); absent everywhere else.
    */
   mark_scheme?: ReflectionMarkScheme | null;
+  /**
+   * The student's request that this part be re-marked, when they have made
+   * one. Attached by attachRemarkRequests (lib/exam-service.ts) only where
+   * the part's ClevMarks are visible to the viewer: a request carries marks
+   * (the ClevMark it disputes, and the teacher's answer), so attaching it to
+   * items the self-assessment gate has blanked would hand those marks out
+   * anyway.
+   */
+  remark_request?: ReflectionRemark | null;
+}
+
+export type RemarkStatus = "pending" | "changed" | "stands";
+
+/**
+ * A request to re-mark one part, in the shape a student may see: their own
+ * words, the marks as they stood when they asked, and the teacher's answer.
+ * Built from remark_requests by lib/remark-requests.ts; nothing about who
+ * resolved it or how the mark was recorded is exposed here.
+ */
+export interface ReflectionRemark {
+  id: string;
+  test_item_id: string;
+  explanation: string;
+  status: RemarkStatus;
+  /** The ClevMark the student disputed, as it was when they asked. */
+  marks_at_request: number;
+  /** Their saved self mark when they asked; null for a blank. */
+  self_marks_at_request: number | null;
+  /** The ClevMark once the teacher answered; null while pending. */
+  resolved_marks: number | null;
+  teacher_note: string | null;
+  created_at: string;
+  updated_at: string;
+  resolved_at: string | null;
 }
 
 /**
@@ -112,6 +146,10 @@ export interface StudentReflectionRow {
   pdf_url: string | null;
   disagreement: number | null;
   hidden: boolean;
+  /** Parts with a re-mark request still waiting for the teacher. They are
+   *  left out of `disagreement`, exactly as they are on the student's own
+   *  page, so the two never disagree about whether the upload is open. */
+  pending_remark_item_ids: string[];
 }
 
 /** Step in the reflection workflow */

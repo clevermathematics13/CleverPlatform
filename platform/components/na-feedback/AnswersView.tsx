@@ -110,7 +110,7 @@ export function AnswersView({
                 )}
               </dd>
               {line.marks ? (
-                <span className="shrink-0 pt-1 text-xs text-[#9a8a76]" title={`${line.marks} Clev's Marks`}>
+                <span className="shrink-0 pt-1 text-xs text-[#9a8a76]" title={`${line.marks} ClevMarks`}>
                   {line.marks}
                 </span>
               ) : null}

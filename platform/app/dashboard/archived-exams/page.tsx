@@ -85,7 +85,7 @@ export default async function ArchivedExamsPage() {
                       <p className="font-semibold">{items.length}</p>
                     </div>
                     <div className="rounded border border-da-border/70 bg-da-bg/40 p-2">
-                      <p className="text-xs text-da-muted">Teacher Marks Rows</p>
+                      <p className="text-xs text-da-muted">ClevMarks Rows</p>
                       <p className="font-semibold">{marks.length}</p>
                     </div>
                     <div className="rounded border border-da-border/70 bg-da-bg/40 p-2">

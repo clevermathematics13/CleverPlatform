@@ -272,7 +272,7 @@ export default function AnchorReviewClient({
           <h1 className="text-2xl font-bold text-da-text font-serif mt-1">{anchor.qid}</h1>
           {anchor.command_term && (
             <p className="text-sm text-da-muted mt-0.5">
-              {anchor.command_term} · {anchor.marks_available} Clev&apos;s Marks
+              {anchor.command_term} · {anchor.marks_available} ClevMarks
             </p>
           )}
         </div>

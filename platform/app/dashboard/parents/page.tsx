@@ -56,7 +56,7 @@ export default async function ParentsPage() {
     <div>
       <h1 className="text-3xl font-extrabold text-blue-300 drop-shadow-sm">Parents</h1>
       <p className="mt-1 text-base font-medium text-blue-300">
-        Link parent accounts to students so they can view progress and Clev&apos;s Marks.
+        Link parent accounts to students so they can view progress and ClevMarks.
       </p>
 
       <div className="mt-6">
