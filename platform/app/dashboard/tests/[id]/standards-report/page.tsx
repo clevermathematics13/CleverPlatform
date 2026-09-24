@@ -85,7 +85,7 @@ export default async function StandardsReportPage({
         </p>
         <h1 className="font-serif text-3xl font-bold text-da-text">{test.name}</h1>
         <p className="mt-1 text-sm text-da-muted">
-          Strand levels from Clev&apos;s Marks. {rows.length} student{rows.length === 1 ? "" : "s"} on the
+          Strand levels from ClevMarks. {rows.length} student{rows.length === 1 ? "" : "s"} on the
           roster · {complete} fully marked · {marked - complete} partly marked · {absent} absent.
           {rubric.source ? ` Rubric: ${rubric.source}.` : ""}
         </p>

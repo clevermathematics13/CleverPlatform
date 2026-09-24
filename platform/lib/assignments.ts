@@ -316,7 +316,7 @@ const MYP_ROLLING_BUNDLE_RULES: string[] = [
   "    (c) the Teacher's Companion, as the final section, headed so it can be torn off",
   "20. Do not generate zone (b) if the continuity block states the next section's prep has already shipped.",
   "21. Zone (b) is preparation, not assessment: it surfaces the intuition the next section will formalise, and it must be completable without any instruction the student has not yet had.",
-  "22. Marks language: always call them Clev's Marks. Never write 'points', 'score', or a bare 'grade'.",
+  "22. Marks language: always call them ClevMarks. Never write 'points', 'score', or a bare 'grade'.",
   "23. Pre-DP command-term demand bands, applied consistently: Write down / State / List = 1 mark; Calculate = 3; Interpret / Describe / Explain / Determine = 4-5; Show that / Justify = 6-7.",
   "24. Age register: Grade 9 students are 14-15. Keep sentences short and concrete. Introduce formal notation only after the idea it names has been met informally in the same packet.",
   "25. Plant exactly two misconceptions across the packet, each targeting an error this cohort actually makes, and flag both in the Teacher's Companion with the misconception named.",

@@ -476,7 +476,7 @@ export function TestDetailClient({
             className="mt-1"
           />
           <span>
-            Require self-assessment before releasing Clev&apos;s Marks
+            Require self-assessment before releasing ClevMarks
             <span className={`block ${hint}`}>
               When off, a student sees their marks without submitting a self-assessment
               first.

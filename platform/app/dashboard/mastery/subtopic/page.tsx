@@ -225,7 +225,7 @@ export default async function SubtopicMasteryPage({
           <p className="mt-1 font-mono text-lg font-bold text-da-text">{code}</p>
         </div>
         <div className="rounded-xl border border-da-border bg-da-surface p-4 shadow-lg shadow-black/20">
-          <p className="text-xs font-semibold uppercase tracking-wide text-da-muted">Teacher mastery</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-da-muted">ClevMarks mastery</p>
           <p className="mt-1 text-2xl font-bold text-da-accent">
             {selected ? `${selected.percentage}%` : "—"}
           </p>
@@ -337,7 +337,7 @@ export default async function SubtopicMasteryPage({
                       </div>
                     </td>
                     <td className="px-3 py-2 text-da-text">
-                      <div className="text-xs text-da-muted">Teacher</div>
+                      <div className="text-xs text-da-muted">ClevMarks</div>
                       <div>{q.teacherMarks !== null ? `${q.teacherMarks}/${q.maxMarks}` : "—"}</div>
                       <div className="mt-1 text-xs text-da-muted">Self</div>
                       <div>{`${effectiveSelfMarks(q)}/${q.maxMarks}`}</div>

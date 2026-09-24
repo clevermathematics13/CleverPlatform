@@ -333,7 +333,7 @@ export function MarkingClient({ view }: { view: MarkingView }) {
             buttons looks like a grading screen and this one deliberately is
             not. */}
         <p className="mt-3 max-w-2xl text-xs leading-relaxed text-da-muted/80">
-          Practice, not assessment: nothing here is a score, and nothing reaches Clev&rsquo;s Marks
+          Practice, not assessment: nothing here is a score, and nothing reaches ClevMarks
           or the gradebook.{" "}
           {view.feedbackReleasedAt ? (
             <span className="text-da-warning">

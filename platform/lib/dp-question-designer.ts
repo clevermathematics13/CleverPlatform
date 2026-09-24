@@ -198,7 +198,7 @@ export const DEFAULT_DP_INPUT: DPQuestionDesignerInput = {
   title: "Foundations of Calculus: A Function-Family Approach to Limits",
   course: "IBDP Mathematics AA HL",
   targetGradeLevel: 12,
-  assessmentTracker: "Clev's Marks",
+  assessmentTracker: "ClevMarks",
   pedagogicalGoal:
     "Progressive mastery of limits, continuity, and differentiability, strictly restricting derivative shortcuts until formally proven via the difference quotient.",
   functionFamilies: FUNCTION_FAMILY_PRESETS["AA_HL"],
@@ -222,7 +222,7 @@ export function sanitizeCurriculumModule(raw: Record<string, unknown>): Curricul
   const title = typeof raw.title === "string" ? raw.title.trim() : "Untitled Module";
   const course = typeof raw.course === "string" ? raw.course.trim() : "IBDP Mathematics";
   const targetGradeLevel = clampInt(Number(raw.target_grade_level ?? 12), 9, 12);
-  const assessmentTracker = typeof raw.assessment_tracker === "string" ? raw.assessment_tracker.trim() : "Clev's Marks";
+  const assessmentTracker = typeof raw.assessment_tracker === "string" ? raw.assessment_tracker.trim() : "ClevMarks";
   const pedagogicalGoal = typeof raw.pedagogical_goal === "string" ? raw.pedagogical_goal.trim() : "";
 
   const rawStages = Array.isArray(raw.stages) ? raw.stages : [];

@@ -1334,7 +1334,7 @@ export function FormativeAssessmentSandbox() {
               </label>
             )}
             <ToggleField
-              label="Require self-assessment before releasing Clev's Marks"
+              label="Require self-assessment before releasing ClevMarks"
               checked={requireSelfAssessment}
               onChange={setRequireSelfAssessment}
               disabled={kind === "summative"}

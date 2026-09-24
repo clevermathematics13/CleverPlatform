@@ -759,7 +759,7 @@ export function AiGradeClient({
       // are in Clev's Marks; only the list on screen is behind.
       const describe = (reason: string) =>
         opts?.afterWrite
-          ? `The marks were written to Clev's Marks and are safe. The list below could not be refreshed: ${reason}`
+          ? `The marks were written to ClevMarks and are safe. The list below could not be refreshed: ${reason}`
           : reason;
       try {
         const { ok, data } = await fetchJson(`/api/tests/${testId}/ai-grade?studentId=${studentId}`);
@@ -936,9 +936,9 @@ export function AiGradeClient({
     const acceptedCount = currentRun ? acceptanceByRun[currentRun.id]?.accepted ?? 0 : 0;
     if (acceptedCount > 0) {
       const ok = window.confirm(
-        `${acceptedCount} part(s) for this student are already accepted into Clev's Marks.\n\n` +
+        `${acceptedCount} part(s) for this student are already accepted into ClevMarks.\n\n` +
           "Re-marking runs the model again. Parts whose new suggestion matches the current one stay accepted; " +
-          "any part whose suggestion changes will need to be reviewed and accepted again. Clev's Marks themselves are not changed.\n\n" +
+          "any part whose suggestion changes will need to be reviewed and accepted again. ClevMarks themselves are not changed.\n\n" +
           "Continue?"
       );
       if (!ok) return;
@@ -978,9 +978,9 @@ export function AiGradeClient({
     const acceptedCount = currentRun ? acceptanceByRun[currentRun.id]?.accepted ?? 0 : 0;
     if (acceptedCount > 0) {
       const ok = window.confirm(
-        `${acceptedCount} part(s) for this student are already accepted into Clev's Marks.\n\n` +
+        `${acceptedCount} part(s) for this student are already accepted into ClevMarks.\n\n` +
           "Re-marking runs the model again. Parts whose new suggestion matches the current one stay accepted; " +
-          "any part whose suggestion changes will need to be reviewed and accepted again. Clev's Marks themselves are not changed.\n\n" +
+          "any part whose suggestion changes will need to be reviewed and accepted again. ClevMarks themselves are not changed.\n\n" +
           "Continue?"
       );
       if (!ok) return;
@@ -1217,7 +1217,7 @@ export function AiGradeClient({
         setError((data.error as string) ?? "Could not accept these marks.");
         return;
       }
-      setStatusLine(`${data.appliedCount} mark(s) written to Clev's Marks.`);
+      setStatusLine(`${data.appliedCount} mark(s) written to ClevMarks.`);
       if (focusStudent) await loadResultsFor(focusStudent, { afterWrite: true });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not accept these marks.");
@@ -1244,7 +1244,7 @@ export function AiGradeClient({
         setError((data.error as string) ?? "Could not accept this mark.");
         return;
       }
-      setStatusLine(`${data.appliedCount} mark(s) written to Clev's Marks.`);
+      setStatusLine(`${data.appliedCount} mark(s) written to ClevMarks.`);
       if (focusStudent) await loadResultsFor(focusStudent, { afterWrite: true });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not accept this mark.");
@@ -1264,10 +1264,10 @@ export function AiGradeClient({
     const ok = window.confirm(
       assessmentKind === "summative"
         ? `This is a summative. It writes only the suggestions Clev was fully confident about${about}, straight into ` +
-            "Clev's Marks without opening each student's review. Anything less confident, and anything marked " +
+            "ClevMarks without opening each student's review. Anything less confident, and anything marked " +
             "with no working found, is left for you to check and accept yourself. Continue?"
         : `This writes every suggested mark, for every question, for every ${who} latest completed run straight into ` +
-            "Clev's Marks -- without opening each student's review first. Already-accepted marks are left as they are. " +
+            "ClevMarks -- without opening each student's review first. Already-accepted marks are left as they are. " +
             "Continue?"
     );
     if (!ok) return;
@@ -1291,7 +1291,7 @@ export function AiGradeClient({
       // this exists to prevent.
       const held = (data.message as string | undefined) ?? "";
       setStatusLine(
-        `Accepted ${data.appliedCount ?? 0} mark(s) across ${data.studentsProcessed ?? 0} student(s)${about} into Clev's Marks.` +
+        `Accepted ${data.appliedCount ?? 0} mark(s) across ${data.studentsProcessed ?? 0} student(s)${about} into ClevMarks.` +
           (held ? ` ${held}` : "")
       );
       await loadOverview();
@@ -1785,7 +1785,7 @@ export function AiGradeClient({
                   type="button"
                   onClick={() => acceptOne(r.id)}
                   disabled={acceptingRowId === r.id}
-                  title={r.accepted ? "Write this edited mark into Clev's Marks" : undefined}
+                  title={r.accepted ? "Write this edited mark into ClevMarks" : undefined}
                   className="rounded border border-blue-400/40 px-2 py-0.5 text-xs font-medium text-blue-300 hover:bg-blue-500/25 disabled:opacity-50"
                 >
                   {acceptingRowId === r.id ? (r.accepted ? "Updating…" : "Accepting…") : r.accepted ? "Update" : "Accept"}
@@ -2277,7 +2277,7 @@ export function AiGradeClient({
               title={
                 selfAssessment.lastSavedAt
                   ? `Last saved ${new Date(selfAssessment.lastSavedAt).toLocaleString()}. ` +
-                    "A student can change these on the Compare step after seeing Clev's Marks."
+                    "A student can change these on the Compare step after seeing ClevMarks."
                   : undefined
               }
             >
@@ -2326,7 +2326,7 @@ export function AiGradeClient({
             {liveStandardsReport && (
               <div className="mt-3 rounded-lg border border-da-border bg-da-bg/60 p-2">
                 <p className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-wide text-da-muted">
-                  Strand levels from the marks above (suggested, not yet Clev&apos;s Marks)
+                  Strand levels from the marks above (suggested, not yet ClevMarks)
                 </p>
                 <StandardsReportTable report={liveStandardsReport} compact />
               </div>
@@ -2352,7 +2352,7 @@ export function AiGradeClient({
               disabled={accepting || selected.size === 0}
               className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
             >
-              {accepting ? "Writing…" : `Accept ${selected.size} into Clev's Marks`}
+              {accepting ? "Writing…" : `Accept ${selected.size} into ClevMarks`}
             </button>
           </div>
         </div>
@@ -2402,10 +2402,10 @@ export function AiGradeClient({
                         onChange={() => toggleAllHighConfidence(highPending)}
                         title={
                           highPending.length === 0
-                            ? "Every high-confidence part is already in Clev's Marks"
-                            : `Accept all ${highPending.length} high-confidence part(s) not yet in Clev's Marks`
+                            ? "Every high-confidence part is already in ClevMarks"
+                            : `Accept all ${highPending.length} high-confidence part(s) not yet in ClevMarks`
                         }
-                        aria-label="Accept every high-confidence part not yet in Clev's Marks"
+                        aria-label="Accept every high-confidence part not yet in ClevMarks"
                       />
                     </td>
                     <td colSpan={8} className="px-2 py-2">
@@ -2624,7 +2624,7 @@ export function AiGradeClient({
             <p className="mt-1 text-sm text-da-muted">
               {totalItems} part{totalItems === 1 ? "" : "s"} · {maxTotal} marks total. Upload a
               scanned PDF per student — the model marks it against the mark scheme stored in the
-              PPQ bank. Nothing reaches Clev&apos;s Marks until you review and accept it below.
+              PPQ bank. Nothing reaches ClevMarks until you review and accept it below.
             </p>
             {standardsRubric && (
               <p className="mt-2 text-sm text-da-muted">
@@ -2656,7 +2656,7 @@ export function AiGradeClient({
                   title="Accepts every suggested mark for every student's latest completed run, without opening each review individually"
                   className="rounded-lg border border-blue-400/40 bg-blue-500/15 px-4 py-2 text-sm font-medium text-blue-300 hover:bg-blue-500/25 disabled:opacity-50"
                 >
-                  {acceptingAll ? "Accepting all…" : "Accept all into Clev's Marks"}
+                  {acceptingAll ? "Accepting all…" : "Accept all into ClevMarks"}
                 </button>
               )}
             </div>
@@ -2694,7 +2694,7 @@ export function AiGradeClient({
                 const dot =
                   run?.status === "complete" && acceptance && acceptance.total > 0
                     ? acceptance.accepted === acceptance.total
-                      ? { color: "bg-green-500", title: "All suggested marks accepted into Clev's Marks" }
+                      ? { color: "bg-green-500", title: "All suggested marks accepted into ClevMarks" }
                       : acceptance.accepted === 0
                         ? { color: "bg-red-500", title: "No suggested marks accepted yet" }
                         : {
@@ -2723,7 +2723,7 @@ export function AiGradeClient({
                             title={`Accepts every suggested mark for every ${className} student's latest completed run, without opening each review individually`}
                             className="rounded border border-blue-400/40 px-2 py-0.5 text-[11px] font-medium text-blue-300 hover:bg-blue-500/25 disabled:opacity-50"
                           >
-                            {acceptingClass === className ? "Accepting…" : `Accept ${className} into Clev's Marks`}
+                            {acceptingClass === className ? "Accepting…" : `Accept ${className} into ClevMarks`}
                           </button>
                         )}
                       </li>

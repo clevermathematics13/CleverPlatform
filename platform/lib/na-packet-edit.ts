@@ -66,7 +66,7 @@ export function evaluatePacketLock(facts: PacketLockFacts): PacketLock {
       locked: true,
       reason:
         `This packet has ${parts.join(" and ")}. Those crops were taken at the ` +
-        `anchors' coordinates and Clev's Marks grades them against its rubric, ` +
+        `anchors' coordinates and ClevMarks grades them against its rubric, ` +
         `so changing the content here would leave the marking key describing a ` +
         `paper the students never wrote on. Formatting changes still save. To ` +
         `correct an answer key, edit the rubric; to change the questions, issue ` +

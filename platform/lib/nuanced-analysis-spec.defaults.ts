@@ -580,7 +580,7 @@ export const CANONICAL_AAHL_SPEC: NuancedAnalysisSpec = {
     publishingGradeLayout: true,
     noPlaceholderData: true,
     copyRules: [
-      { id: "copy-clevs-marks", rule: "In any UI or packet copy referring to grading or scores, use 'Clev's Marks' — never 'grade', 'score', or 'points' alone." },
+      { id: "copy-clevs-marks", rule: "In any UI or packet copy referring to grading or scores, use 'ClevMarks' — never 'grade', 'score', or 'points' alone." },
       { id: "copy-intersects", rule: "In proof activities, use 'intersects' rather than describing lines as 'perfectly continuous'." },
       { id: "copy-specific", rule: "Never use generic placeholder data; use highly specific, real, verifiable examples." },
     ],

@@ -96,7 +96,7 @@ describe("NuancedAnalysisSpec compilation", () => {
   });
 
   it("enforces the platform copy rules verbatim", () => {
-    expect(prompt).toContain("Clev's Marks");
+    expect(prompt).toContain("ClevMarks");
     expect(prompt).toContain("intersects");
   });
 

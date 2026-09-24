@@ -2915,7 +2915,7 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
                   <div className="flex items-center justify-between">
                     <p className="text-xs text-da-muted">
                       {resultsPanel.data.totalGradable} gradable questions per student — {resultsPanel.data.totalMarksAvailable}{" "}
-                      Clev&apos;s Marks total.
+                      ClevMarks total.
                     </p>
                     <button
                       type="button"
@@ -2963,7 +2963,7 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
                               <th className="px-3 py-2 font-semibold">Student</th>
                               <th className="px-3 py-2 font-semibold">Assessed</th>
                               <th className="px-3 py-2 font-semibold">Approved</th>
-                              <th className="px-3 py-2 font-semibold">Clev&apos;s Marks</th>
+                              <th className="px-3 py-2 font-semibold">ClevMarks</th>
                               <th className="px-3 py-2 font-semibold">Re-crop</th>
                               <th className="px-3 py-2 font-semibold">Release</th>
                               <th className="px-3 py-2 font-semibold">Feedback</th>

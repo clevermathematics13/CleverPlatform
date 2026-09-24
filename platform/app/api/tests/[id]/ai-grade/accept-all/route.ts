@@ -313,7 +313,7 @@ export async function POST(
   const acceptFailed = async (message: string) =>
     NextResponse.json(
       {
-        error: `The marks were written to Clev's Marks, but flagging the suggestions as accepted failed: ${message}. Run "Accept all" again to finish.`,
+        error: `The marks were written to ClevMarks, but flagging the suggestions as accepted failed: ${message}. Run "Accept all" again to finish.`,
       },
       { status: 500 }
     );

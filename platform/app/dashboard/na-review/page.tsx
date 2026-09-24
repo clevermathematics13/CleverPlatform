@@ -769,7 +769,7 @@ export default async function NaReviewPage({
                         <span>
                           {q.progress.reviewed}/{q.progress.total} reviewed
                         </span>
-                        {q.marks_available != null && <span>{q.marks_available} Clev&apos;s Marks</span>}
+                        {q.marks_available != null && <span>{q.marks_available} ClevMarks</span>}
                       </div>
                       <div className="mt-1.5 h-1.5 rounded-full bg-da-hover overflow-hidden">
                         <div

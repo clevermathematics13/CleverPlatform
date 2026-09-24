@@ -540,7 +540,7 @@ export function TestsClient({ initialTests, courses }: TestsClientProps) {
                       disabled={updatingSelfAssessment === test.id}
                       onChange={(e) => handleToggleRequireSelfAssessment(test.id, e.target.checked)}
                     />
-                    Require self-assessment before releasing Clev&apos;s Marks
+                    Require self-assessment before releasing ClevMarks
                   </label>
                   {/* Names the file written each time a student in this class
                       finishes the self-assessment: 9C_Form1_6.csv. Left blank,
