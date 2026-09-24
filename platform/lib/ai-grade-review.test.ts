@@ -13,6 +13,8 @@ import {
   selfMarkDiffers,
   latestRunsByStudent,
   acceptanceByRunFrom,
+  deriveOverviewState,
+  buildRosterOptions,
 } from "./ai-grade-review";
 import { unitLabel } from "./ai-grading";
 
@@ -222,6 +224,152 @@ describe("acceptanceByRunFrom", () => {
   // run it has no rows for, and a red "none accepted" dot for one it does.
   it("gives a run with no rows no entry", () => {
     expect(acceptanceByRunFrom([])).toEqual({});
+  });
+});
+
+describe("deriveOverviewState", () => {
+  type Run = { id: string; student_id: string | null; status: string; pending_message_batch_id: string | null };
+  const run = (id: string, student_id: string | null, status: string, batch: string | null = null): Run => ({
+    id,
+    student_id,
+    status,
+    pending_message_batch_id: batch,
+  });
+
+  it("picks each student's runs with latestRunsByStudent and counts their acceptance", () => {
+    const runs = [
+      run("salim-failed", SALIM, "failed"),
+      run("salim-graded", SALIM, "complete"),
+      run("luciana-graded", LUCIANA, "complete"),
+    ];
+    const state = deriveOverviewState(runs, [
+      { run_id: "salim-graded", accepted: true },
+      { run_id: "luciana-graded", accepted: false },
+    ]);
+    const { latestComplete, newerAttempt } = latestRunsByStudent(runs);
+    expect(state.runsByStudent).toEqual(latestComplete);
+    expect(state.newerAttemptByStudent).toEqual(newerAttempt);
+    expect(state.acceptanceByRun).toEqual({
+      "salim-graded": { accepted: 1, total: 1 },
+      "luciana-graded": { accepted: 0, total: 1 },
+    });
+    expect(state.submittedStudentCount).toBe(0);
+    expect(state.outstandingCollectCount).toBe(0);
+  });
+
+  // A student queued overnight and then marked in the browser has a newer
+  // complete run, which hides the queued one from the per-student maps --
+  // the banner and the poll must still see it.
+  it("counts a queued run hidden behind a newer complete one", () => {
+    const state = deriveOverviewState(
+      [run("marked-now", LUCIANA, "complete"), run("queued", LUCIANA, "submitted", "msgbatch_1")],
+      []
+    );
+    expect(state.newerAttemptByStudent).toEqual({});
+    expect(state.submittedStudentCount).toBe(1);
+    expect(state.outstandingCollectCount).toBe(1);
+  });
+
+  it("counts students for the banner but runs for the poll", () => {
+    const state = deriveOverviewState(
+      [
+        run("q1", SALIM, "submitted", "msgbatch_1"),
+        run("q2", SALIM, "submitted", "msgbatch_2"),
+        run("q3", LUCIANA, "submitted", "msgbatch_2"),
+      ],
+      []
+    );
+    expect(state.submittedStudentCount).toBe(2);
+    expect(state.outstandingCollectCount).toBe(3);
+  });
+
+  // A "running" run still tied to a batch is one the collect route left for
+  // a later sweep: its marks are written, so it is not "being marked" -- but
+  // the page still owes it a collect call.
+  it("owes a collect call to a rescued running run, but never tells the teacher it is being marked", () => {
+    const state = deriveOverviewState(
+      [run("rescued", SALIM, "running", "msgbatch_1"), run("in-browser", LUCIANA, "running")],
+      []
+    );
+    expect(state.submittedStudentCount).toBe(0);
+    expect(state.outstandingCollectCount).toBe(1);
+  });
+
+  it("is all empty for a test nobody has been marked on", () => {
+    expect(deriveOverviewState([], [])).toEqual({
+      runsByStudent: {},
+      newerAttemptByStudent: {},
+      acceptanceByRun: {},
+      submittedStudentCount: 0,
+      outstandingCollectCount: 0,
+    });
+  });
+});
+
+describe("buildRosterOptions", () => {
+  const row = (
+    profile_id: string | null,
+    display_name: string,
+    course_id: string,
+    course_name: string | null,
+    nickname: string | null = null
+  ) => ({ profile_id, profiles: { display_name, nickname }, course_id, course_name });
+
+  it("lists the test's own class first, then the pooled classes alphabetically, then unknown classes", () => {
+    const options = buildRosterOptions(
+      [
+        row("p1", "Zoe Quispe", "c-9a", "9A"),
+        row("p2", "Ana Torres", "c-unknown", null),
+        row("p3", "Bruno Diaz", "c-9g", "9G"),
+        row("p4", "Carla Rios", "c-9c", "9C"),
+        row("p5", "Alba Soto", "c-9g", "9G"),
+      ],
+      "c-9g"
+    );
+    expect(options.map((o) => [o.class_name, o.display_name])).toEqual([
+      ["9G", "Alba Soto"],
+      ["9G", "Bruno Diaz"],
+      ["9A", "Zoe Quispe"],
+      ["9C", "Carla Rios"],
+      [null, "Ana Torres"],
+    ]);
+  });
+
+  it("labels a student by full name, with the nickname beside it only when it differs", () => {
+    const options = buildRosterOptions(
+      [
+        row("p1", "Luciana Rojas", "c", "9A", "Lu"),
+        row("p2", "Salim Fellah", "c", "9A", "Salim Fellah"),
+        row("p3", "", "c", "9A", "Nico"),
+        { profile_id: "p4", profiles: null, course_id: "c", course_name: "9A" },
+      ],
+      "c"
+    );
+    expect(Object.fromEntries(options.map((o) => [o.profile_id, o.display_name]))).toEqual({
+      p1: "Luciana Rojas (Lu)",
+      p2: "Salim Fellah",
+      p3: "Nico",
+      p4: "Unknown",
+    });
+  });
+
+  it("drops a row with no subject id and keeps an invited subject's id as it is", () => {
+    const options = buildRosterOptions(
+      [row(null, "Nobody", "c", "9A"), row(`invited-${SALIM}`, "Salim Fellah", "c", "9A")],
+      "c"
+    );
+    expect(options).toEqual([{ profile_id: `invited-${SALIM}`, display_name: "Salim Fellah", class_name: "9A" }]);
+  });
+
+  // The server sorts the first render and the browser every refresh after
+  // it, so the order must not depend on the runtime's locale. Under Spanish
+  // collation "Munro" would come first.
+  it("sorts names the same way whatever the runtime's locale", () => {
+    const options = buildRosterOptions(
+      [row("p1", "Munro Vega", "c", "9A"), row("p2", "Muñoz Paz", "c", "9A")],
+      "c"
+    );
+    expect(options.map((o) => o.display_name)).toEqual(["Muñoz Paz", "Munro Vega"]);
   });
 });
 

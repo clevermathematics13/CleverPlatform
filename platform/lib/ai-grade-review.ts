@@ -147,6 +147,131 @@ export function acceptanceByRunFrom(
   return counts;
 }
 
+/** Minimal shape of ai_grade_runs needed for the roster's overnight counts. */
+export interface OverviewStateRunRef extends OverviewRunRef {
+  /** The Anthropic message batch a run is still tied to, or null once it is settled. */
+  pending_message_batch_id: string | null;
+}
+
+/** What the roster shows about a test's runs (see deriveOverviewState). */
+export interface OverviewState<R> {
+  /** Newest COMPLETE run per student -- the one whose results are reviewable. */
+  runsByStudent: Record<string, R>;
+  /** Newest run of any status per student, when it is NOT the complete one. */
+  newerAttemptByStudent: Record<string, R>;
+  /** Accepted and total parts of each student's newest complete run, keyed by run id. */
+  acceptanceByRun: Record<string, { accepted: number; total: number }>;
+  /** Distinct students with a run still at Anthropic -- the overnight banner. */
+  submittedStudentCount: number;
+  /** Runs the page still owes a collect call for -- what keeps the poll going. */
+  outstandingCollectCount: number;
+}
+
+/**
+ * The roster's view of GET /api/tests/[id]/ai-grade's whole-class answer
+ * (`runs` newest first, `results` the { run_id, accepted } rows it sends).
+ * The page works this out on the server for its first render and in the
+ * browser on every refresh after that, so both go through here.
+ */
+export function deriveOverviewState<R extends OverviewStateRunRef>(
+  runs: readonly R[],
+  results: readonly AcceptanceRef[]
+): OverviewState<R> {
+  const { latestComplete, newerAttempt } = latestRunsByStudent(runs);
+  return {
+    runsByStudent: latestComplete,
+    newerAttemptByStudent: newerAttempt,
+    // The route sends { run_id, accepted } for each student's newest
+    // complete run only -- exactly what this counts.
+    acceptanceByRun: acceptanceByRunFrom(results),
+    // Counted off the raw run list, not the newest-run-per-student map: a
+    // student marked in the browser after being queued overnight has a
+    // newer complete run, which would hide their still-pending one and stop
+    // the poll from ever starting. Distinct students, because the banner
+    // counts people -- two submissions for one student before either
+    // collects is one student waiting, not two.
+    submittedStudentCount: new Set(runs.filter((r) => r.status === "submitted").map((r) => r.student_id)).size,
+    // Runs, not distinct students: nothing renders this, it only has to be
+    // zero exactly when there is nothing left for a collect pass to do. A
+    // "running" run without a batch pointer is an ordinary interactive
+    // grade in flight, which collect has no business with.
+    outstandingCollectCount: runs.filter(
+      (r) => r.status === "submitted" || (r.status === "running" && r.pending_message_batch_id !== null)
+    ).length,
+  };
+}
+
+/** One roster entry as GET /api/students serves it (lib/course-roster.ts), as far as the roster reads it. */
+export interface RosterSourceRef {
+  profile_id?: string | null;
+  profiles: { display_name: string; nickname: string | null } | null;
+  course_id?: string;
+  course_name?: string | null;
+}
+
+/** One student as the AI-grade roster lists them. */
+export interface RosterOption {
+  /**
+   * The opaque subject id every AI-grade endpoint expects as studentId --
+   * usually a real profiles.id, but "invited-<invited_students.id>" for a
+   * roster entry imported (e.g. via Google Classroom) that has never logged
+   * in and so has no profiles row yet. See parseGradingSubject in
+   * lib/grading-subject.ts; the page never needs to tell the two apart.
+   */
+  profile_id: string;
+  display_name: string;
+  /**
+   * The real class the student is in ("9A"). A Grade 9 test sits on one
+   * class but its roster pools every class in the track, so the page groups
+   * by this. Null when the roster could not name the class.
+   */
+  class_name: string | null;
+}
+
+/**
+ * The one collation the roster is sorted with. The page sorts it on the
+ * server for its first render and again in the browser whenever it reloads
+ * the roster, and localeCompare with no locale uses each runtime's own: a
+ * Spanish-language browser sorts n-tilde after every "n" ("Munro" before
+ * "Munoz" spelt with the tilde), the server as a plain "n", so the list could
+ * reorder itself under the teacher on the first refresh. "en" is the
+ * server's own order, the one the report pages sort by.
+ */
+const ROSTER_COLLATOR = new Intl.Collator("en");
+
+/**
+ * The roster in the order the page lists it: the test's own class first,
+ * then the classes pooled with it alphabetically, then students whose class
+ * is unknown; by name within each. A row with no subject id is dropped --
+ * nothing on the page could act on it.
+ *
+ * Full name first -- the batch-upload dropdown needs it to tell apart
+ * students who share a first name or nickname. The nickname is shown
+ * alongside when it differs, since that is often what a teacher recognises
+ * a cover-page name against.
+ */
+export function buildRosterOptions(rows: readonly RosterSourceRef[], ownCourseId: string | null): RosterOption[] {
+  const ownClass = rows.find((s) => s.course_id === ownCourseId)?.course_name ?? null;
+  const classRank = (name: string | null) => (name === ownClass ? 0 : name ? 1 : 2);
+  return rows
+    .filter((s): s is RosterSourceRef & { profile_id: string } => !!s.profile_id)
+    .map((s) => {
+      const fullName = s.profiles?.display_name;
+      const nickname = s.profiles?.nickname;
+      const label =
+        fullName && nickname && nickname !== fullName
+          ? `${fullName} (${nickname})`
+          : fullName || nickname || "Unknown";
+      return { profile_id: s.profile_id, display_name: label, class_name: s.course_name ?? null };
+    })
+    .sort(
+      (a, b) =>
+        classRank(a.class_name) - classRank(b.class_name) ||
+        ROSTER_COLLATOR.compare(a.class_name ?? "", b.class_name ?? "") ||
+        ROSTER_COLLATOR.compare(a.display_name, b.display_name)
+    );
+}
+
 const ROMAN_RANK: Record<string, number> = { i: 1, ii: 2, iii: 3, iv: 4, v: 5 };
 
 /**

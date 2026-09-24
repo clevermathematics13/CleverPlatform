@@ -1,25 +1,43 @@
+import { Suspense } from "react";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { notFound } from "next/navigation";
 import { requireTeacher } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { AiGradeClient } from "./ai-grade-client";
+import type { TestDetail } from "./ai-grade-client";
+import { loadAiGradeInitial, startAiGradeInitialLoads } from "./load-initial";
+import type { AiGradeInitialLoads } from "./load-initial";
 import { parseAssessmentKind } from "@/lib/assessment-kind";
+import type { AssessmentKind } from "@/lib/assessment-kind";
+import { parseStandardsRubric } from "@/lib/standards-rubric";
+import type { StandardsRubric } from "@/lib/standards-rubric";
+import { TEST_DETAIL_SELECT } from "@/lib/test-detail";
 
 export default async function AiGradePage({
   params,
 }: {
   params: Promise<{ id: string }>;
 }) {
-  await requireTeacher();
+  const profile = await requireTeacher();
   const { id } = await params;
 
   const supabase = await createClient();
+  // Started before the test row is read, so the roster's own loads run
+  // alongside it rather than after it (see load-initial.ts).
+  const loads = startAiGradeInitialLoads(supabase, id, profile.id);
+  // The whole test, with its parts -- the row GET /api/tests/[id] serves --
+  // since the roster below needs all of it and the header only a little.
   const { data: test } = await supabase
     .from("tests")
-    .select("id, name, test_date, assessment_kind, course_id")
+    .select(TEST_DETAIL_SELECT)
     .eq("id", id)
     .maybeSingle();
 
   if (!test) notFound();
+
+  // Parsed here so the parser, and zod with it, stays out of the page's
+  // JavaScript.
+  const rubric = parseStandardsRubric(test.standards_rubric ?? null);
 
   return (
     <div className="max-w-6xl">
@@ -51,13 +69,45 @@ export default async function AiGradePage({
         </p>
       </div>
 
-      <AiGradeClient
-        testId={test.id as string}
-        // Lets the roster request start alongside the test detail instead of
-        // waiting for it to name the course (see loadOverview).
-        courseId={(test.course_id as string | null) ?? null}
-        assessmentKind={parseAssessmentKind(test.assessment_kind)}
-      />
+      {/* The header above goes out at once; the roster follows the moment
+          its loads finish, in place of the line the page used to show while
+          it fetched them from the browser. */}
+      <Suspense fallback={<p className="text-sm text-da-muted">Loading this assessment…</p>}>
+        <AiGradeRoster
+          supabase={supabase}
+          test={test as unknown as TestDetail}
+          loads={loads}
+          assessmentKind={parseAssessmentKind(test.assessment_kind)}
+          standardsRubric={rubric.ok ? rubric.rubric : null}
+        />
+      </Suspense>
     </div>
+  );
+}
+
+async function AiGradeRoster({
+  supabase,
+  test,
+  loads,
+  assessmentKind,
+  standardsRubric,
+}: {
+  supabase: SupabaseClient;
+  test: TestDetail;
+  loads: AiGradeInitialLoads;
+  assessmentKind: AssessmentKind;
+  standardsRubric: StandardsRubric | null;
+}) {
+  const initial = await loadAiGradeInitial(supabase, test, loads);
+  return (
+    <AiGradeClient
+      testId={test.id}
+      // Only read if the client has to load the roster itself (initial is
+      // null): it lets that request start alongside the test detail's.
+      courseId={test.course_id ?? null}
+      assessmentKind={assessmentKind}
+      initial={initial}
+      standardsRubric={standardsRubric}
+    />
   );
 }

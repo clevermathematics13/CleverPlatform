@@ -4,7 +4,7 @@ import {
   performanceLevelShort,
   type PerformanceLevel,
   type StandardsReport,
-} from "@/lib/standards-rubric";
+} from "@/lib/standards-report";
 
 /**
  * One student's strand levels, as the teacher rubric's score record lays

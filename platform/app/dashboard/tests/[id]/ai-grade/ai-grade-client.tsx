@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import type { ChangeEvent } from "react";
 import dynamic from "next/dynamic";
 import EvidenceBoxEditor from "@/components/EvidenceBoxEditor";
@@ -29,14 +29,17 @@ import {
   summariseSelfAssessment,
   selfMarkFor,
   selfMarkDiffers,
-  latestRunsByStudent,
-  acceptanceByRunFrom,
+  deriveOverviewState,
+  buildRosterOptions,
 } from "@/lib/ai-grade-review";
-import type { AcceptanceRef, SelfScoreRef } from "@/lib/ai-grade-review";
+import type { AcceptanceRef, RosterOption, RosterSourceRef, SelfScoreRef } from "@/lib/ai-grade-review";
 import type { AssessmentKind } from "@/lib/assessment-kind";
 // Not "@/lib/assignments": that module carries the AI prompt builders too.
 import { paperQuestionPrefixes } from "@/lib/paper-labels";
-import { buildStandardsReport, parseStandardsRubric } from "@/lib/standards-rubric";
+// Not "@/lib/standards-rubric": that module carries zod for the rubric's
+// parser, and the page parses the rubric on the server (standardsRubric).
+import { buildStandardsReport } from "@/lib/standards-report";
+import type { StandardsRubric } from "@/lib/standards-rubric";
 import { StandardsReportTable } from "@/components/StandardsReportTable";
 
 type MarkschemeSource = "part_latex" | "part_text" | "whole_question" | "draft" | "custom" | "none";
@@ -84,15 +87,15 @@ interface TestItem {
   marking_notes?: string | null;
 }
 
-interface TestDetail {
+export interface TestDetail {
   id: string;
   name: string;
   course_id: string;
   test_items: TestItem[];
   /**
-   * The strand rubric of a Grade 9 Standard Level paper (tests.standards_rubric,
-   * see lib/standards-rubric.ts), or null. When present the review panel
-   * shows the student's strand levels alongside the marks being edited.
+   * The strand rubric of a Grade 9 Standard Level paper, unparsed
+   * (tests.standards_rubric). Not read here: the page parses it on the
+   * server and passes the result in as the standardsRubric prop.
    */
   standards_rubric?: unknown;
   /**
@@ -104,25 +107,10 @@ interface TestDetail {
   custom_content?: unknown;
 }
 
-interface StudentOption {
-  /**
-   * The opaque subject id every AI-grade endpoint expects as studentId --
-   * usually a real profiles.id, but "invited-<invited_students.id>" for a
-   * roster entry imported (e.g. via Google Classroom) that has never logged
-   * in and so has no profiles row yet. See parseGradingSubject in
-   * lib/ai-grading.ts; this component never needs to tell the two apart.
-   */
-  profile_id: string;
-  display_name: string;
-  /**
-   * The real class the student is in ("9A"). A Grade 9 test sits on one
-   * class but its roster pools every class in the track, so the UI groups
-   * by this. Null when the API could not name the class.
-   */
-  class_name: string | null;
-}
+/** One roster entry -- see RosterOption in lib/ai-grade-review.ts. */
+type StudentOption = RosterOption;
 
-interface RunRow {
+export interface RunRow {
   id: string;
   test_id: string;
   student_id: string;
@@ -276,10 +264,28 @@ function settledValue<T>(result: PromiseSettledResult<T>): T {
   return result.value;
 }
 
+/**
+ * The roster as the page loaded it on the server (load-initial.ts): what
+ * loadOverview would otherwise fetch and work out once the page's JavaScript
+ * had started, so the first HTML already shows it.
+ */
+export interface AiGradeInitial {
+  test: TestDetail;
+  students: StudentOption[];
+  runsByStudent: Record<string, RunRow>;
+  newerAttemptByStudent: Record<string, RunRow>;
+  acceptanceByRun: Record<string, { accepted: number; total: number }>;
+  submittedStudentCount: number;
+  outstandingCollectCount: number;
+  absentStudentIds: string[];
+}
+
 export function AiGradeClient({
   testId,
   courseId = null,
   assessmentKind = "formative",
+  initial = null,
+  standardsRubric = null,
 }: {
   testId: string;
   /**
@@ -290,6 +296,19 @@ export function AiGradeClient({
   courseId?: string | null;
   /** Decides what "Accept all" actually covers -- see lib/summative-grading-gate.ts. */
   assessmentKind?: AssessmentKind;
+  /**
+   * The roster, loaded on the server. Null when one of those loads failed:
+   * the page then loads it here instead, exactly as it did before the
+   * server could.
+   */
+  initial?: AiGradeInitial | null;
+  /**
+   * A Standard Level paper's rubric, parsed on the server, or null when the
+   * test has none. An unreadable one arrives as null too: the test detail
+   * page is where it gets fixed, and a review panel with no strand table is
+   * better than one that refuses to render.
+   */
+  standardsRubric?: StandardsRubric | null;
 }) {
   const [tab, setTab] = useState<"individual" | "batch">("individual");
   /**
@@ -302,18 +321,21 @@ export function AiGradeClient({
   /** Result of GET /api/health/anthropic: null until checked; error string when the key cannot complete a call. */
   const [apiHealthError, setApiHealthError] = useState<string | null>(null);
 
-  const [test, setTest] = useState<TestDetail | null>(null);
-  const [students, setStudents] = useState<StudentOption[]>([]);
+  const [test, setTest] = useState<TestDetail | null>(initial?.test ?? null);
+  const [students, setStudents] = useState<StudentOption[]>(initial?.students ?? []);
   /** Newest COMPLETE run per student -- the one whose results are reviewable. */
-  const [runsByStudent, setRunsByStudent] = useState<Record<string, RunRow>>({});
+  const [runsByStudent, setRunsByStudent] = useState<Record<string, RunRow>>(initial?.runsByStudent ?? {});
   /** Newest run of any status per student, when it is NOT the complete one (a failed or still-running attempt). */
-  const [newerAttemptByStudent, setNewerAttemptByStudent] = useState<Record<string, RunRow>>({});
+  const [newerAttemptByStudent, setNewerAttemptByStudent] = useState<Record<string, RunRow>>(
+    initial?.newerAttemptByStudent ?? {}
+  );
   /** Subject ids recorded as absent for this test (table test_absences). */
-  const [absentStudents, setAbsentStudents] = useState<Set<string>>(new Set());
+  const [absentStudents, setAbsentStudents] = useState<Set<string>>(() => new Set(initial?.absentStudentIds ?? []));
   const [absenceBusy, setAbsenceBusy] = useState<string | null>(null);
   /** Previous complete run's suggested marks for the student under review, keyed by test_item_id. */
   const [previousMarks, setPreviousMarks] = useState<Record<string, number>>({});
-  const [loading, setLoading] = useState(true);
+  /** Only while the roster is still to be loaded here -- see `initial`. */
+  const [loading, setLoading] = useState(initial === null);
   const [error, setError] = useState<string | null>(null);
   const [statusLine, setStatusLine] = useState<string | null>(null);
 
@@ -395,7 +417,7 @@ export function AiGradeClient({
    * being their newest, and both the banner and the 30s poll that collects it
    * would silently stay off.
    */
-  const [submittedStudentCount, setSubmittedStudentCount] = useState(0);
+  const [submittedStudentCount, setSubmittedStudentCount] = useState(initial?.submittedStudentCount ?? 0);
   /**
    * Runs this page still owes a collect call for: the "submitted" ones above,
    * plus any "running" run that still carries a pending_message_batch_id.
@@ -411,7 +433,7 @@ export function AiGradeClient({
    * ever made again, and the student's marks sat in ai_grade_results while the
    * roster showed them as never graded.
    */
-  const [outstandingCollectCount, setOutstandingCollectCount] = useState(0);
+  const [outstandingCollectCount, setOutstandingCollectCount] = useState(initial?.outstandingCollectCount ?? 0);
   /**
    * Why the last collect pass stopped, verbatim from the route (its 422 names
    * the fix: extract the mark scheme LaTeX in the PPQ Bank). Deliberately not
@@ -431,7 +453,7 @@ export function AiGradeClient({
 
   /** How many of a run's results are accepted, keyed by run id — drives the roster's status dot. */
   const [acceptanceByRun, setAcceptanceByRun] = useState<Record<string, { accepted: number; total: number }>>(
-    {}
+    initial?.acceptanceByRun ?? {}
   );
 
   // -- Manually correcting a misread transcription (evidence) and re-grading it --
@@ -447,14 +469,6 @@ export function AiGradeClient({
   const itemById = new Map((test?.test_items ?? []).map((i) => [i.id, i]));
   const paperPrefixes = paperQuestionPrefixes(test?.custom_content);
 
-  // A Standard Level paper's rubric, parsed once per test load. An
-  // unreadable one is treated as none here: the test detail page is where
-  // it gets fixed, and a review panel with no strand table is better than
-  // one that refuses to render.
-  const standardsRubric = useMemo(() => {
-    const parsed = parseStandardsRubric(test?.standards_rubric ?? null);
-    return parsed.ok ? parsed.rubric : null;
-  }, [test?.standards_rubric]);
   const classCount = new Set(students.map((s) => s.class_name ?? "")).size;
   /** Classes with at least one gradeable run -- the per-class accept button is pointless without one. */
   const classesWithRuns = new Set(
@@ -536,39 +550,9 @@ export function AiGradeClient({
         setError((students1.data.error as string) ?? "Could not load the class roster.");
         return;
       }
-      type RosterRow = {
-        profile_id?: string;
-        profiles: { display_name: string; nickname: string | null };
-        course_id?: string;
-        course_name?: string | null;
-      };
-      const rawRows = (students1.data.students as RosterRow[]) ?? [];
-      // Class order: the test's own class first, then the pooled sibling
-      // classes alphabetically, then students whose class is unknown.
-      const ownClass = rawRows.find((s) => s.course_id === testData.course_id)?.course_name ?? null;
-      const classRank = (name: string | null) => (name === ownClass ? 0 : name ? 1 : 2);
-      const roster: StudentOption[] = rawRows
-        .filter((s): s is RosterRow & { profile_id: string } => !!s.profile_id)
-        .map((s) => {
-          const fullName = s.profiles?.display_name;
-          const nickname = s.profiles?.nickname;
-          // Full name first — the batch-upload dropdown needs it to tell
-          // apart students who share a first name or nickname. Nickname
-          // shown alongside when it differs, since that's often what a
-          // teacher recognises a cover-page name against.
-          const label =
-            fullName && nickname && nickname !== fullName
-              ? `${fullName} (${nickname})`
-              : fullName || nickname || "Unknown";
-          return { profile_id: s.profile_id, display_name: label, class_name: s.course_name ?? null };
-        })
-        .sort(
-          (a: StudentOption, b: StudentOption) =>
-            classRank(a.class_name) - classRank(b.class_name) ||
-            (a.class_name ?? "").localeCompare(b.class_name ?? "") ||
-            a.display_name.localeCompare(b.display_name)
-        );
-      setStudents(roster);
+      // Ordered and labelled by the same function the server's first render
+      // used, so a refresh never reshuffles the list.
+      setStudents(buildRosterOptions((students1.data.students as RosterSourceRef[]) ?? [], testData.course_id));
 
       const runs1 = settledValue(runsSettled);
       if (!runs1.ok) {
@@ -581,29 +565,15 @@ export function AiGradeClient({
       // empty run (seen when a re-mark failed on API credits). The newer
       // attempt is kept separately so its error still shows in the roster.
       // Picked by the same function the route uses to decide whose acceptance
-      // it counts, so the counts below are always for the run shown.
-      const allRuns = (runs1.data.runs as RunRow[]) ?? [];
-      const { latestComplete, newerAttempt } = latestRunsByStudent(allRuns);
-      setRunsByStudent(latestComplete);
-      setNewerAttemptByStudent(newerAttempt);
-      // Counted off the raw run list, not the newest-run-per-student map: a
-      // student marked in the browser after being queued overnight has a
-      // newer complete run, which would hide their still-pending one and stop
-      // the poll from ever starting. Distinct students, because the banner
-      // counts people -- two submissions for one student before either
-      // collects is one student waiting, not two.
-      setSubmittedStudentCount(
-        new Set(allRuns.filter((r) => r.status === "submitted").map((r) => r.student_id)).size
+      // it counts, so the counts are always for the run shown.
+      const overview = deriveOverviewState(
+        (runs1.data.runs as RunRow[]) ?? [],
+        (runs1.data.results as AcceptanceRef[]) ?? []
       );
-      // Runs, not distinct students: nothing renders this, it only has to be
-      // zero exactly when there is nothing left for a collect pass to do. A
-      // "running" run without a batch pointer is an ordinary interactive
-      // grade in flight, which collect has no business with.
-      setOutstandingCollectCount(
-        allRuns.filter(
-          (r) => r.status === "submitted" || (r.status === "running" && r.pending_message_batch_id !== null)
-        ).length
-      );
+      setRunsByStudent(overview.runsByStudent);
+      setNewerAttemptByStudent(overview.newerAttemptByStudent);
+      setSubmittedStudentCount(overview.submittedStudentCount);
+      setOutstandingCollectCount(overview.outstandingCollectCount);
 
       // Absences are loaded best-effort: a failure here -- an error answer or
       // a request that never completed -- should not hide the roster, it
@@ -614,17 +584,21 @@ export function AiGradeClient({
         setAbsentStudents(new Set(ids));
       }
 
-      // The route sends { run_id, accepted } for each student's newest
-      // complete run only -- exactly what this counts.
-      setAcceptanceByRun(acceptanceByRunFrom((runs1.data.results as AcceptanceRef[]) ?? []));
+      setAcceptanceByRun(overview.acceptanceByRun);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not load this assessment.");
     }
   }, [testId, courseId]);
 
+  // The page usually loads the roster on the server and hands it over as
+  // `initial`, so there is nothing to fetch on mount; the refreshes after a
+  // collect, a queued re-mark or an accept still go through loadOverview.
+  // Without it (one of the server's loads failed), load it here as before.
+  const hasInitial = initial !== null;
   useEffect(() => {
+    if (hasInitial) return;
     loadOverview().finally(() => setLoading(false));
-  }, [loadOverview]);
+  }, [hasInitial, loadOverview]);
 
   // -- Collecting overnight results --------------------------------------------
   // Nothing on the server goes looking for a finished batch: no worker, no
