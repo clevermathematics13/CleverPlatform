@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getApiTeacher } from "@/lib/auth";
 import { TEST_DETAIL_SELECT } from "@/lib/test-detail";
+import { fetchAllRows } from "@/lib/na-scanning";
+import { markExportsStale } from "@/lib/self-assessment-export";
 
 /** An emptied text field means "no value", not an empty string. */
 function blankToNull(value: unknown): string | null {
@@ -49,7 +51,7 @@ export async function PATCH(
   const {
     name, short_name, test_date, exam_time, release_at, total_marks, course_id,
     hidden, hidden_from_gradebook, require_self_assessment,
-    boundary_set_id, paper_url, mark_scheme_url,
+    paper_url, mark_scheme_url,
   } = body;
 
   const updates: Record<string, unknown> = {};
@@ -68,12 +70,20 @@ export async function PATCH(
   if (hidden !== undefined) updates.hidden = hidden;
   if (hidden_from_gradebook !== undefined) updates.hidden_from_gradebook = hidden_from_gradebook;
   if (require_self_assessment !== undefined) updates.require_self_assessment = require_self_assessment;
-  // Nothing in the app could set these three until the assessment page; the
-  // gradebook could only report a boundary set as "unassigned (approx.)" and
-  // leave the teacher no way to assign one.
-  if (boundary_set_id !== undefined) updates.boundary_set_id = boundary_set_id || null;
+  // boundary_set_id is deliberately not accepted here any more. Each
+  // assessment has its own boundaries, decided on the grade-boundaries page
+  // with a stated reason (POST .../boundaries/decide); pointing a test at a
+  // shared preset from this form would bypass both.
   if (paper_url !== undefined) updates.paper_url = blankToNull(paper_url);
   if (mark_scheme_url !== undefined) updates.mark_scheme_url = blankToNull(mark_scheme_url);
+
+  // Levels are marks over total_marks, so a new total moves every level on
+  // the stored PowerSchool files even though no mark changed.
+  let previousTotal: number | null | undefined;
+  if (updates.total_marks !== undefined) {
+    const { data: before } = await supabase.from("tests").select("total_marks").eq("id", id).maybeSingle();
+    previousTotal = (before?.total_marks as number | null | undefined) ?? null;
+  }
 
   const { data, error } = await supabase
     .from("tests")
@@ -84,6 +94,10 @@ export async function PATCH(
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  if (previousTotal !== undefined && previousTotal !== (data?.total_marks ?? null)) {
+    await markExportsStale({ testId: id });
   }
 
   return NextResponse.json(data);
@@ -100,7 +114,7 @@ export async function DELETE(
 
   const { data: testRow, error: testError } = await supabase
     .from("tests")
-    .select("id, teacher_id, name, course_id, test_date, exam_time, release_at, total_marks, hidden, paper_url, mark_scheme_url")
+    .select("id, teacher_id, name, course_id, test_date, exam_time, release_at, total_marks, hidden, paper_url, mark_scheme_url, boundary_set_id")
     .eq("id", id)
     .single();
 
@@ -116,24 +130,65 @@ export async function DELETE(
 
   const itemIds = (testItems ?? []).map((it) => it.id);
 
-  const [{ data: markRows }, { data: selfRows }] = itemIds.length
-    ? await Promise.all([
-        supabase
-          .from("student_marks")
-          .select("id, test_item_id, student_id, marks_awarded, created_at")
-          .in("test_item_id", itemIds),
-        supabase
-          .from("student_self_scores")
-          .select("id, test_item_id, student_id, self_marks, submitted_at")
-          .in("test_item_id", itemIds),
-      ])
-    : [{ data: [] }, { data: [] }];
+  // Paged: one assessment for a 50-student track is ~1,800 marks and as many
+  // self-scores, past PostgREST's silent 1000-row cap, and an archive that
+  // quietly keeps the first 1000 is worse than none. invited_student_id is
+  // kept so marks of students who never signed in stay attributable.
+  let markRows: unknown[] = [];
+  let selfRows: unknown[] = [];
+  if (itemIds.length > 0) {
+    try {
+      [markRows, selfRows] = await Promise.all([
+        fetchAllRows((from, to) =>
+          supabase
+            .from("student_marks")
+            .select("id, test_item_id, student_id, invited_student_id, marks_awarded, created_at")
+            .in("test_item_id", itemIds)
+            .order("id", { ascending: true })
+            .range(from, to)
+        ),
+        fetchAllRows((from, to) =>
+          supabase
+            .from("student_self_scores")
+            .select("id, test_item_id, student_id, self_marks, submitted_at")
+            .in("test_item_id", itemIds)
+            .order("id", { ascending: true })
+            .range(from, to)
+        ),
+      ]);
+    } catch (e) {
+      return NextResponse.json(
+        { error: `Could not archive the marks: ${e instanceof Error ? e.message : String(e)}` },
+        { status: 500 }
+      );
+    }
+  }
+
+  // The assessment's grade boundaries and the decisions behind them go with
+  // it: its own set is deleted with the test (grade_boundary_sets.test_id
+  // cascades), so without this the archive could not say what its levels were.
+  const [{ data: bandRows }, { data: decisionRows }, { data: guidanceRows }] = await Promise.all([
+    testRow.boundary_set_id
+      ? supabase.from("grade_boundaries").select("grade, min_proportion").eq("set_id", testRow.boundary_set_id)
+      : Promise.resolve({ data: [] }),
+    supabase
+      .from("test_boundary_decisions")
+      .select("decided_at, decided_by, source, statement, total_marks, boundaries, suggestion_id")
+      .eq("test_id", id)
+      .order("decided_at", { ascending: true }),
+    supabase.from("boundary_guidance").select("note, created_at, archived_at").eq("test_id", id),
+  ]);
 
   const archivePayload = {
     test: testRow,
     items: testItems ?? [],
-    marks: markRows ?? [],
-    selfScores: selfRows ?? [],
+    marks: markRows,
+    selfScores: selfRows,
+    gradeBoundaries: {
+      bands: bandRows ?? [],
+      decisions: decisionRows ?? [],
+      guidance: guidanceRows ?? [],
+    },
   };
 
   const { error: archiveError } = await supabase

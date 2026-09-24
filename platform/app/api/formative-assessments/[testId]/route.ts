@@ -42,6 +42,18 @@ export async function GET(_req: Request, { params }: { params: Promise<{ testId:
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   if (!test) return NextResponse.json({ error: "Test not found" }, { status: 404 });
 
+  // Whether the boundary set is this assessment's own (decided on its Grade
+  // boundaries page) rather than a preset the creator can offer.
+  let ownBoundaries = false;
+  if (test.boundary_set_id) {
+    const { data: set } = await supabase
+      .from("grade_boundary_sets")
+      .select("test_id")
+      .eq("id", test.boundary_set_id)
+      .maybeSingle();
+    ownBoundaries = set?.test_id === test.id;
+  }
+
   if (!test.custom_content) {
     // A real test, but not one the creator authored -- it has no draft to edit.
     return NextResponse.json(
@@ -72,6 +84,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ testId:
     // Null is a real answer here -- a summative without one reports a raw
     // score and an "~approx" band instead of a grade, and the creator says so.
     boundarySetId: test.boundary_set_id,
+    ownBoundaries,
     pdfsArchived: Boolean(test.paper_pdf_storage_path && test.mark_scheme_pdf_storage_path),
     pdfsGeneratedAt: test.pdfs_generated_at,
   });

@@ -209,9 +209,12 @@ must exercise Server Actions.
   sets `A`-`D` are DP course-progression sets (a 7 at 76-82%) and do not apply to
   Grade 9, which is a course of the teacher's own design that borrows the 1-7 scale
   to prepare students for DP - it is not an IB course, so do not "correct" its
-  boundaries toward official IB ones. Grade 9's set is `Grade 9` (a 7 at 90%);
-  assign it to every new Grade 9 test, or the Level falls back to the generic bands
-  in `pctToGradeFallback()` and the column renders a `~approx` badge.
+  boundaries toward official IB ones. Grade 9's preset is `Grade 9` (a 7 at 90%).
+  **Since 24 Sep 2026 every assessment has its own boundaries (§37):** a new test
+  starts from a preset (the Assessment Creator's picker), and its lines are then
+  decided -- kept, taken from the AI's suggestion or set by hand, always with a
+  stated reason -- on `/dashboard/tests/[id]/boundaries`. A test with none falls
+  back to the generic bands in `pctToGradeFallback()` and renders a `~approx` badge.
 - **Grade 9 Standard Level is graded differently from Grade 9 Extended, and
   the difference is data on the test, not a second pipeline.** A test whose
   `tests.standards_rubric` is non-null is a standards-referenced paper: its
@@ -220,9 +223,11 @@ must exercise Server Actions.
   `grading_policies/g9_standard_level_marking_principles.md` IN PLACE OF the
   Formative Assessment principles, and the marks roll up by STRAND into
   Exceeding / Meeting / Approaching / Beginning (`lib/standards-rubric.ts`),
-  not by boundary set into a 1-7 level. Leave `boundary_set_id` null on
-  these; the gradebook's `~approx` badge is honest there, and the standards
-  report page is where the levels are. See §21.
+  not by boundary set into a 1-7 level. The strand levels live on the
+  standards report page. A Standard paper starts with no 1-7 boundaries (the
+  gradebook's `~approx` badge is honest there); since §37 the teacher may give
+  it its own on the Grade boundaries page, which is what 9D's PowerSchool 1-7
+  export then uses. See §21.
 - **PowerSchool matches imported scores on the student number, and nothing else.**
   `students.student_number` / `invited_students.student_number` exist only for
   that: PowerTeacher Pro's per-assignment score import keys on the school-defined
@@ -2225,7 +2230,8 @@ a Standard Level paper and links the report.
 - The gradebook grid is unchanged. It still shows a 1-7 from the fallback
   bands with the `~approx` badge for KA1, because no boundary set applies;
   the standards report is the Standard Level view. Mapping E/M/AP/B onto a
-  1-7 for PowerSchool is the teacher's call, not a default.
+  1-7 for PowerSchool is the teacher's call, not a default. (Since §37 that
+  call has a place to be made: the paper's Grade boundaries page.)
 - Grade 9 Standard is still not offered by the assessment CREATOR
   (`ASSESSMENT_COURSE_NAMES`); Standard papers arrive as PDFs, through the
   importer.
@@ -3453,3 +3459,130 @@ the rest low). Stored rows keep their labels and warnings until they are
 re-marked, as in §23 B, and the calibration script reads stored labels, so it
 shows the effect only as re-marks accumulate (§23 A). No prompt change, so no
 eval run.
+
+## 37. Each assessment has its own grade boundaries, decided with a stated reason (24 Sep 2026)
+
+The teacher asked what the "suggested grade boundaries" for Extended Key
+Assessment 1 were, including students whose marks were not accepted yet. No
+such thing existed: every test pointed `tests.boundary_set_id` at a SHARED
+preset (A-D for DP progression, `Grade 9`), the gradebook counted accepted
+marks only, and nothing recorded who chose a paper's lines or why. Worked out
+by hand (accepted mark, else the newest complete run's suggestion, else 0):
+49 of 51 scored, and under Grade 9 (45/40/35/30/25/20 of 50) 3/13/11/7/9/6/0 for
+levels 7..1. The 30 and 25 lines split clusters (five students on 29, three on
+24), so 45/40/35/28/23/18 was suggested (3/13/11/12/7/3/0). The teacher then
+asked for: each assessment to have its own boundaries; the boundaries and the
+decision to use them shown to the teacher; an input to tell the AI how to
+adjust its boundary suggestion; and a toggle between "this assessment only"
+and "a general rule for all assessments". Standard papers included, at the
+teacher's choice; activities excluded (not graded 1-7).
+
+### What was built
+
+**Schema** (migration `20260924171151_per_test_grade_boundaries`, applied
+through MCP before any code shipped, md5-checked against the ledger; schema
+only, no existing row changed):
+
+- `grade_boundary_sets.test_id` (an assessment's OWN set; null = preset) and
+  `origin_set_id` (the preset it descends from). `name` stays unique; own sets
+  are named `'test ' || test_id` and labelled at read time ("Grade 9" while the
+  lines are the preset's, "Own" once they differ).
+- `boundary_guidance`, `boundary_suggestions`, `test_boundary_decisions`, all
+  teacher-only (`get_my_role()`); decisions are SELECT-only for teachers.
+- `decide_test_boundaries()` -- the ONE write path. SECURITY DEFINER, teacher
+  and owner checked, test row locked, a stale `p_expected_decision_id` raised
+  as SQLSTATE `PT409` (PostgREST answers 409: another tab decided first), own
+  set created on the FIRST decision, bands upserted, `tests.boundary_set_id`
+  repointed, decision row written, `powerschool_export_files.stale` set when
+  the lines moved -- one transaction. Exercised on KA1 inside a `DO` block that
+  raised at the end (so nothing persisted): own set created with origin
+  "Grade 9", bands 0.36..0.90, the test repointed, a stale expected id refused
+  with PT409, the Grade 9 preset untouched; a student's JWT refused.
+
+**No bulk copy.** A test keeps pointing at its preset until its first
+decision, and the page and badges say "Shared 'Grade 9' preset, not decided
+yet". That kept the deploy order safe: old gradebook code never saw an own
+set. "Keep the boundaries in use" is a decision too (it makes the own copy).
+
+**Marks and levels** (`lib/grade-bands.ts`): cut-offs are entered and shown in
+MARKS and stored as `floor(m*10000/T)/10000` (numeric(5,4); rounding 43/70 up
+to 0.6143 would ask for 43.001 marks). An existing proportion that lands on
+the same mark is kept (`boundariesFromCutoffs`), so an unmoved Grade 9 line
+stays 0.9 and not an equivalent re-derivation. The lookup got a 1e-9 margin.
+`grade-bands.test.ts` round-trips every cut-off at every total 1..200.
+
+**The gradebook's aggregates** (Overall, P1/P2/P3/IA) compare tests by their
+LINES, not their set ids (`aggregateGrade`): identical lines are used as they
+are (no regression while FA1 and KA1 both read 90/80/70/60/50/40), different
+lines are BLENDED by marks (`sum(p x total) / sum(total)` per level -- a
+student on every paper's line is on the blended one), and only a test with no
+boundaries still means the generic bands. The page loads only the sets its
+tests use, paged (seven rows per test passes PostgREST's 1000-row cap at ~140
+tests).
+
+**The page** `/dashboard/tests/[id]/boundaries` (`lib/boundary-data.ts` loads
+everything once; `lib/boundary-scores.ts` computes in the browser as the
+teacher types):
+- In use: lines in marks, students per level (everyone scored / every part
+  accepted), the decision statement with who, when and source, history, and a
+  warning if total marks changed since.
+- Scores: stacked histogram (accepted / not final; colours checked with the
+  dataviz validator against `--color-da-surface`), lines in use solid, draft
+  dashed, a table view, cluster-split warnings, and "Check these first": not-
+  final students whose level hangs on a pending or never-marked part.
+- Draft: six inputs, starting from the lines in use, a preset or the AI.
+- Decision: a required statement; "Use these boundaries" / "Keep the
+  boundaries in use", each behind a confirm naming how many students move.
+  The server works out the source; the client never sends it.
+- Guidance for the AI: textarea, the two-way toggle, Save / Save & suggest
+  again, the active rules with Remove (archive).
+
+**The AI** (`lib/boundary-suggestion.ts`, `POST .../boundaries/suggest`):
+Opus 5, adaptive thinking, effort high, `messages.parse` + `zodOutputFormat`,
+the system block cached. The policy is `grading_policies/
+grade_boundary_principles.md` (own words -- the repo is public -- listed in
+`platform/CLAUDE.md`); the fixed rules follow it in code. The model gets the
+paper's sections (LEVEL headings, Standard strands, or Section A/B), the lines
+in force and the presets IN MARKS, the other assessments in the track family,
+every student's total/status/section subtotals with NO names, ids or classes,
+and the guidance. Structured output cannot enforce ranges, so
+`checkSuggestion` does (whole marks, strictly decreasing, in range, every
+guidance note reported once, none invented). Usage pipeline
+`boundary_suggest`, ref type `test`. The installed SDK (0.90) has no
+server-side refusal fallback, so a refusal is the house 502.
+
+**Elsewhere:** the test page's preset dropdown is now a summary with a link,
+and `PATCH /api/tests/[id]` no longer accepts `boundary_set_id` (it also marks
+PowerSchool files stale when `total_marks` changes -- a gap that predated this).
+The Tests list shows a status chip and "Boundaries ->". The Assessment Creator
+lists presets only, shows an own set read-only, and its save route never
+repoints a test with its own set or takes another test's set. `DELETE
+/api/tests/[id]` archives the lines, decisions and guidance -- and now pages
+the marks and self-scores it archives (it read them unpaged, so a 50-student
+paper archived 1000 of ~1,800 marks) and keeps `invited_student_id`.
+`scripts/check-deploy-schema.mjs` probes the new columns and tables and treats
+a missing table (PGRST205/42P01) as missing rather than unexpected.
+
+### Verified
+
+- `npm test` and `npm run build` green; the schema probe passes on production.
+- The real loader, run read-only against production with the service role,
+  matched an independent SQL count for KA1 at 17:37 UTC exactly (49 scored,
+  34 fully accepted, mean 35.04, median 37, 3/13/11/7/9/6/0 and 2/12/8/5/3/4/0),
+  and loads the Standard KA1 (four strands, no boundaries), FA1 and a DP paper
+  (Section A/B, set B).
+
+### Deliberately not done
+
+- No decision or guidance was saved on any real test: which lines KA1 uses is
+  the teacher's call, on the page.
+- The page has not yet been opened in a browser against production: that needs
+  a teacher session minted with the teacher's OK (`.claude/skills/run-app`).
+  The loader, routes and RPC were checked as above; the rendered UI was not.
+- The suggest route needs `ANTHROPIC_API_KEY`, absent from agent sandboxes;
+  it runs on production.
+- Students can still SELECT every set and band (the policy from 20260802224213
+  is unchanged). Nothing student-facing reads them.
+- The archived teacher mark scheme PDFs and old PowerSchool files are not
+  rebuilt by a decision beyond being marked stale (they rebuild on download).
+

@@ -53,6 +53,34 @@ const probes = [
     column: "course_id",
     migration: "20260924125631_ai_grade_batches_course_id.sql",
   },
+  // Per-assessment grade boundaries: the gradebook, the Tests list, the test
+  // page and the Grade boundaries page all read these; the decision route
+  // calls decide_test_boundaries(), created by the same migration.
+  {
+    table: "grade_boundary_sets",
+    column: "test_id",
+    migration: "20260924171151_per_test_grade_boundaries.sql",
+  },
+  {
+    table: "grade_boundary_sets",
+    column: "origin_set_id",
+    migration: "20260924171151_per_test_grade_boundaries.sql",
+  },
+  {
+    table: "test_boundary_decisions",
+    column: "statement",
+    migration: "20260924171151_per_test_grade_boundaries.sql",
+  },
+  {
+    table: "boundary_suggestions",
+    column: "output",
+    migration: "20260924171151_per_test_grade_boundaries.sql",
+  },
+  {
+    table: "boundary_guidance",
+    column: "note",
+    migration: "20260924171151_per_test_grade_boundaries.sql",
+  },
 ];
 
 const missing = [];
@@ -66,7 +94,15 @@ for (const probe of probes) {
   }
 
   const message = error.message?.toLowerCase() ?? "";
-  if (error.code === "42703" || message.includes(`${probe.column} does not exist`)) {
+  // 42703: no such column. PGRST205 / 42P01: no such table -- a probe on a
+  // table a migration creates must read as "missing", not as an unexpected
+  // failure that hides which migration to run.
+  if (
+    error.code === "42703" ||
+    error.code === "PGRST205" ||
+    error.code === "42P01" ||
+    message.includes(`${probe.column} does not exist`)
+  ) {
     missing.push(probe);
     continue;
   }

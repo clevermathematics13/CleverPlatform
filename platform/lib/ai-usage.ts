@@ -41,6 +41,10 @@ export type UsagePipeline =
   // rather than sharing standards_import's: these arrive every lesson rather
   // than once a unit, so the running cost is worth seeing separately.
   | "activity_import"
+  // Suggesting grade boundaries for one assessment from its score
+  // distribution and the teacher's guidance (Opus, one call per request, at
+  // the desk; lib/boundary-suggestion.ts).
+  | "boundary_suggest"
   // Everything below was invisible in this log until 20 Sep 2026: the call
   // sites existed, none recorded usage, so the marking-side profile was the
   // whole picture. Each is one teacher-desk call or one generation.
@@ -59,7 +63,14 @@ export type UsagePipeline =
   | "placement_grade"
   | "placement_recommend";
 
-export type UsageRefType = "ai_grade_run" | "ai_grade_result" | "ai_grade_batch" | "na_crop" | "na_scan_batch";
+export type UsageRefType =
+  | "ai_grade_run"
+  | "ai_grade_result"
+  | "ai_grade_batch"
+  | "na_crop"
+  | "na_scan_batch"
+  // a whole test, for calls about the paper rather than one script (boundary_suggest)
+  | "test";
 
 /** The subset of the SDK's Message.usage this cares about. Cache fields are nullable on the wire. */
 export interface UsageMeters {

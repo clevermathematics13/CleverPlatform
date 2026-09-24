@@ -514,6 +514,7 @@ export function TestsClient({ initialTests, courses }: TestsClientProps) {
                         </a>
                       </>
                     )}
+                    {test.activity_rubric == null && <BoundaryStatusLink testId={test.id} status={test.boundary_status} />}
                   </p>
                   <label className="mt-1 inline-flex items-center gap-2 text-xs text-da-muted">
                     <input
@@ -628,5 +629,43 @@ export function TestsClient({ initialTests, courses }: TestsClientProps) {
         })}
       </div>
     </div>
+  );
+}
+
+/** "[status] Boundaries ->" after the dot on a test card: where its grade boundaries stand. */
+function BoundaryStatusLink({ testId, status }: { testId: string; status: TestRow["boundary_status"] }) {
+  const kind = status?.kind ?? "none";
+  const chip =
+    kind === "decided"
+      ? {
+          cls: "border-emerald-400/40 bg-emerald-500/15 text-emerald-300",
+          text: `Boundaries decided${
+            status?.decidedAt
+              ? ` ${new Date(status.decidedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}`
+              : ""
+          }`,
+          title: "This assessment has its own grade boundaries, with a recorded decision",
+        }
+      : kind === "preset"
+      ? {
+          cls: "border-amber-400/40 bg-amber-500/15 text-amber-300",
+          text: `${status?.label ?? "Preset"}, not decided`,
+          title: "Using a shared preset: no decision has been recorded for this assessment's boundaries",
+        }
+      : {
+          cls: "border-da-border bg-da-hover text-da-muted",
+          text: "No boundaries",
+          title: "No grade boundaries: levels are approximate",
+        };
+  return (
+    <>
+      {" · "}
+      <span className={`rounded border px-1.5 py-0.5 text-[11px] font-medium ${chip.cls}`} title={chip.title}>
+        {chip.text}
+      </span>{" "}
+      <a href={`/dashboard/tests/${testId}/boundaries`} className="text-blue-300 hover:underline">
+        Boundaries →
+      </a>
+    </>
   );
 }

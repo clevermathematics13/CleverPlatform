@@ -6,12 +6,20 @@ import type { OverrideMap, OverrideValue } from "@/lib/self-assessment-override-
 import type { OverrideClass } from "@/lib/self-assessment-override-classes";
 import { StandardsRubricSection } from "./standards-rubric-section";
 
-export type BoundarySetOption = {
-  id: string;
-  name: string;
-  description: string | null;
-  /** Grade 7 down to 1, each with the percentage it starts at. */
-  bands: { grade: number; minPct: number }[];
+/**
+ * This assessment's grade boundaries, as the Grading section summarises them.
+ * They are decided on the grade-boundaries page (/dashboard/tests/[id]/boundaries),
+ * not here: each assessment has its own, and a change is recorded with a
+ * statement of why.
+ */
+export type BoundarySummary = {
+  kind: "own" | "preset" | "none";
+  /** "Grade 9", "own copy of Grade 9", "own boundaries". */
+  label: string | null;
+  /** "45/40/35/30/25/20 of 50" (levels 7 to 2), or null when it cannot be said in marks. */
+  lines: string | null;
+  decidedAt: string | null;
+  statement: string | null;
 };
 
 export type TestDetail = {
@@ -57,7 +65,6 @@ type Draft = {
   release_at: string;
   total_marks: string;
   short_name: string;
-  boundary_set_id: string;
   paper_url: string;
   mark_scheme_url: string;
   hidden: boolean;
@@ -100,7 +107,6 @@ function draftFrom(test: TestDetail): Draft {
     release_at: toLocalInput(test.release_at),
     total_marks: test.total_marks == null ? "" : String(test.total_marks),
     short_name: test.short_name ?? "",
-    boundary_set_id: test.boundary_set_id ?? "",
     paper_url: test.paper_url ?? "",
     mark_scheme_url: test.mark_scheme_url ?? "",
     hidden: test.hidden,
@@ -117,13 +123,13 @@ const hint = "text-xs text-da-muted";
 export function TestDetailClient({
   test,
   courses,
-  boundarySets,
+  boundarySummary,
   overrideClasses,
   overrides,
 }: {
   test: TestDetail;
   courses: { id: string; name: string }[];
-  boundarySets: BoundarySetOption[];
+  boundarySummary: BoundarySummary;
   overrideClasses: OverrideClass[];
   overrides: OverrideMap;
 }) {
@@ -170,8 +176,6 @@ export function TestDetailClient({
   );
   const itemsTotal = items.reduce((sum, it) => sum + it.max_marks, 0);
 
-  const chosenSet = boundarySets.find((s) => s.id === draft.boundary_set_id) ?? null;
-
   const save = async () => {
     setSaving(true);
     setError(null);
@@ -187,7 +191,6 @@ export function TestDetailClient({
           release_at: fromLocalInput(draft.release_at),
           total_marks: draft.total_marks === "" ? null : Number(draft.total_marks),
           short_name: draft.short_name,
-          boundary_set_id: draft.boundary_set_id || null,
           paper_url: draft.paper_url,
           mark_scheme_url: draft.mark_scheme_url,
           hidden: draft.hidden,
@@ -372,35 +375,34 @@ export function TestDetailClient({
       <section className="space-y-4 rounded-xl border border-da-border bg-da-surface p-5 shadow-sm">
         <h2 className="font-bold text-da-text">Grading</h2>
 
-        <label className="flex flex-col gap-1">
-          <span className={labelText}>Boundary set</span>
-          <select
-            value={draft.boundary_set_id}
-            onChange={(e) => set("boundary_set_id", e.target.value)}
-            className={field}
-          >
-            <option value="">— unassigned (approximate grades) —</option>
-            {boundarySets.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
-                {s.description ? ` — ${s.description}` : ""}
-              </option>
-            ))}
-          </select>
-          {chosenSet ? (
-            <span className={hint}>
-              {chosenSet.bands.length > 0
-                ? chosenSet.bands.map((b) => `${b.grade} from ${b.minPct}%`).join(" · ")
-                : "This set has no bands recorded."}
+        <div className="flex flex-col gap-1">
+          <span className={labelText}>Grade boundaries</span>
+          {boundarySummary.kind === "none" ? (
+            <span className="text-sm text-da-text">
+              None decided. The gradebook falls back to fixed thresholds and marks every level as
+              approximate (the <span className="font-mono">~</span> beside the column).
             </span>
           ) : (
-            <span className={hint}>
-              Without a set the gradebook falls back to fixed thresholds and marks every
-              level as approximate — the <span className="font-mono">~</span> beside the
-              column.
+            <span className="text-sm text-da-text">
+              {boundarySummary.kind === "preset"
+                ? `The shared ${boundarySummary.label} preset, not decided for this assessment yet`
+                : `This assessment's ${boundarySummary.label}`}
+              {boundarySummary.lines ? ` · levels 7 to 2 from ${boundarySummary.lines}` : ""}
             </span>
           )}
-        </label>
+          {boundarySummary.statement && (
+            <span className={hint}>
+              Decided
+              {boundarySummary.decidedAt
+                ? ` ${new Date(boundarySummary.decidedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}`
+                : ""}
+              : &ldquo;{boundarySummary.statement}&rdquo;
+            </span>
+          )}
+          <a href={`/dashboard/tests/${saved.id}/boundaries`} className="text-sm text-blue-300 hover:underline">
+            Grade boundaries →
+          </a>
+        </div>
 
         <label className="flex flex-col gap-1">
           <span className={labelText}>Short name for exports</span>
