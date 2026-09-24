@@ -58,8 +58,25 @@ export function startAiGradeInitialLoads(
  * The client's initial state, or null when a load it cannot do without
  * fails. The client then loads the roster itself, exactly as it did before
  * this existed -- with the same error messages, in the same order.
+ *
+ * Never throws. It renders behind the page's Suspense boundary, and with no
+ * error boundary under the dashboard a throw there would replace the whole
+ * page with the app's error screen; anything unexpected (a row shape nothing
+ * here anticipated) falls back to the client's own load instead.
  */
 export async function loadAiGradeInitial(
+  supabase: SupabaseClient,
+  test: TestDetail,
+  loads: AiGradeInitialLoads
+): Promise<AiGradeInitial | null> {
+  try {
+    return await buildInitial(supabase, test, loads);
+  } catch {
+    return null;
+  }
+}
+
+async function buildInitial(
   supabase: SupabaseClient,
   test: TestDetail,
   loads: AiGradeInitialLoads
