@@ -21,7 +21,8 @@ export const RESOLVED_WINDOW_DAYS = 30;
 
 export interface TeacherRemarkEntry extends RemarkQueueEntry {
   testHidden: boolean;
-  /** The part as the student's page labels it: "2.1(a)", "Q5". */
+  /** The part's label: the paper's own "2.1(a)" where the draft numbers its
+   *  sections (as the student's page shows it), else "Q1(a)". */
   partLabel: string;
   maxMarks: number;
   studentId: string;

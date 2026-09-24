@@ -3710,6 +3710,29 @@ list nothing new but three unused-index INFOs (an empty table) and the
 two-SELECT-policy WARN the schema already has 268 of. The deploy schema probe
 (`scripts/check-deploy-schema.mjs`) checks `remark_requests.status`.
 
+**Browser check, 24 Sep, against production** (dev server, sessions minted
+with the teacher's approval and revoked afterwards with `signOut(token,
+"local")`, not the run-app skill's `"global"`, which would also have signed
+the teacher out on their own devices). The test account `44db5d56` was
+switched to student with `set_test_account_role` and, on "27AH [K06] P1":
+15 differing parts offered "Ask for a re-mark", the column read ClevMarks
+and the page said neither AI nor Claude; sending one request showed it
+waiting and moved the disagreement from 41.4% (29/70) to 41.2% (28/68) with
+"1 part waiting for a re-mark isn't counted". `/dashboard/graph-lab` sent
+that account to `/unauthorized` (the redirect is streamed from the layout,
+so it lands a moment after the first 200). As the teacher: the dashboard
+card read 1, the queue grouped it under the test and part, and **Mark
+stands** with a note recorded `stands`, the note and the teacher, wrote no
+`student_marks` or `mark_changes` row, and dropped the queue to 0. Back as
+the student: "Re-mark reviewed: ClevMarks stay at 2.", the note, and 41.4%
+again. The request was then deleted, the account put back to teacher, and
+its 18 self-scores were untouched. Two things about running it: the dev
+server restarts itself on its memory ceiling while compiling
+`/api/remark-requests/[id]` cold (warm it with an unauthenticated request
+first), and a screenshot taken before hydration makes React report a
+`caret-color` mismatch on inputs -- Playwright hides the caret with an
+inline style; it is not the app.
+
 ### The rename
 
 "Clev's Marks" / `Clev&apos;s Marks` / `Clev&rsquo;s Marks` became
