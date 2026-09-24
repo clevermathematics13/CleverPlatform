@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   ActivityDraftSchema,
   MAX_MARKS_PER_PART,
+  buildActivityImportSystemPrompt,
   hasBlockingFindings,
   normaliseTargetCode,
   toActivityDraft,
@@ -22,6 +23,7 @@ function extracted(overrides: Partial<ExtractedActivity> = {}): ExtractedActivit
         questionNumber: 1,
         partLabel: "",
         maxMarks: 2,
+        stemText: null,
         questionText: "Fill in the table.",
         markschemeText: "Chairs 8, 16, 24. Tablecloths 4, 5, 6.",
       },
@@ -29,6 +31,7 @@ function extracted(overrides: Partial<ExtractedActivity> = {}): ExtractedActivit
         questionNumber: 2,
         partLabel: "A",
         maxMarks: 1,
+        stemText: "A party rental charges $c$ dollars for $t$ tables, at 8 dollars a table.",
         questionText: "Write an equation.",
         markschemeText: "$c = 8t$, or any correct rearrangement.",
       },
@@ -102,6 +105,33 @@ describe("toActivityDraft", () => {
 
   it("drops an empty note instead of storing an empty string", () => {
     expect(toActivityDraft(extracted()).rubric.targets[1].note).toBeUndefined();
+  });
+
+  it("keeps a part's stem apart from its own wording, and blanks an empty stem to null", () => {
+    const draft = toActivityDraft(extracted());
+    expect(draft.items[1].stemText).toMatch(/^A party rental charges/);
+    expect(draft.items[1].questionText).toBe("Write an equation.");
+    expect(draft.items[0].stemText).toBeNull();
+    const blank = extracted();
+    blank.items[1].stemText = "   ";
+    expect(toActivityDraft(blank).items[1].stemText).toBeNull();
+  });
+
+  it("accepts a draft saved before the stem existed (no stemText on its items)", () => {
+    const draft = toActivityDraft(extracted());
+    const legacy = { ...draft, items: draft.items.map(({ stemText: _stem, ...rest }) => rest) };
+    const parsed = ActivityDraftSchema.safeParse(legacy);
+    expect(parsed.success).toBe(true);
+    expect(parsed.success && parsed.data.items.every((it) => it.stemText === null)).toBe(true);
+  });
+});
+
+describe("buildActivityImportSystemPrompt", () => {
+  it("tells the reader to put the shared context in stemText, not in every part", () => {
+    const p = buildActivityImportSystemPrompt();
+    expect(p).toContain("in stemText, word for word and identical on every one of its lettered parts");
+    expect(p).toContain("never only in the stem");
+    expect(p).not.toContain("Repeat the shared context");
   });
 });
 

@@ -74,7 +74,9 @@ const ExtractedActivityItemSchema = z.object({
   partLabel: z.string(),
   /** 1 for one idea, 2 for two separable ideas. Nothing else. */
   maxMarks: z.number().int().min(1).max(MAX_MARKS_PER_PART),
-  /** The question as printed, self-contained: the shared context repeated on every part. Maths in $...$ LaTeX. */
+  /** For a lettered part: the question's shared context as printed (the scenario, the given formula, the sequence), identical on every part of that question. Null for a question with no parts, or with no shared context. Maths in $...$ LaTeX. */
+  stemText: z.string().nullable(),
+  /** The part's own wording as printed. Together with stemText it must be self-contained. Maths in $...$ LaTeX. */
   questionText: z.string(),
   /** What having the idea looks like, from the key: the answer, and for a 2-mark part what each mark is for. */
   markschemeText: z.string(),
@@ -117,6 +119,8 @@ export const ActivityDraftItemSchema = z.object({
   questionNumber: z.number().int().min(1),
   partLabel: z.string().trim().max(8),
   maxMarks: z.number().int().min(0).max(50),
+  /** Defaulted rather than required so a draft saved before the stem existed still parses. */
+  stemText: z.string().trim().nullable().default(null),
   questionText: z.string().trim(),
   markschemeText: z.string().trim(),
 });
@@ -188,6 +192,7 @@ export function toActivityDraft(
       questionNumber: it.questionNumber,
       partLabel: it.partLabel.trim().toLowerCase().replace(/[()\s.]/g, ""),
       maxMarks: it.maxMarks,
+      stemText: clean(it.stemText) ?? null,
       questionText: it.questionText.trim(),
       markschemeText: it.markschemeText.trim(),
     })),
@@ -275,7 +280,7 @@ export function buildActivityImportSystemPrompt(): string {
     "",
     "MARKS. The worksheet prints none; you assign them. A part is worth 2 if it contains two separable ideas that a student could have one of without the other -- two quantities asked for, two patterns to notice, a substitution and then a value, a relationship and then the equation for it. It is worth 1 if it contains one. Never anything else. For a 2-mark part, markschemeText must say what each of the two marks is for.",
     "",
-    "QUESTION TEXT. Self-contained: a student reading only this text, with no other context, must be able to attempt the part. Repeat the shared context (the scenario, the given formula, the sequence) at the start of each part that needs it. Describe a table, diagram or figure in words precisely enough to reproduce it -- for a table the students fill in, give its columns and its row labels and say which cells are blank. Write mathematics in LaTeX between single dollars: $c = 8t$, $\\frac{5}{9}(F - 32)$. Keep the worksheet's own wording otherwise.",
+    "STEM AND QUESTION TEXT. A student reading stemText and questionText together, with no other context, must be able to attempt the part. Put the shared context (the scenario, the given formula, the sequence) in stemText, word for word and identical on every one of its lettered parts; put only the part's own wording in questionText. A demand the part's mark depends on (\"show your work\", \"explain\") belongs in that part's questionText, never only in the stem. A question with no parts, or with no shared context, has stemText null and everything in questionText. Describe a table, diagram or figure in words precisely enough to reproduce it -- for a table the students fill in, give its columns and its row labels and say which cells are blank. Write mathematics in LaTeX between single dollars: $c = 8t$, $\\frac{5}{9}(F - 32)$. Keep the worksheet's own wording otherwise.",
     "",
     "MARK SCHEME TEXT. Read the answer off the key, including anything handwritten in the margin. State the answer plainly. List the equivalent forms that must also be accepted -- an Exploration routinely asks for a relationship without fixing how to write it, so $c = 8t$, $8t = c$ and $t = c/8$ are one answer, and a student who writes any of them has the idea. Where the key shows working, say which part of it is the idea being looked for. Where a wrong route is predictable, name it and say it earns nothing. Do not invent marking rules the key does not support, and do not require working to be shown unless the question itself asks the student to explain, describe or show how they know.",
     "",

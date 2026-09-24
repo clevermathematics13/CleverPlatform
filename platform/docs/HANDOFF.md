@@ -3059,6 +3059,16 @@ box); not touched here.
   3(c), 6(d), 7(d), 8, 9(a), 9(b), 9(c), i.e. every scheme the 18 and 23 Sep
   migrations rewrote without touching the fixture. All 26 items now compare
   equal to the database on stem, question and scheme.
+- Follow-up, same day: the activity importer (`lib/activity-import.ts`,
+  `app/api/activity-assessments/route.ts`, the activity-import page) now
+  extracts `stemText` per lettered part and writes `test_items.stem_text`,
+  the same change the standards importer got above. The teacher first asked
+  for this on the NA rubric bridge; that bridge writes `na_rubric_items`,
+  which has no stem column and feeds only the teacher rubric export, and NA
+  grading reads `na_anchors.question_text` (already stem + part as one
+  string), so the change went where the stem was actually being dropped
+  before the grader. No activity tests existed in production yet, so no
+  backfill.
 
 ## 31. Functions run in São Paulo, next to the database (24 Sep 2026)
 
