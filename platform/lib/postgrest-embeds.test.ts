@@ -85,6 +85,23 @@ function ambiguousEmbeds(table: string, embedded: string): string[] {
   return hits;
 }
 
+/**
+ * `tests` and `grade_boundary_sets` point at each other since each assessment
+ * got its own boundaries: tests.boundary_set_id -> grade_boundary_sets, and
+ * grade_boundary_sets.test_id -> tests. A bare embed either way is ambiguous
+ * (PGRST201) and fails the whole query, so none is allowed without its
+ * foreign key named. Nothing embeds them today; load the set by id instead.
+ */
+describe("PostgREST embeds between tests and grade_boundary_sets", () => {
+  it("never embeds grade_boundary_sets from tests without naming the foreign key", () => {
+    expect(ambiguousEmbeds("tests", "grade_boundary_sets")).toEqual([]);
+  });
+
+  it("never embeds tests from grade_boundary_sets without naming the foreign key", () => {
+    expect(ambiguousEmbeds("grade_boundary_sets", "tests")).toEqual([]);
+  });
+});
+
 describe("PostgREST embeds between tests and courses", () => {
   it("never embeds courses from tests without naming the foreign key", () => {
     expect(ambiguousEmbeds("tests", "courses")).toEqual([]);

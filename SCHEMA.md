@@ -377,12 +377,82 @@ Server-side Google OAuth token store. Replaces browser-cookie token storage so t
 
 ### `grade_boundary_sets`
 
+A named set of 1-7 lines (`grade_boundaries`). Rows with `test_id` null are the shared
+PRESETS (A-D for DP course progression, "Grade 9"); a row with `test_id` set is ONE
+assessment's own boundaries, created by its first decision through
+`decide_test_boundaries()` (migration `20260924171151`). Every reader still goes
+`tests.boundary_set_id -> grade_boundaries`. `name` stays unique: an own set is named
+`'test ' || test_id` and its label is computed from `origin_set_id`. RLS: any signed-in
+user may SELECT; nothing may write except the SECURITY DEFINER RPC (and the service role).
+`tests` and `grade_boundary_sets` now have a foreign key each way, so an embed between
+them must name its key (guarded by `lib/postgrest-embeds.test.ts`).
+
 | column | type | default |
 |---|---|---|
 | `id` | uuid | default `gen_random_uuid()` |
 | `name` | text |  |
 | `description` | text, nullable |  |
 | `created_at` | timestamp with time zone | default `now()` |
+| `test_id` | uuid, nullable | FK tests(id) on delete cascade; unique where not null -- the assessment this set belongs to; null for a preset |
+| `origin_set_id` | uuid, nullable | FK grade_boundary_sets(id) on delete set null -- the preset an own set descends from (labels "Grade 9" while the lines are unchanged; keeps preset proportions stable) |
+
+### `boundary_guidance`
+
+Teacher guidance the AI reads when it suggests grade boundaries (`lib/boundary-suggestion.ts`).
+`test_id` set = this assessment only; null = a general rule for all assessments. Removing a
+rule sets `archived_at`; the row stays so a stored suggestion's guidance still reads as it
+did. RLS: teachers, all operations (`get_my_role()`).
+
+| column | type | default |
+|---|---|---|
+| `id` | uuid | default `gen_random_uuid()` |
+| `test_id` | uuid, nullable | FK tests(id) on delete cascade |
+| `note` | text | check 1-2000 characters after trimming |
+| `created_by` | uuid | FK profiles(id) on delete cascade |
+| `created_at` | timestamp with time zone | default `now()` |
+| `archived_at` | timestamp with time zone, nullable |  |
+
+### `boundary_suggestions`
+
+Every AI grade-boundary suggestion (`POST /api/tests/[id]/boundaries/suggest`), with the
+anonymised input it was given (no names, ids or classes) and the guidance it read. A
+suggestion changes nothing. RLS: teachers, all operations.
+
+| column | type | default |
+|---|---|---|
+| `id` | uuid | default `gen_random_uuid()` |
+| `test_id` | uuid | FK tests(id) on delete cascade |
+| `model` | text |  |
+| `total_marks` | integer | the paper's total when suggested |
+| `guidance` | jsonb | default `'[]'::jsonb` |
+| `input` | jsonb |  |
+| `output` | jsonb | validated `BoundarySuggestionSchema`: cut-offs grade7..grade2 in marks, rationale, levelNotes, guidanceApplied, cautions, statementDraft |
+| `created_by` | uuid, nullable | FK profiles(id) on delete set null |
+| `created_at` | timestamp with time zone | default `now()` |
+
+### `test_boundary_decisions`
+
+The stated decision behind an assessment's grade boundaries, one row per decision (adopt or
+keep), newest = current. Written ONLY by `decide_test_boundaries(p_test_id, p_mode, p_bands,
+p_cutoffs, p_source, p_statement, p_suggestion_id, p_origin_set_id, p_distribution,
+p_expected_decision_id)`: SECURITY DEFINER, teacher and owner checked, the test row locked,
+a stale `p_expected_decision_id` raised as SQLSTATE `PT409`, the own set created on the
+first decision, `tests.boundary_set_id` repointed and the test's `powerschool_export_files`
+marked stale when the lines moved -- all in one transaction. EXECUTE revoked from
+public/anon. RLS: teachers SELECT only.
+
+| column | type | default |
+|---|---|---|
+| `id` | uuid | default `gen_random_uuid()` |
+| `test_id` | uuid | FK tests(id) on delete cascade |
+| `boundaries` | jsonb | `{bands: {"2": p, ..., "7": p}, cutoffs: [{grade, min_marks, min_proportion}], origin_set_id}` |
+| `total_marks` | integer, nullable | the total the decision was made at |
+| `source` | text | check `('preset', 'ai_suggestion', 'teacher', 'kept')`, worked out on the server |
+| `suggestion_id` | uuid, nullable | FK boundary_suggestions(id) on delete set null |
+| `statement` | text | the teacher's reason; check 1-4000 characters after trimming |
+| `distribution` | jsonb, nullable | anonymised level counts at the moment of deciding (`lib/boundary-scores.ts distributionSnapshot`) |
+| `decided_by` | uuid, nullable | FK profiles(id) on delete set null |
+| `decided_at` | timestamp with time zone | default `now()` |
 
 ### `grades`
 
@@ -1499,7 +1569,7 @@ Unique on `(test_id, question_number, part_label)`.
 | `paper_url` | text, nullable |  |
 | `mark_scheme_url` | text, nullable |  |
 | `hidden` | boolean | default `false` — keeps the test out of the **student** reflection dropdown (lib/exam-service.ts) |
-| `boundary_set_id` | uuid, nullable |  |
+| `boundary_set_id` | uuid, nullable | the set the levels come from: a shared preset until the assessment's first boundary decision, then its own set (`grade_boundary_sets.test_id`). Written only by `decide_test_boundaries()` and, for a new paper, the Assessment Creator's preset picker; `PATCH /api/tests/[id]` no longer accepts it |
 | `exam_time` | time without time zone, nullable |  |
 | `custom_content` | jsonb, nullable | full authored draft for a Formative-Assessment-creator test; null for IB-bank/external tests |
 | `release_at` | timestamp with time zone, nullable |  |

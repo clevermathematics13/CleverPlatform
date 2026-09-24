@@ -44,6 +44,15 @@ Design docs (read before any NA content or PDF layout work):
   because an Exploration is sat before the lesson. The learning targets,
   outcome bands and part map are data on the test (lib/activity-rubric.ts),
   never code; the classes it is offered for are ACTIVITY_COURSE_NAMES there.
+- Grade-boundary suggestion policy lives in
+  platform/grading_policies/grade_boundary_principles.md — loaded at runtime by
+  lib/boundary-suggestion.ts (buildBoundarySystemPrompt) for every AI boundary
+  suggestion, not just documentation. Edit the .md file, not a copy of its text.
+  The fixed rules (whole-mark lines, guidance precedence, no student names) are
+  in code after it, so editing the file cannot remove them. Each assessment has
+  its OWN boundaries (grade_boundary_sets.test_id); they change only through
+  decide_test_boundaries(), with a stated reason -- never repoint
+  tests.boundary_set_id by hand.
 - NA student feedback voice lives in
   platform/feedback_voice/na_student_feedback_voice.md — loaded at runtime by
   lib/na-assessment.ts (buildAssessmentSystemPrompt), not just documentation.
