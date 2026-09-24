@@ -1,5 +1,6 @@
 import { Suspense } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { cookies } from "next/headers";
 import { notFound } from "next/navigation";
 import { requireTeacher } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
@@ -12,6 +13,7 @@ import type { AssessmentKind } from "@/lib/assessment-kind";
 import { parseStandardsRubric } from "@/lib/standards-rubric";
 import type { StandardsRubric } from "@/lib/standards-rubric";
 import { TEST_DETAIL_SELECT } from "@/lib/test-detail";
+import { COLLAPSED_CLASSES_COOKIE, parseCollapsedClasses } from "@/lib/ai-grade-collapsed-classes";
 
 export default async function AiGradePage({
   params,
@@ -38,6 +40,9 @@ export default async function AiGradePage({
   // Parsed here so the parser, and zod with it, stays out of the page's
   // JavaScript.
   const rubric = parseStandardsRubric(test.standards_rubric ?? null);
+  // The classes this browser last left collapsed, so the first HTML has
+  // them collapsed already (lib/ai-grade-collapsed-classes.ts).
+  const collapsedClasses = parseCollapsedClasses((await cookies()).get(COLLAPSED_CLASSES_COOKIE)?.value);
 
   return (
     <div className="max-w-6xl">
@@ -79,6 +84,7 @@ export default async function AiGradePage({
           loads={loads}
           assessmentKind={parseAssessmentKind(test.assessment_kind)}
           standardsRubric={rubric.ok ? rubric.rubric : null}
+          collapsedClasses={collapsedClasses}
         />
       </Suspense>
     </div>
@@ -91,12 +97,14 @@ async function AiGradeRoster({
   loads,
   assessmentKind,
   standardsRubric,
+  collapsedClasses,
 }: {
   supabase: SupabaseClient;
   test: TestDetail;
   loads: AiGradeInitialLoads;
   assessmentKind: AssessmentKind;
   standardsRubric: StandardsRubric | null;
+  collapsedClasses: string[];
 }) {
   const initial = await loadAiGradeInitial(supabase, test, loads);
   return (
@@ -108,6 +116,7 @@ async function AiGradeRoster({
       assessmentKind={assessmentKind}
       initial={initial}
       standardsRubric={standardsRubric}
+      initialCollapsedClasses={collapsedClasses}
     />
   );
 }

@@ -33,6 +33,7 @@ import {
   buildRosterOptions,
 } from "@/lib/ai-grade-review";
 import type { AcceptanceRef, RosterOption, RosterSourceRef, SelfScoreRef } from "@/lib/ai-grade-review";
+import { writeCollapsedClassesCookie } from "@/lib/ai-grade-collapsed-classes";
 import type { AssessmentKind } from "@/lib/assessment-kind";
 // Not "@/lib/assignments": that module carries the AI prompt builders too.
 import { paperQuestionPrefixes } from "@/lib/paper-labels";
@@ -286,6 +287,7 @@ export function AiGradeClient({
   assessmentKind = "formative",
   initial = null,
   standardsRubric = null,
+  initialCollapsedClasses = [],
 }: {
   testId: string;
   /**
@@ -309,6 +311,12 @@ export function AiGradeClient({
    * better than one that refuses to render.
    */
   standardsRubric?: StandardsRubric | null;
+  /**
+   * The classes this browser last left collapsed, read by the page from the
+   * cookie that remembers them (lib/ai-grade-collapsed-classes.ts), so they
+   * are collapsed in the first HTML instead of opening and then folding.
+   */
+  initialCollapsedClasses?: string[];
 }) {
   const [tab, setTab] = useState<"individual" | "batch">("individual");
   /**
@@ -448,8 +456,8 @@ export function AiGradeClient({
   const [acceptingAll, setAcceptingAll] = useState(false);
   /** Class name currently running its own "accept" batch, or null. */
   const [acceptingClass, setAcceptingClass] = useState<string | null>(null);
-  /** Class names collapsed in the roster -- toggled by clicking the class heading. */
-  const [collapsedClasses, setCollapsedClasses] = useState<Set<string>>(new Set());
+  /** Class names collapsed in the roster -- toggled by clicking the class heading, and remembered. */
+  const [collapsedClasses, setCollapsedClasses] = useState<Set<string>>(() => new Set(initialCollapsedClasses));
 
   /** How many of a run's results are accepted, keyed by run id — drives the roster's status dot. */
   const [acceptanceByRun, setAcceptanceByRun] = useState<Record<string, { accepted: number; total: number }>>(
@@ -474,13 +482,16 @@ export function AiGradeClient({
   const classesWithRuns = new Set(
     students.filter((s) => runsByStudent[s.profile_id]).map((s) => s.class_name ?? "Other")
   );
-  const toggleClassCollapsed = (className: string) =>
-    setCollapsedClasses((prev) => {
-      const next = new Set(prev);
-      if (next.has(className)) next.delete(className);
-      else next.add(className);
-      return next;
-    });
+  // Remembered for this browser, for every test's roster -- see
+  // initialCollapsedClasses. Written here rather than in an updater, which
+  // React may call twice.
+  const toggleClassCollapsed = (className: string) => {
+    const next = new Set(collapsedClasses);
+    if (next.has(className)) next.delete(className);
+    else next.add(className);
+    setCollapsedClasses(next);
+    writeCollapsedClassesCookie(next);
+  };
 
   // -- Absence: a student who did not sit the test ------------------------------
   // Recorded in test_absences so the roster here and the gradebook show
