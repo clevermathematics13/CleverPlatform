@@ -20,6 +20,8 @@
  * run, and one function is how they cannot drift apart.
  */
 
+import { formatGradingSubject } from "./grading-subject";
+
 /** Minimal shape of ai_grade_runs needed to pick a student's current run. */
 export interface ReviewRunRef {
   id: string;
@@ -382,4 +384,41 @@ export function selfMarkFor(summary: SelfAssessmentSummary, testItemId: string):
 export function selfMarkDiffers(self: SelfMark, mark: number): boolean {
   if (self.kind === "none") return false;
   return (self.kind === "marks" ? self.marks : 0) !== mark;
+}
+
+/** Minimal shape of ai_grade_runs needed to pick each student's newest run. */
+export interface SubjectRunRef {
+  id: string;
+  student_id: string | null;
+  invited_student_id: string | null;
+  created_at: string;
+}
+
+/**
+ * The newest run per student, newest first.
+ *
+ * A subject is a registered student OR an invited-roster entry
+ * (formatGradingSubject), so a student who logged in halfway through the
+ * year does not count twice. Ties on created_at (a batch writes a class
+ * within the same second) break on id, the same order the API lists runs
+ * in, so two callers agree on which run is "the" latest. A run with no
+ * subject on it is dropped: it is not any student's.
+ *
+ * Callers pre-filter by status; this does not know what "complete" means.
+ */
+export function latestRunPerSubject<R extends SubjectRunRef>(runs: R[]): R[] {
+  const ordered = [...runs].sort((a, b) => {
+    const t = Date.parse(b.created_at) - Date.parse(a.created_at);
+    if (!Number.isNaN(t) && t !== 0) return t;
+    return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+  });
+  const seen = new Set<string>();
+  const out: R[] = [];
+  for (const run of ordered) {
+    const subject = formatGradingSubject(run);
+    if (!subject || seen.has(subject)) continue;
+    seen.add(subject);
+    out.push(run);
+  }
+  return out;
 }

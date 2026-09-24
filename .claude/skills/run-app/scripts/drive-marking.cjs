@@ -152,7 +152,7 @@ if (!TEST_ID || !SESSION) {
     const info = await page.evaluate(() => {
       const im = document.querySelector('img[alt*="Cropped scan region"]');
       const badge = Array.from(document.querySelectorAll("span"))
-        .find((s) => /Paper layout|Region set by you/.test(s.textContent || ""));
+        .find((s) => /Paper layout|Region set by you|Located by marker/.test(s.textContent || ""));
       return im
         ? { w: im.naturalWidth, h: im.naturalHeight, badge: badge ? badge.textContent.trim() : null }
         : null;

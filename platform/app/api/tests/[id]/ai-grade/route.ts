@@ -65,6 +65,8 @@ interface ResultRow {
   evidence_image_path: string | null;
   evidence_box: unknown;
   evidence_box_source: string | null;
+  /** The marker's own box before padding or bounding; null on rows marked before 23 Sep 2026. */
+  evidence_box_reported: unknown;
   mark_breakdown: unknown;
   accepted: boolean;
   accepted_at: string | null;
@@ -200,7 +202,7 @@ export async function GET(
       supabase
         .from("ai_grade_results")
         .select(
-          "id, run_id, test_item_id, suggested_marks, max_marks, confidence, markscheme_source, work_found, reasoning, evidence, evidence_image_path, evidence_box, evidence_box_source, mark_breakdown, accepted, accepted_at, accepted_by"
+          "id, run_id, test_item_id, suggested_marks, max_marks, confidence, markscheme_source, work_found, reasoning, evidence, evidence_image_path, evidence_box, evidence_box_source, evidence_box_reported, mark_breakdown, accepted, accepted_at, accepted_by"
         )
         .in("run_id", runIds)
         .order("id", { ascending: true })

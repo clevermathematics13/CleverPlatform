@@ -196,6 +196,12 @@ interface ResultRow {
    * one.
    */
   evidence_box_source: string | null;
+  /**
+   * The marker's own box before padding or bounding -- what a re-cut works
+   * from. Present on runs marked after 23 Sep 2026; null before that, and
+   * whenever the marker reported no box.
+   */
+  evidence_box_reported: { page: number; x0: number; y0: number; x1: number; y1: number } | null;
   /** Question source image(s) from the PPQ bank, if any are on file for this part. */
   question_image_urls: string[];
   /** Mark scheme source image(s) from the PPQ bank, if any are on file for this part. */
@@ -1342,27 +1348,29 @@ export function AiGradeClient({
       return next;
     });
 
-  /** Re-cutting this student's marker-located crops lower (widen-crops route). */
-  const [wideningCrops, setWideningCrops] = useState(false);
+  /** Re-cutting this student's crops (recut-crops route). */
+  const [recuttingCrops, setRecuttingCrops] = useState(false);
 
-  // How many crops on screen the MARKER placed. Those are the biased ones -- a
-  // teacher-drawn or layout-cut region is not this button's business -- so this
-  // is also whether the button is worth showing at all.
-  const modelCropCount = results.filter(
-    (r) => (r.evidence_box_source ?? "model") === "model" && r.evidence_image_url
+  // Whether there is anything a re-cut could touch: a region the teacher drew
+  // is a decision and is never re-cut, so a student whose every crop was
+  // redrawn by hand gets no button. The route decides the rest and answers
+  // "already right" for a crop that would not change.
+  const recuttableCount = results.filter(
+    (r) => r.evidence_box_source !== "teacher" && (r.evidence_image_url || r.evidence_box || r.evidence_box_reported)
   ).length;
 
   /**
-   * Re-cut every marker-located crop on this student lower, so each reaches the
-   * handwriting instead of stopping at the printed prompt above it. Costs no
-   * model call and cannot change a mark -- see the widen-crops route.
+   * Re-cut this student's crops from the best geometry the paper has: the
+   * locked layout if there is one, otherwise the marker's own boxes bounded at
+   * the next part. Idempotent, no model call, cannot change a mark -- see the
+   * recut-crops route.
    */
-  const widenCrops = async () => {
+  const recutCrops = async () => {
     if (!focusRunId || !focusStudent) return;
-    setWideningCrops(true);
-    setStatusLine("Re-cutting this student's crops lower…");
+    setRecuttingCrops(true);
+    setStatusLine("Re-cutting this student's crops…");
     try {
-      const { ok, data } = await fetchJson(`/api/tests/${testId}/ai-grade/widen-crops`, {
+      const { ok, data } = await fetchJson(`/api/tests/${testId}/ai-grade/recut-crops`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ runId: focusRunId }),
@@ -1371,17 +1379,20 @@ export function AiGradeClient({
         setStatusLine((data?.error as string) ?? "Could not re-cut this student's crops.");
         return;
       }
-      const widened = Number(data?.widened ?? 0);
-      // Reloaded rather than patched: every widened row has a new image path
+      const recut = Number(data?.recut ?? 0);
+      const unchanged = Number(data?.unchanged ?? 0);
+      const fromLayout = data?.mode === "layout";
+      const warnings = Array.isArray(data?.warnings) ? (data.warnings as string[]) : [];
+      // Reloaded rather than patched: every re-cut row has a new image path
       // whose signed URL is minted server-side.
       await loadResultsFor(focusStudent);
-      setStatusLine(
-        widened > 0
-          ? `${widened} crop(s) re-cut lower. The marks are unchanged.`
-          : ((data?.message as string) ?? "Nothing needed re-cutting on this student.")
-      );
+      const summary =
+        recut > 0
+          ? `${recut} crop(s) re-cut${fromLayout ? " from the paper layout" : ""}, ${unchanged} already right. The marks are unchanged.`
+          : `Nothing needed re-cutting on this student (${unchanged} already right).`;
+      setStatusLine([summary, ...warnings, ...(data?.error ? [String(data.error)] : [])].join(" "));
     } finally {
-      setWideningCrops(false);
+      setRecuttingCrops(false);
     }
   };
 
@@ -1784,17 +1795,18 @@ export function AiGradeClient({
                         Paper layout
                       </span>
                     )}
-                    {/* A model-located region is an estimate, and a biased one --
-                        it reads high, so the crop can show the part above this
-                        one. Badging it is the difference between a teacher
-                        spotting that and trusting it: the mark is argued from
-                        the transcription below, which stays right even when the
-                        picture is wrong. Only shown when there IS a crop; a row
-                        with none already says so with "Locate on page". */}
+                    {/* A model-located region is an estimate: the marker
+                        synthesises a layout rather than measuring one, so the
+                        crop can show the wrong part. Badging it is the
+                        difference between a teacher spotting that and trusting
+                        it: the mark is argued from the transcription below,
+                        which stays right even when the picture is wrong. Only
+                        shown when there IS a crop; a row with none already says
+                        so with "Locate on page". */}
                     {(r.evidence_box_source === "model" || !r.evidence_box_source) &&
                       r.evidence_image_url && (
                         <span
-                          title="The marker estimated this region rather than cutting it from a locked paper layout, and its estimates read high. Check the crop shows THIS part's answer; if it does not, use the ⤢ button to redraw it, or Fix crops above to re-cut every one lower."
+                          title="The marker estimated this region rather than cutting it from a locked paper layout. Check the crop shows THIS part's answer; if it does not, use the ⤢ button to redraw it, or Re-cut crops above to bound every marker-located crop at the next part. Drawing and locking a paper layout is the lasting fix."
                           className="rounded border border-amber-400/40 bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-300"
                         >
                           Located by marker
@@ -2185,17 +2197,17 @@ export function AiGradeClient({
             )}
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            {/* Only offered when there is something biased to fix. A paper with
-                a locked layout has measured regions and never shows this. */}
-            {modelCropCount > 0 && (
+            {/* Only offered when a re-cut could touch something; a student
+                whose every region was drawn by hand never sees it. */}
+            {recuttableCount > 0 && (
               <button
                 type="button"
-                onClick={widenCrops}
-                disabled={wideningCrops}
-                title={`Re-cut the ${modelCropCount} crop(s) the marker located on this student, reaching further down the page so each one shows the answer rather than the question above it. No mark changes.`}
+                onClick={recutCrops}
+                disabled={recuttingCrops}
+                title="Re-cut this student's crops: from the paper's locked layout if it has one, otherwise from the marker's own boxes, each stopped where the next part begins. Crops already right are left alone. No mark changes."
                 className="rounded-lg border border-amber-400/40 px-3 py-2 text-sm font-medium text-amber-300 hover:bg-amber-500/15 disabled:opacity-50"
               >
-                {wideningCrops ? "Re-cutting…" : "Fix crops"}
+                {recuttingCrops ? "Re-cutting…" : "Re-cut crops"}
               </button>
             )}
             <button
