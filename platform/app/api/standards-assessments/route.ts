@@ -89,6 +89,9 @@ export async function POST(req: Request) {
     question_number: it.questionNumber,
     part_label: it.partLabel,
     max_marks: it.maxMarks,
+    // A whole-question item's text is already question_text; the column
+    // comment on test_items.stem_text reserves it for lettered parts.
+    stem_text: it.partLabel ? (it.stemText ?? null) : null,
     question_text: it.questionText,
     markscheme_text: it.markschemeText,
     source: "custom",

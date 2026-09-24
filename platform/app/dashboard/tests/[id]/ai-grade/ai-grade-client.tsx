@@ -67,7 +67,7 @@ interface TestItem {
   /**
    * The teacher's marking notes for this part (test_items.marking_notes):
    * rulings the marker reads after the mark scheme on every later mark of
-   * this paper. Null when there are none. Edited from the Why? panel.
+   * this paper. Null when there are none. Edited from the Expand panel.
    */
   marking_notes?: string | null;
 }
@@ -359,8 +359,8 @@ export function AiGradeClient({
   const [boxEditorLoading, setBoxEditorLoading] = useState(false);
   const [boxEditorSaving, setBoxEditorSaving] = useState(false);
   const [boxEditorError, setBoxEditorError] = useState<string | null>(null);
-  /** Which rows have their question image un-minimized — collapsed by default, keyed by result.id. */
-  const [questionImageShown, setQuestionImageShown] = useState<Set<string>>(new Set());
+  /** Which rows have their question (bank image, or stem + part text) un-minimized -- collapsed by default, keyed by result.id. */
+  const [questionShown, setQuestionImageShown] = useState<Set<string>>(new Set());
   /** Same, for the student's-work scan crop. */
   const [evidenceImageShown, setEvidenceImageShown] = useState<Set<string>>(new Set());
   /** Same, for the mark scheme source image(s). */
@@ -1403,7 +1403,7 @@ export function AiGradeClient({
     });
   };
 
-  const toggleQuestionImage = (resultId: string) =>
+  const toggleQuestion = (resultId: string) =>
     setQuestionImageShown((prev) => {
       const next = new Set(prev);
       if (next.has(resultId)) next.delete(resultId);
@@ -1462,7 +1462,7 @@ export function AiGradeClient({
         )
       : null;
 
-  // -- One review row, plus its "Why?" panel -------------------------------
+  // -- One review row, plus its "Expand" panel -----------------------------
   // Rendered from two lists -- the parts needing a look, and the confident
   // ones behind the summary row -- so the caller passes the row that precedes
   // it in ITS OWN list: that is what decides whether this row prints its
@@ -1497,7 +1497,7 @@ export function AiGradeClient({
         ? undefined
         : rowWarnings.length > 0
           ? rowWarnings.join("\n")
-          : "The marker's own call: it judged this part a judgement call. Open Why? for its reasoning.";
+          : "The marker's own call: it judged this part a judgement call. Open Expand for its reasoning.";
     const self = selfMarkFor(selfAssessment, r.test_item_id);
     const selfDiffers = selfDiffersFrom(r);
     const selfTitle =
@@ -1532,7 +1532,7 @@ export function AiGradeClient({
                 </span>
               )}
               {/* The question itself, at a glance. It was already in
-                  the expanded panel below, but two clicks deep (Why?,
+                  the expanded panel below, but two clicks deep (Expand,
                   then the collapsed Question toggle) -- so marking a
                   row meant remembering what the question asked.
                   Click enlarges it in the same lightbox the panel
@@ -1613,7 +1613,7 @@ export function AiGradeClient({
                 value={overrideNotes[r.id] ?? ""}
                 onChange={(e) => setOverrideNotes((prev) => ({ ...prev, [r.id]: e.target.value }))}
                 placeholder={`Why ${drafts[r.id]} not ${r.suggested_marks}? (optional, kept with the mark)`}
-                title="Written into the audit trail with this mark. A ruling that should change how this part is marked from now on goes in the marking note under Why?."
+                title="Written into the audit trail with this mark. A ruling that should change how this part is marked from now on goes in the marking note under Expand."
                 className="mt-1 block w-56 rounded border border-amber-400/40 bg-transparent px-2 py-0.5 text-xs focus:ring-2 focus:ring-blue-400"
               />
             )}
@@ -1690,7 +1690,7 @@ export function AiGradeClient({
               onClick={() => setExpanded(isOpen ? null : r.id)}
               className="text-xs text-blue-300 hover:underline"
             >
-              {isOpen ? "Hide" : "Why?"}
+              {isOpen ? "Hide" : "Expand"}
             </button>
           </td>
         </tr>
@@ -1728,13 +1728,13 @@ export function AiGradeClient({
                   <div>
                     <button
                       type="button"
-                      onClick={() => toggleQuestionImage(r.id)}
+                      onClick={() => toggleQuestion(r.id)}
                       className="flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-da-muted hover:text-da-text"
                     >
-                      <span>{questionImageShown.has(r.id) ? "▾" : "▸"}</span>
+                      <span>{questionShown.has(r.id) ? "▾" : "▸"}</span>
                       Question
                     </button>
-                    {questionImageShown.has(r.id) && (
+                    {questionShown.has(r.id) && (
                       <div className="mt-1 flex flex-wrap gap-2">
                         {r.question_image_urls.map((url, i) => (
                           // eslint-disable-next-line @next/next/no-img-element
@@ -1751,6 +1751,44 @@ export function AiGradeClient({
                     )}
                   </div>
                 )}
+
+                {/* A teacher-authored part has no image, so its question is
+                    text: the stem (test_items.stem_text, shared by every
+                    part of the question) and the part's own wording. The
+                    row header clamps both to two lines and prints the stem
+                    on the first part of a question only; here, minimised
+                    like the student's work, the panel gives the full stem
+                    on EVERY part -- a teacher checking Q3(b) should not
+                    have to scroll up to Q3(a) for the sequence it is about.
+                    Same set as the bank image above: a row has one or the
+                    other, never both. */}
+                {r.question_image_urls.length === 0 &&
+                  (meta?.stem_text?.trim() || meta?.question_text?.trim()) && (
+                    <div>
+                      <button
+                        type="button"
+                        onClick={() => toggleQuestion(r.id)}
+                        className="flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-da-muted hover:text-da-text"
+                      >
+                        <span>{questionShown.has(r.id) ? "▾" : "▸"}</span>
+                        Question
+                      </button>
+                      {questionShown.has(r.id) && (
+                        <div className="mt-1 max-w-3xl space-y-1 rounded border border-da-border bg-da-surface px-3 py-2 text-sm">
+                          {meta?.stem_text?.trim() && (
+                            <div className="text-da-text/80">
+                              <LatexRenderer latex={meta.stem_text.trim()} />
+                            </div>
+                          )}
+                          {meta?.question_text?.trim() && (
+                            <div className="text-da-muted">
+                              <LatexRenderer latex={meta.question_text.trim()} />
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
 
                 <div>
                   <div className="flex items-center gap-2">

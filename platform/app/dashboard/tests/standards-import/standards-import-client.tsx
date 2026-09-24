@@ -113,6 +113,22 @@ export function StandardsImportClient({ courses }: { courses: { id: string; name
     setDraft((d) =>
       d ? { ...d, items: d.items.map((it, i) => (i === index ? { ...it, ...patch } : it)) } : d
     );
+  // The stem is one text per question, stored on every part row (that is the
+  // shape test_items.stem_text takes), so editing it on any part edits it on
+  // all of them. An empty box is null, not "".
+  const updateStem = (questionNumber: number, value: string) =>
+    setDraft((d) =>
+      d
+        ? {
+            ...d,
+            items: d.items.map((it) =>
+              it.questionNumber === questionNumber && it.partLabel
+                ? { ...it, stemText: value.trim() ? value : null }
+                : it
+            ),
+          }
+        : d
+    );
   const removeItem = (index: number) =>
     setDraft((d) => (d ? { ...d, items: d.items.filter((_, i) => i !== index) } : d));
   const addItem = () =>
@@ -126,6 +142,7 @@ export function StandardsImportClient({ courses }: { courses: { id: string; name
                 questionNumber: (d.items[d.items.length - 1]?.questionNumber ?? 0) + 1,
                 partLabel: "",
                 maxMarks: 1,
+                stemText: null,
                 questionText: "",
                 markschemeText: "",
               },
@@ -335,8 +352,20 @@ export function StandardsImportClient({ courses }: { courses: { id: string; name
                     <td className="py-1.5 pr-2">
                       {open ? (
                         <div className="space-y-2">
+                          {it.partLabel && (
+                            <label className="flex flex-col gap-1">
+                              <span className={labelText}>Stem (shared by every part of Q{it.questionNumber})</span>
+                              <textarea
+                                value={it.stemText ?? ""}
+                                rows={2}
+                                placeholder="The sequence, scenario or given expressions the parts refer to; leave empty if there is none"
+                                onChange={(e) => updateStem(it.questionNumber, e.target.value)}
+                                className={`${field} font-mono text-xs`}
+                              />
+                            </label>
+                          )}
                           <label className="flex flex-col gap-1">
-                            <span className={labelText}>Question</span>
+                            <span className={labelText}>{it.partLabel ? "Part" : "Question"}</span>
                             <textarea
                               value={it.questionText}
                               rows={3}

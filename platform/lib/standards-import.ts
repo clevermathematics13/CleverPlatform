@@ -58,7 +58,9 @@ const ExtractedItemSchema = z.object({
   /** "a", "b", "c" ... or "" for a question with no parts. Lower-case letters only. */
   partLabel: z.string(),
   maxMarks: z.number().int().min(0),
-  /** The question as printed, self-contained: the shared stem of a multi-part question repeated on every part. Maths in $...$ LaTeX. */
+  /** For a lettered part: the question's shared lead-in as printed (the sequence, the scenario, the given expressions), identical on every part of that question. Null for a question with no parts, or with no shared lead-in. Maths in $...$ LaTeX. */
+  stemText: z.string().nullable(),
+  /** The part's own wording as printed. Together with stemText it must be self-contained. Maths in $...$ LaTeX. */
   questionText: z.string(),
   /** The rubric's "a full-mark response shows..." for this part, plus the answer, plus any marking notes the rubric gives. */
   markschemeText: z.string(),
@@ -118,6 +120,8 @@ export const StandardsDraftItemSchema = z.object({
   questionNumber: z.number().int().min(1),
   partLabel: z.string().trim().max(8),
   maxMarks: z.number().int().min(0).max(50),
+  /** Defaulted rather than required so a draft saved before the stem existed still parses. */
+  stemText: z.string().trim().nullable().default(null),
   questionText: z.string().trim(),
   markschemeText: z.string().trim(),
 });
@@ -198,6 +202,7 @@ export function toStandardsDraft(extracted: ExtractedAssessment): StandardsAsses
       questionNumber: it.questionNumber,
       partLabel: it.partLabel.trim().toLowerCase().replace(/[()\s.]/g, ""),
       maxMarks: it.maxMarks,
+      stemText: clean(it.stemText) ?? null,
       questionText: it.questionText.trim(),
       markschemeText: it.markschemeText.trim(),
     })),
@@ -283,7 +288,7 @@ export function buildStandardsImportSystemPrompt(): string {
     "",
     "PARTS. One entry per markable part, in the paper's order. A question with lettered parts is one entry per letter (partLabel \"a\", \"b\", ... lower-case, no brackets); a question with no parts is one entry with partLabel \"\". Use the mark value printed beside the part, not the question total. Do not include a bonus or ungraded item that the rubric gives no marks to.",
     "",
-    "QUESTION TEXT. Self-contained: a student reading only this text, with no other context, must be able to attempt the part. Repeat a question's shared stem (the sequence, the scenario, the given expressions) at the start of each of its parts. Describe a table, diagram or figure in words precisely enough to reproduce it (list the table's values; say how many tiles each figure has and how they are arranged). Write mathematics in LaTeX between single dollars: $94 - 6n$, $\\frac{1}{2}t^2$. Keep the paper's own wording otherwise.",
+    "STEM AND QUESTION TEXT. A student reading stemText and questionText together, with no other context, must be able to attempt the part. Put a question's shared stem (the sequence, the scenario, the given expressions) in stemText, word for word and identical on every one of its lettered parts; put only the part's own wording in questionText. A demand the part's mark depends on (\"show all work\", \"justify your answer\") belongs in that part's questionText, never only in the stem. A question with no parts, or with no shared lead-in, has stemText null and everything in questionText. Describe a table, diagram or figure in words precisely enough to reproduce it (list the table's values; say how many tiles each figure has and how they are arranged). Write mathematics in LaTeX between single dollars: $94 - 6n$, $\\frac{1}{2}t^2$. Keep the paper's own wording otherwise.",
     "",
     "MARK SCHEME TEXT. Start from the rubric's own line for the part (its \"a full-mark response shows ...\" or equivalent) and include the correct answer. For a part worth more than one mark, add what each mark is for, drawn from the rubric's wording and its level descriptors (\"2 marks: one for ..., one for ...\"), and any error the rubric names as a specific level (\"an off-by-one rule such as 88 - 6n earns 1\"). Say when a bare answer earns 0 (parts that say show, explain, justify). Say where follow-through applies. Do not invent marking rules the rubric does not support.",
     "",
