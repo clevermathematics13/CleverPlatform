@@ -262,8 +262,8 @@ must exercise Server Actions.
 
 ## 4. Database and migrations
 
-**The migration ledger and the repo agree on versions: 181 files, 181 rows**
-(verified 24 Sep 2026; it read 83/83 when this handoff was written, 95/95 after
+**The migration ledger and the repo agree on versions: 184 files, 184 rows**
+(verified 24 Sep 2026 after §38's two migrations; it read 181/181 that morning, 83/83 when this handoff was written, 95/95 after
 the second reconciliation, 116/116 after the third, 149/149 on 13 Sep and
 171/171 on 20 Sep). Two
 rows applied through MCP on 18 Sep (`20260918205816`, `20260918210444`) had no
@@ -3672,7 +3672,7 @@ in `platform/CLAUDE.md`.
 
 ### The table: `remark_requests`
 
-Migration `<ledger>_remark_requests`. One row per student per part;
+Migration `20260924211255_remark_requests` (applied through MCP, byte-identical to the ledger). One row per student per part;
 `marks_at_request` / `self_marks_at_request` are taken by the route when the
 request is made. **Students can only SELECT their own rows; nobody but the
 service role can insert or delete** (`revoke insert, delete, truncate ...
@@ -3703,6 +3703,12 @@ SELECT sees own rows only, INSERT/DELETE are denied and UPDATE touches 0
 rows; the owning teacher reads and resolves; a teacher-role account owning no
 tests sees nothing; anon is denied; the guard, the four checks, the unique
 key, the `updated_at` trigger and the cascade from `test_items` all behave.
+Repeated against production after applying, each probe in a rolled-back
+transaction as a real student, the teacher (`702750f6`) and the teacher-role
+test account `822c943e`: the same results, and 0 rows left behind. Advisors
+list nothing new but three unused-index INFOs (an empty table) and the
+two-SELECT-policy WARN the schema already has 268 of. The deploy schema probe
+(`scripts/check-deploy-schema.mjs`) checks `remark_requests.status`.
 
 ### The rename
 
@@ -3715,7 +3721,7 @@ name.
 
 - **The packet generator's copy rule lives in the database.** The canonical
   `nuanced_analysis_specs` row wins over `lib/nuanced-analysis-spec.defaults.ts`
-  (`loadCanonicalSpecForGeneration`), so migration `<ledger>_clevmarks_copy_rule`
+  (`loadCanonicalSpecForGeneration`), so migration `20260924211331_clevmarks_copy_rule` (likewise)
   rewrites the `copy-clevs-marks` rule text in place (id and `spec_version`
   unchanged; a no-op if the rule has been reworded). Rule 22 in
   `lib/assignments.ts`, the edit prompt's rule 9 and the DP designer's

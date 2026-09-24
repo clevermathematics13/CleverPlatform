@@ -81,6 +81,15 @@ const probes = [
     column: "note",
     migration: "20260924171151_per_test_grade_boundaries.sql",
   },
+  {
+    // Re-mark requests: the student's reflection page, the teacher's
+    // Re-mark requests page and the reflection dashboard read it, and
+    // syncTestItems checks it before deleting a part (DEPENDENT_TABLES), so
+    // without it every Formative Assessment save fails.
+    table: "remark_requests",
+    column: "status",
+    migration: "20260924211255_remark_requests.sql",
+  },
 ];
 
 const missing = [];
