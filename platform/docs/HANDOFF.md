@@ -3329,7 +3329,9 @@ a marking note); each copied 10(c) verbatim and dropped its two warnings.
   and Key Assessment 1 - Unit 1. On the newest runs (the ones the panel shows)
   that is 69 warnings across 47 students, and 45 rows below "high" that read
   "the marker's own call": 18 were breakdown caps, 27 the hedge cap §23 B
-  retired. **Not applied as of this commit**; run it with `--yes`.
+  retired. **Applied 24 Sep 2026**: 625 of 625 runs updated, a second pass
+  finds nothing to restore, and no newest run is missing a carried part's
+  warnings.
 - §23's calibration numbers predate partial re-marks (the first was 20 Sep
   20:04 UTC) and are unaffected. A calibration run between then and the
   backfill would count carried caps as the marker's own call.
