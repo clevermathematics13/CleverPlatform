@@ -23,6 +23,7 @@ function ka1Extraction(): ExtractedAssessment {
       questionNumber: it.questionNumber,
       partLabel: it.partLabel,
       maxMarks: it.maxMarks,
+      stemText: it.stemText,
       questionText: it.questionText,
       markschemeText: it.markschemeText,
     })),
@@ -70,6 +71,26 @@ describe("toStandardsDraft", () => {
     expect(draft.rubric.strands[1].parts).toContain("2a");
     expect(draft.rubric.strands[2].descriptors).toBeUndefined();
     expect(validateStandardsDraft(draft)).toEqual([]);
+  });
+
+  it("keeps a part's stem apart from its own wording, and blanks an empty stem to null", () => {
+    const extracted = ka1Extraction();
+    extracted.items[0].stemText = "   ";
+    const draft = toStandardsDraft(extracted);
+    const q3b = draft.items.find((it) => it.questionNumber === 3 && it.partLabel === "b")!;
+    expect(q3b.stemText).toMatch(/^Consider the alternating sequence/);
+    expect(q3b.questionText).toMatch(/^The 11th term of the sequence is 27/);
+    expect(draft.items[0].stemText).toBeNull();
+    const q5 = draft.items.find((it) => it.questionNumber === 5)!;
+    expect(q5.stemText).toBeNull();
+  });
+
+  it("accepts a draft saved before the stem existed (no stemText on its items)", () => {
+    const draft = toStandardsDraft(ExtractedAssessmentSchema.parse(ka1Extraction()));
+    const legacy = { ...draft, items: draft.items.map(({ stemText: _stem, ...rest }) => rest) };
+    const parsed = StandardsAssessmentDraftSchema.safeParse(legacy);
+    expect(parsed.success).toBe(true);
+    expect(parsed.success && parsed.data.items.every((it) => it.stemText === null)).toBe(true);
   });
 
   it("rejects a date that is not YYYY-MM-DD rather than saving it", () => {
@@ -139,10 +160,11 @@ describe("validateStandardsDraft", () => {
 });
 
 describe("buildStandardsImportSystemPrompt", () => {
-  it("tells the reader to transcribe, to repeat stems, and to give every part exactly one strand", () => {
+  it("tells the reader to transcribe, to put the stem in stemText, and to give every part exactly one strand", () => {
     const p = buildStandardsImportSystemPrompt();
     expect(p).toContain("Transcribe; do not improve");
-    expect(p).toContain("Repeat a question's shared stem");
+    expect(p).toContain("in stemText, word for word and identical on every one of its lettered parts");
+    expect(p).toContain("belongs in that part's questionText, never only in the stem");
     expect(p).toContain("Every part belongs to exactly one strand");
     expect(p).toContain("Return only the JSON object.");
   });

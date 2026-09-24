@@ -3001,3 +3001,55 @@ Assessment 1 sat on "Loading this assessment…" for about 43 s.
   lighter auth checks, would cut that for every page; neither was done here.
   `BatchGradeTab` still mounts, hidden, on every visit and fetches
   `/ai-grade/batch`.
+## 30. The Expand panel shows the question, and Grade 9 papers get a stem (24 Sep 2026)
+
+The teacher, marking KA1 Q3(b), asked for the row's "Why?" toggle to read
+"Expand", for the question stem to be visible inside the expanded panel
+(minimised, like the student's work), and whether the evidence crop or the
+design tools already know what a stem is.
+
+**What the crop does.** Nothing in `fetchEvidenceCrops` targets printed
+text. A "Located by marker" crop is the grader's own handwriting box
+(`lib/ai-grading.ts` asks for handwriting only) padded by `padModelBox` --
+18% a side plus 0.15 of the page downward, then grown by the CV service
+while ink touches an edge. The printed "b." line above the work and the
+start of "c." below it in that screenshot are the padding, not a stem crop.
+There is no stem region in `test_item_anchors` or the paper-layout editor,
+so the stem on screen is text.
+
+**Which tools identify the stem.** The assessment creator does:
+`formative-assessment-bridge.ts` writes `stem_text` from the question's
+prompt and `question_text` from each subpart's. Two paths did not: the
+Grade 9 standards importer told the model to repeat the stem in every
+part's `questionText` and its save route never wrote `stem_text`; and the
+KA1 seed (`20260915165036`, from the fixture) did the same by hand, so all
+26 live KA1 rows had `stem_text` null with the stem pasted into
+`question_text` for Q2, Q3, Q4, Q6, Q7 and Q9. The NA tools have no stem
+notion at all (`na-rubric-bridge.ts` drops it; `na_anchors` has no stem
+box); not touched here.
+
+**What changed.**
+- `ai-grade-client.tsx`: the toggle is "Expand" / "Hide" (tooltips and
+  comments follow). A text-backed part gets a collapsible "Question" block
+  in the panel, in the slot the bank-image block uses and on the same
+  `questionShown` set (a row has one or the other): the full stem, then
+  the part's own wording, LaTeX rendered. Shown on EVERY part's panel; the
+  row header keeps its first-part-only rule.
+- Migration `20260924024538_ka1_unit1_split_stems`:
+  moves the lead-in of Q2/3/4/6/7/9 into `stem_text` and leaves the part's
+  wording in `question_text`, idempotent on `stem_text is null` plus a
+  `starts_with` guard (`like` was avoided because two stems carry `\ldots`
+  and `\times`, and `\` is LIKE's escape). The marker's input is unchanged:
+  `composeQuestionText` joins the two. **Q1 is deliberately left whole**:
+  "Evaluate ... Show all work." is the command each part's mark depends on,
+  and rule A6 (`ask-what-you-mark.ts`) says a demand made only in a stem
+  does not carry into a part. The fixture gained `stemText` to match, and
+  `ai-grading.test.ts` builds KA1 units through `composeQuestionText`.
+- Standards importer: `ExtractedItemSchema` and the draft schema carry
+  `stemText` (nullable; defaulted on the draft so an older payload still
+  parses), the prompt's QUESTION TEXT rule now puts the shared stem in
+  `stemText` word for word on every lettered part and only the part's
+  wording in `questionText` (with the A6 caveat spelled out), the save
+  route writes `stem_text` on lettered parts, and the review page has a
+  per-question "Stem" box that edits every part of that question at once.
+- `SCHEMA.md` `test_items` now lists `stem_text` and `marking_notes`.

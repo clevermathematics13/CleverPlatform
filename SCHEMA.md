@@ -1475,8 +1475,10 @@ is the one new grading runs use. Nothing reads these yet.
 | `google_ms_id` | text, nullable |  |
 | `sort_order` | integer | default `0` |
 | `created_at` | timestamp with time zone | default `now()` |
-| `question_text` | text, nullable | inline teacher-authored question text, used when `source = 'custom'` |
+| `question_text` | text, nullable | inline teacher-authored question text, used when `source = 'custom'`; for a lettered part, the part's own wording |
+| `stem_text` | text, nullable | the question's shared lead-in for a lettered `custom` part, repeated on every part row of that question; null for a whole-question item. `lib/ai-grading.ts` `composeQuestionText` joins it to `question_text` for the grading unit. Written by `lib/formative-assessment-bridge.ts` and the standards importer save route |
 | `markscheme_text` | text, nullable | inline free-text mark scheme (M/A/R/FT-style), used when `source = 'custom'` |
+| `marking_notes` | text, nullable | the teacher's rulings for this part, read by the marker after the mark scheme on every later mark of the paper; edited from the marking screen's Expand panel |
 | `source` | text | default `'bank'::text` — `'bank'` (resolved via `ib_question_code`) or `'custom'` (inline content from the Formative Assessment creator) |
 
 Unique on `(test_id, question_number, part_label)`.
