@@ -48,6 +48,16 @@
  * match another it is unavoidable -- it accounted for 35 of the 77 flags,
  * all false, concentrated in the two parts whose subject matter is exactly
  * that. A phrase the correct answer must contain cannot be a defect signal.
+ *
+ * "wait -", "re-examining" and "looking again" were added on 24 Sep 2026,
+ * after Key Assessment 1 Q10(c) read "...but looking again: 8b - 3b = 5b...
+ * Re-examining: the student wrote '6ab^2 - 5b'..." with none of it flagged
+ * ("wait" was only matched before a comma). Measured over every stored
+ * result (32,587 parts): 26 matches, 7 distinct reasonings, and in every one
+ * the reasoning's own conclusion disagreed with its mark or its breakdown
+ * ("Wait - this is correct!" on a 0/1; "M1 M1 A0" on a 1/3). None was
+ * labelled "high". "wait" before a dash is matched only as punctuation, so
+ * "wait-time" and "the students wait 5 minutes" in a word problem are not.
  */
 
 /** Which kind of problem a matched phrase indicates. */
@@ -71,6 +81,10 @@ const REASONING_PATTERNS: ReasoningPattern[] = [
   { pattern: /\bactually,/i, label: "actually,", kind: "deliberation" },
   { pattern: /\bwait,/i, label: "wait,", kind: "deliberation" },
   { pattern: /\bat first\b/i, label: "at first", kind: "deliberation" },
+  // An en or em dash with or without spaces, or a hyphen followed by a space.
+  { pattern: /\bwait(?:\s*[\u2013\u2014]|\s*-(?=\s|$))/i, label: "wait -", kind: "deliberation" },
+  { pattern: /\bre-?examin(?:e|es|ed|ing)\b/i, label: "re-examining", kind: "deliberation" },
+  { pattern: /\blooking again\b/i, label: "looking again", kind: "deliberation" },
 
   // -- Hedging: uncertainty about what was read. Worth a look at the crop.
   { pattern: /\bappears to\b/i, label: "appears to", kind: "hedging" },

@@ -3440,8 +3440,16 @@ a marking note); each copied 10(c) verbatim and dropped its two warnings.
   20:04 UTC) and are unaffected. A calibration run between then and the
   backfill would count carried caps as the marker's own call.
 
-**Not done.** The deliberation scan (`lib/examiner-reasoning.ts`) matches
-"wait," but not "Wait -", "Re-examining" or "looking again", which is how this
-reasoning changed its mind. Three parts on newest runs use them, all already
-low, so adding them would move no label today, only the reason shown. Run the
-calibration after it if it is done (§23 A).
+**The deliberation scan, done the same day.** `lib/examiner-reasoning.ts`
+matched "wait," but not "Wait -", "Re-examining" or "looking again", which is
+how this reasoning changed its mind. All three now count as deliberation:
+the part is forced low and its row reads "reasoning changed its mind".
+"wait" counts only before a dash used as punctuation, so "wait-time" and "the
+students wait 5 minutes" in a word problem do not. Measured over every stored
+result (32,587 parts): 26 matches, 7 distinct reasonings, and in every one the
+conclusion disagreed with its own mark or breakdown ("Wait - this is
+correct!" on a 0/1; "M1 M1 A0" on a 1/3). None was labelled high (3 medium,
+the rest low). Stored rows keep their labels and warnings until they are
+re-marked, as in §23 B, and the calibration script reads stored labels, so it
+shows the effect only as re-marks accumulate (§23 A). No prompt change, so no
+eval run.
