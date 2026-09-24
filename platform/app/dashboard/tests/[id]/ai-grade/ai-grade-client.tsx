@@ -1,11 +1,22 @@
 "use client";
 
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import type { ChangeEvent } from "react";
-import LatexRenderer from "@/components/LatexRenderer";
+import dynamic from "next/dynamic";
 import EvidenceBoxEditor from "@/components/EvidenceBoxEditor";
-import { BatchGradeTab } from "./batch-grade-tab";
 import { fetchJson, SESSION_EXPIRED_MESSAGE } from "./fetch-json";
+
+// Loaded on demand rather than with the page. The maths renderer (KaTeX,
+// about 256 KB) is only needed once a review is open, and the batch tab only
+// once it is picked; shipping both up front made the roster wait on code it
+// never used. The renderer's chunk is fetched as soon as the page is idle
+// (see the effect after the health check), so a review still opens at once.
+const LatexRenderer = dynamic(() => import("@/components/LatexRenderer"), {
+  loading: () => <span className="text-da-muted">…</span>,
+});
+const BatchGradeTab = dynamic(() => import("./batch-grade-tab").then((m) => m.BatchGradeTab), {
+  loading: () => <p className="text-sm text-da-muted">Loading batch upload…</p>,
+});
 import {
   runsForStudent,
   rowsForRun,
@@ -18,13 +29,18 @@ import {
   summariseSelfAssessment,
   selfMarkFor,
   selfMarkDiffers,
-  latestRunsByStudent,
-  acceptanceByRunFrom,
+  deriveOverviewState,
+  buildRosterOptions,
 } from "@/lib/ai-grade-review";
-import type { AcceptanceRef, SelfScoreRef } from "@/lib/ai-grade-review";
+import type { AcceptanceRef, RosterOption, RosterSourceRef, SelfScoreRef } from "@/lib/ai-grade-review";
+import { writeCollapsedClassesCookie } from "@/lib/ai-grade-collapsed-classes";
 import type { AssessmentKind } from "@/lib/assessment-kind";
-import { paperQuestionPrefixes } from "@/lib/assignments";
-import { buildStandardsReport, parseStandardsRubric } from "@/lib/standards-rubric";
+// Not "@/lib/assignments": that module carries the AI prompt builders too.
+import { paperQuestionPrefixes } from "@/lib/paper-labels";
+// Not "@/lib/standards-rubric": that module carries zod for the rubric's
+// parser, and the page parses the rubric on the server (standardsRubric).
+import { buildStandardsReport } from "@/lib/standards-report";
+import type { StandardsRubric } from "@/lib/standards-rubric";
 import { StandardsReportTable } from "@/components/StandardsReportTable";
 
 type MarkschemeSource = "part_latex" | "part_text" | "whole_question" | "draft" | "custom" | "none";
@@ -67,20 +83,20 @@ interface TestItem {
   /**
    * The teacher's marking notes for this part (test_items.marking_notes):
    * rulings the marker reads after the mark scheme on every later mark of
-   * this paper. Null when there are none. Edited from the Why? panel.
+   * this paper. Null when there are none. Edited from the Expand panel.
    */
   marking_notes?: string | null;
 }
 
-interface TestDetail {
+export interface TestDetail {
   id: string;
   name: string;
   course_id: string;
   test_items: TestItem[];
   /**
-   * The strand rubric of a Grade 9 Standard Level paper (tests.standards_rubric,
-   * see lib/standards-rubric.ts), or null. When present the review panel
-   * shows the student's strand levels alongside the marks being edited.
+   * The strand rubric of a Grade 9 Standard Level paper, unparsed
+   * (tests.standards_rubric). Not read here: the page parses it on the
+   * server and passes the result in as the standardsRubric prop.
    */
   standards_rubric?: unknown;
   /**
@@ -92,25 +108,10 @@ interface TestDetail {
   custom_content?: unknown;
 }
 
-interface StudentOption {
-  /**
-   * The opaque subject id every AI-grade endpoint expects as studentId --
-   * usually a real profiles.id, but "invited-<invited_students.id>" for a
-   * roster entry imported (e.g. via Google Classroom) that has never logged
-   * in and so has no profiles row yet. See parseGradingSubject in
-   * lib/ai-grading.ts; this component never needs to tell the two apart.
-   */
-  profile_id: string;
-  display_name: string;
-  /**
-   * The real class the student is in ("9A"). A Grade 9 test sits on one
-   * class but its roster pools every class in the track, so the UI groups
-   * by this. Null when the API could not name the class.
-   */
-  class_name: string | null;
-}
+/** One roster entry -- see RosterOption in lib/ai-grade-review.ts. */
+type StudentOption = RosterOption;
 
-interface RunRow {
+export interface RunRow {
   id: string;
   test_id: string;
   student_id: string;
@@ -270,10 +271,29 @@ function settledValue<T>(result: PromiseSettledResult<T>): T {
   return result.value;
 }
 
+/**
+ * The roster as the page loaded it on the server (load-initial.ts): what
+ * loadOverview would otherwise fetch and work out once the page's JavaScript
+ * had started, so the first HTML already shows it.
+ */
+export interface AiGradeInitial {
+  test: TestDetail;
+  students: StudentOption[];
+  runsByStudent: Record<string, RunRow>;
+  newerAttemptByStudent: Record<string, RunRow>;
+  acceptanceByRun: Record<string, { accepted: number; total: number }>;
+  submittedStudentCount: number;
+  outstandingCollectCount: number;
+  absentStudentIds: string[];
+}
+
 export function AiGradeClient({
   testId,
   courseId = null,
   assessmentKind = "formative",
+  initial = null,
+  standardsRubric = null,
+  initialCollapsedClasses = [],
 }: {
   testId: string;
   /**
@@ -284,23 +304,52 @@ export function AiGradeClient({
   courseId?: string | null;
   /** Decides what "Accept all" actually covers -- see lib/summative-grading-gate.ts. */
   assessmentKind?: AssessmentKind;
+  /**
+   * The roster, loaded on the server. Null when one of those loads failed:
+   * the page then loads it here instead, exactly as it did before the
+   * server could.
+   */
+  initial?: AiGradeInitial | null;
+  /**
+   * A Standard Level paper's rubric, parsed on the server, or null when the
+   * test has none. An unreadable one arrives as null too: the test detail
+   * page is where it gets fixed, and a review panel with no strand table is
+   * better than one that refuses to render.
+   */
+  standardsRubric?: StandardsRubric | null;
+  /**
+   * The classes this browser last left collapsed, read by the page from the
+   * cookie that remembers them (lib/ai-grade-collapsed-classes.ts), so they
+   * are collapsed in the first HTML instead of opening and then folding.
+   */
+  initialCollapsedClasses?: string[];
 }) {
   const [tab, setTab] = useState<"individual" | "batch">("individual");
+  /**
+   * Whether the batch tab has been opened on this visit. It mounts the first
+   * time it is picked and then stays mounted (hidden) -- see the tab bar --
+   * so its restore fetch and blank-page checks no longer run on every visit
+   * to the individual roster.
+   */
+  const [batchTabOpened, setBatchTabOpened] = useState(false);
   /** Result of GET /api/health/anthropic: null until checked; error string when the key cannot complete a call. */
   const [apiHealthError, setApiHealthError] = useState<string | null>(null);
 
-  const [test, setTest] = useState<TestDetail | null>(null);
-  const [students, setStudents] = useState<StudentOption[]>([]);
+  const [test, setTest] = useState<TestDetail | null>(initial?.test ?? null);
+  const [students, setStudents] = useState<StudentOption[]>(initial?.students ?? []);
   /** Newest COMPLETE run per student -- the one whose results are reviewable. */
-  const [runsByStudent, setRunsByStudent] = useState<Record<string, RunRow>>({});
+  const [runsByStudent, setRunsByStudent] = useState<Record<string, RunRow>>(initial?.runsByStudent ?? {});
   /** Newest run of any status per student, when it is NOT the complete one (a failed or still-running attempt). */
-  const [newerAttemptByStudent, setNewerAttemptByStudent] = useState<Record<string, RunRow>>({});
+  const [newerAttemptByStudent, setNewerAttemptByStudent] = useState<Record<string, RunRow>>(
+    initial?.newerAttemptByStudent ?? {}
+  );
   /** Subject ids recorded as absent for this test (table test_absences). */
-  const [absentStudents, setAbsentStudents] = useState<Set<string>>(new Set());
+  const [absentStudents, setAbsentStudents] = useState<Set<string>>(() => new Set(initial?.absentStudentIds ?? []));
   const [absenceBusy, setAbsenceBusy] = useState<string | null>(null);
   /** Previous complete run's suggested marks for the student under review, keyed by test_item_id. */
   const [previousMarks, setPreviousMarks] = useState<Record<string, number>>({});
-  const [loading, setLoading] = useState(true);
+  /** Only while the roster is still to be loaded here -- see `initial`. */
+  const [loading, setLoading] = useState(initial === null);
   const [error, setError] = useState<string | null>(null);
   const [statusLine, setStatusLine] = useState<string | null>(null);
 
@@ -365,8 +414,8 @@ export function AiGradeClient({
   const [boxEditorLoading, setBoxEditorLoading] = useState(false);
   const [boxEditorSaving, setBoxEditorSaving] = useState(false);
   const [boxEditorError, setBoxEditorError] = useState<string | null>(null);
-  /** Which rows have their question image un-minimized — collapsed by default, keyed by result.id. */
-  const [questionImageShown, setQuestionImageShown] = useState<Set<string>>(new Set());
+  /** Which rows have their question (bank image, or stem + part text) un-minimized -- collapsed by default, keyed by result.id. */
+  const [questionShown, setQuestionImageShown] = useState<Set<string>>(new Set());
   /** Same, for the student's-work scan crop. */
   const [evidenceImageShown, setEvidenceImageShown] = useState<Set<string>>(new Set());
   /** Same, for the mark scheme source image(s). */
@@ -382,7 +431,7 @@ export function AiGradeClient({
    * being their newest, and both the banner and the 30s poll that collects it
    * would silently stay off.
    */
-  const [submittedStudentCount, setSubmittedStudentCount] = useState(0);
+  const [submittedStudentCount, setSubmittedStudentCount] = useState(initial?.submittedStudentCount ?? 0);
   /**
    * Runs this page still owes a collect call for: the "submitted" ones above,
    * plus any "running" run that still carries a pending_message_batch_id.
@@ -398,7 +447,7 @@ export function AiGradeClient({
    * ever made again, and the student's marks sat in ai_grade_results while the
    * roster showed them as never graded.
    */
-  const [outstandingCollectCount, setOutstandingCollectCount] = useState(0);
+  const [outstandingCollectCount, setOutstandingCollectCount] = useState(initial?.outstandingCollectCount ?? 0);
   /**
    * Why the last collect pass stopped, verbatim from the route (its 422 names
    * the fix: extract the mark scheme LaTeX in the PPQ Bank). Deliberately not
@@ -413,12 +462,12 @@ export function AiGradeClient({
   const [acceptingAll, setAcceptingAll] = useState(false);
   /** Class name currently running its own "accept" batch, or null. */
   const [acceptingClass, setAcceptingClass] = useState<string | null>(null);
-  /** Class names collapsed in the roster -- toggled by clicking the class heading. */
-  const [collapsedClasses, setCollapsedClasses] = useState<Set<string>>(new Set());
+  /** Class names collapsed in the roster -- toggled by clicking the class heading, and remembered. */
+  const [collapsedClasses, setCollapsedClasses] = useState<Set<string>>(() => new Set(initialCollapsedClasses));
 
   /** How many of a run's results are accepted, keyed by run id — drives the roster's status dot. */
   const [acceptanceByRun, setAcceptanceByRun] = useState<Record<string, { accepted: number; total: number }>>(
-    {}
+    initial?.acceptanceByRun ?? {}
   );
 
   // -- Manually correcting a misread transcription (evidence) and re-grading it --
@@ -434,26 +483,21 @@ export function AiGradeClient({
   const itemById = new Map((test?.test_items ?? []).map((i) => [i.id, i]));
   const paperPrefixes = paperQuestionPrefixes(test?.custom_content);
 
-  // A Standard Level paper's rubric, parsed once per test load. An
-  // unreadable one is treated as none here: the test detail page is where
-  // it gets fixed, and a review panel with no strand table is better than
-  // one that refuses to render.
-  const standardsRubric = useMemo(() => {
-    const parsed = parseStandardsRubric(test?.standards_rubric ?? null);
-    return parsed.ok ? parsed.rubric : null;
-  }, [test?.standards_rubric]);
   const classCount = new Set(students.map((s) => s.class_name ?? "")).size;
   /** Classes with at least one gradeable run -- the per-class accept button is pointless without one. */
   const classesWithRuns = new Set(
     students.filter((s) => runsByStudent[s.profile_id]).map((s) => s.class_name ?? "Other")
   );
-  const toggleClassCollapsed = (className: string) =>
-    setCollapsedClasses((prev) => {
-      const next = new Set(prev);
-      if (next.has(className)) next.delete(className);
-      else next.add(className);
-      return next;
-    });
+  // Remembered for this browser, for every test's roster -- see
+  // initialCollapsedClasses. Written here rather than in an updater, which
+  // React may call twice.
+  const toggleClassCollapsed = (className: string) => {
+    const next = new Set(collapsedClasses);
+    if (next.has(className)) next.delete(className);
+    else next.add(className);
+    setCollapsedClasses(next);
+    writeCollapsedClassesCookie(next);
+  };
 
   // -- Absence: a student who did not sit the test ------------------------------
   // Recorded in test_absences so the roster here and the gradebook show
@@ -523,39 +567,9 @@ export function AiGradeClient({
         setError((students1.data.error as string) ?? "Could not load the class roster.");
         return;
       }
-      type RosterRow = {
-        profile_id?: string;
-        profiles: { display_name: string; nickname: string | null };
-        course_id?: string;
-        course_name?: string | null;
-      };
-      const rawRows = (students1.data.students as RosterRow[]) ?? [];
-      // Class order: the test's own class first, then the pooled sibling
-      // classes alphabetically, then students whose class is unknown.
-      const ownClass = rawRows.find((s) => s.course_id === testData.course_id)?.course_name ?? null;
-      const classRank = (name: string | null) => (name === ownClass ? 0 : name ? 1 : 2);
-      const roster: StudentOption[] = rawRows
-        .filter((s): s is RosterRow & { profile_id: string } => !!s.profile_id)
-        .map((s) => {
-          const fullName = s.profiles?.display_name;
-          const nickname = s.profiles?.nickname;
-          // Full name first — the batch-upload dropdown needs it to tell
-          // apart students who share a first name or nickname. Nickname
-          // shown alongside when it differs, since that's often what a
-          // teacher recognises a cover-page name against.
-          const label =
-            fullName && nickname && nickname !== fullName
-              ? `${fullName} (${nickname})`
-              : fullName || nickname || "Unknown";
-          return { profile_id: s.profile_id, display_name: label, class_name: s.course_name ?? null };
-        })
-        .sort(
-          (a: StudentOption, b: StudentOption) =>
-            classRank(a.class_name) - classRank(b.class_name) ||
-            (a.class_name ?? "").localeCompare(b.class_name ?? "") ||
-            a.display_name.localeCompare(b.display_name)
-        );
-      setStudents(roster);
+      // Ordered and labelled by the same function the server's first render
+      // used, so a refresh never reshuffles the list.
+      setStudents(buildRosterOptions((students1.data.students as RosterSourceRef[]) ?? [], testData.course_id));
 
       const runs1 = settledValue(runsSettled);
       if (!runs1.ok) {
@@ -568,29 +582,15 @@ export function AiGradeClient({
       // empty run (seen when a re-mark failed on API credits). The newer
       // attempt is kept separately so its error still shows in the roster.
       // Picked by the same function the route uses to decide whose acceptance
-      // it counts, so the counts below are always for the run shown.
-      const allRuns = (runs1.data.runs as RunRow[]) ?? [];
-      const { latestComplete, newerAttempt } = latestRunsByStudent(allRuns);
-      setRunsByStudent(latestComplete);
-      setNewerAttemptByStudent(newerAttempt);
-      // Counted off the raw run list, not the newest-run-per-student map: a
-      // student marked in the browser after being queued overnight has a
-      // newer complete run, which would hide their still-pending one and stop
-      // the poll from ever starting. Distinct students, because the banner
-      // counts people -- two submissions for one student before either
-      // collects is one student waiting, not two.
-      setSubmittedStudentCount(
-        new Set(allRuns.filter((r) => r.status === "submitted").map((r) => r.student_id)).size
+      // it counts, so the counts are always for the run shown.
+      const overview = deriveOverviewState(
+        (runs1.data.runs as RunRow[]) ?? [],
+        (runs1.data.results as AcceptanceRef[]) ?? []
       );
-      // Runs, not distinct students: nothing renders this, it only has to be
-      // zero exactly when there is nothing left for a collect pass to do. A
-      // "running" run without a batch pointer is an ordinary interactive
-      // grade in flight, which collect has no business with.
-      setOutstandingCollectCount(
-        allRuns.filter(
-          (r) => r.status === "submitted" || (r.status === "running" && r.pending_message_batch_id !== null)
-        ).length
-      );
+      setRunsByStudent(overview.runsByStudent);
+      setNewerAttemptByStudent(overview.newerAttemptByStudent);
+      setSubmittedStudentCount(overview.submittedStudentCount);
+      setOutstandingCollectCount(overview.outstandingCollectCount);
 
       // Absences are loaded best-effort: a failure here -- an error answer or
       // a request that never completed -- should not hide the roster, it
@@ -601,17 +601,21 @@ export function AiGradeClient({
         setAbsentStudents(new Set(ids));
       }
 
-      // The route sends { run_id, accepted } for each student's newest
-      // complete run only -- exactly what this counts.
-      setAcceptanceByRun(acceptanceByRunFrom((runs1.data.results as AcceptanceRef[]) ?? []));
+      setAcceptanceByRun(overview.acceptanceByRun);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not load this assessment.");
     }
   }, [testId, courseId]);
 
+  // The page usually loads the roster on the server and hands it over as
+  // `initial`, so there is nothing to fetch on mount; the refreshes after a
+  // collect, a queued re-mark or an accept still go through loadOverview.
+  // Without it (one of the server's loads failed), load it here as before.
+  const hasInitial = initial !== null;
   useEffect(() => {
+    if (hasInitial) return;
     loadOverview().finally(() => setLoading(false));
-  }, [loadOverview]);
+  }, [hasInitial, loadOverview]);
 
   // -- Collecting overnight results --------------------------------------------
   // Nothing on the server goes looking for a finished batch: no worker, no
@@ -713,6 +717,19 @@ export function AiGradeClient({
     return () => {
       cancelled = true;
     };
+  }, []);
+
+  // Fetch the maths renderer's chunk once the roster is up and the browser is
+  // idle, so the first review a teacher opens does not wait on it. The
+  // import's result is not needed here: next/dynamic reuses the loaded module.
+  useEffect(() => {
+    const warm = () => void import("@/components/LatexRenderer");
+    if (typeof window.requestIdleCallback === "function") {
+      const id = window.requestIdleCallback(warm, { timeout: 5000 });
+      return () => window.cancelIdleCallback(id);
+    }
+    const timer = window.setTimeout(warm, 2000);
+    return () => window.clearTimeout(timer);
   }, []);
 
   // -- Load one student's results for review --
@@ -1414,7 +1431,7 @@ export function AiGradeClient({
     });
   };
 
-  const toggleQuestionImage = (resultId: string) =>
+  const toggleQuestion = (resultId: string) =>
     setQuestionImageShown((prev) => {
       const next = new Set(prev);
       if (next.has(resultId)) next.delete(resultId);
@@ -1473,7 +1490,7 @@ export function AiGradeClient({
         )
       : null;
 
-  // -- One review row, plus its "Why?" panel -------------------------------
+  // -- One review row, plus its "Expand" panel -----------------------------
   // Rendered from two lists -- the parts needing a look, and the confident
   // ones behind the summary row -- so the caller passes the row that precedes
   // it in ITS OWN list: that is what decides whether this row prints its
@@ -1508,7 +1525,7 @@ export function AiGradeClient({
         ? undefined
         : rowWarnings.length > 0
           ? rowWarnings.join("\n")
-          : "The marker's own call: it judged this part a judgement call. Open Why? for its reasoning.";
+          : "The marker's own call: it judged this part a judgement call. Open Expand for its reasoning.";
     const self = selfMarkFor(selfAssessment, r.test_item_id);
     const selfDiffers = selfDiffersFrom(r);
     const selfTitle =
@@ -1543,7 +1560,7 @@ export function AiGradeClient({
                 </span>
               )}
               {/* The question itself, at a glance. It was already in
-                  the expanded panel below, but two clicks deep (Why?,
+                  the expanded panel below, but two clicks deep (Expand,
                   then the collapsed Question toggle) -- so marking a
                   row meant remembering what the question asked.
                   Click enlarges it in the same lightbox the panel
@@ -1624,7 +1641,7 @@ export function AiGradeClient({
                 value={overrideNotes[r.id] ?? ""}
                 onChange={(e) => setOverrideNotes((prev) => ({ ...prev, [r.id]: e.target.value }))}
                 placeholder={`Why ${drafts[r.id]} not ${r.suggested_marks}? (optional, kept with the mark)`}
-                title="Written into the audit trail with this mark. A ruling that should change how this part is marked from now on goes in the marking note under Why?."
+                title="Written into the audit trail with this mark. A ruling that should change how this part is marked from now on goes in the marking note under Expand."
                 className="mt-1 block w-56 rounded border border-amber-400/40 bg-transparent px-2 py-0.5 text-xs focus:ring-2 focus:ring-blue-400"
               />
             )}
@@ -1701,7 +1718,7 @@ export function AiGradeClient({
               onClick={() => setExpanded(isOpen ? null : r.id)}
               className="text-xs text-blue-300 hover:underline"
             >
-              {isOpen ? "Hide" : "Why?"}
+              {isOpen ? "Hide" : "Expand"}
             </button>
           </td>
         </tr>
@@ -1739,13 +1756,13 @@ export function AiGradeClient({
                   <div>
                     <button
                       type="button"
-                      onClick={() => toggleQuestionImage(r.id)}
+                      onClick={() => toggleQuestion(r.id)}
                       className="flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-da-muted hover:text-da-text"
                     >
-                      <span>{questionImageShown.has(r.id) ? "▾" : "▸"}</span>
+                      <span>{questionShown.has(r.id) ? "▾" : "▸"}</span>
                       Question
                     </button>
-                    {questionImageShown.has(r.id) && (
+                    {questionShown.has(r.id) && (
                       <div className="mt-1 flex flex-wrap gap-2">
                         {r.question_image_urls.map((url, i) => (
                           // eslint-disable-next-line @next/next/no-img-element
@@ -1762,6 +1779,44 @@ export function AiGradeClient({
                     )}
                   </div>
                 )}
+
+                {/* A teacher-authored part has no image, so its question is
+                    text: the stem (test_items.stem_text, shared by every
+                    part of the question) and the part's own wording. The
+                    row header clamps both to two lines and prints the stem
+                    on the first part of a question only; here, minimised
+                    like the student's work, the panel gives the full stem
+                    on EVERY part -- a teacher checking Q3(b) should not
+                    have to scroll up to Q3(a) for the sequence it is about.
+                    Same set as the bank image above: a row has one or the
+                    other, never both. */}
+                {r.question_image_urls.length === 0 &&
+                  (meta?.stem_text?.trim() || meta?.question_text?.trim()) && (
+                    <div>
+                      <button
+                        type="button"
+                        onClick={() => toggleQuestion(r.id)}
+                        className="flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-da-muted hover:text-da-text"
+                      >
+                        <span>{questionShown.has(r.id) ? "▾" : "▸"}</span>
+                        Question
+                      </button>
+                      {questionShown.has(r.id) && (
+                        <div className="mt-1 max-w-3xl space-y-1 rounded border border-da-border bg-da-surface px-3 py-2 text-sm">
+                          {meta?.stem_text?.trim() && (
+                            <div className="text-da-text/80">
+                              <LatexRenderer latex={meta.stem_text.trim()} />
+                            </div>
+                          )}
+                          {meta?.question_text?.trim() && (
+                            <div className="text-da-muted">
+                              <LatexRenderer latex={meta.question_text.trim()} />
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
 
                 <div>
                   <div className="flex items-center gap-2">
@@ -2369,7 +2424,10 @@ export function AiGradeClient({
         </button>
         <button
           type="button"
-          onClick={() => setTab("batch")}
+          onClick={() => {
+            setTab("batch");
+            setBatchTabOpened(true);
+          }}
           className={`rounded-md px-4 py-1.5 text-sm font-medium transition-colors ${
             tab === "batch" ? "bg-da-surface text-da-text shadow-sm" : "text-da-muted hover:text-da-text"
           }`}
@@ -2413,13 +2471,17 @@ export function AiGradeClient({
         </div>
       )}
 
-      {/* Kept mounted (not conditionally rendered) so switching to Individual
-          and back doesn't wipe BatchGradeTab's own state — its matched rows
-          and grading progress live in that component, not here, and a
-          conditional render would unmount and reset it on every tab switch. */}
-      <div className={tab === "batch" ? undefined : "hidden"}>
-        <BatchGradeTab testId={testId} students={students} />
-      </div>
+      {/* Mounted the first time the tab is picked, then kept mounted (hidden)
+          so switching to Individual and back doesn't wipe BatchGradeTab's own
+          state -- its matched rows and grading progress live in that
+          component, not here, and unmounting would reset them on every tab
+          switch. Unfinished batches are restored from the server when it
+          mounts, so waiting for the first click loses nothing. */}
+      {batchTabOpened && (
+        <div className={tab === "batch" ? undefined : "hidden"}>
+          <BatchGradeTab testId={testId} students={students} />
+        </div>
+      )}
 
       {tab === "individual" && (
         <>

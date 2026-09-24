@@ -13,6 +13,17 @@
  * and the source the seed migration for the live test was written from. It
  * is NOT read at runtime: the live copy is the tests / test_items rows plus
  * tests.standards_rubric, editable on the test's detail page.
+ *
+ * A multi-part question's shared lead-in (the sequence, the scenario) is
+ * `stemText`, identical on every part, and `questionText` is the part's own
+ * wording -- the shape of test_items.stem_text / question_text since
+ * migration 20260924024538 (ka1_unit1_split_stems). The seed had pasted the stem
+ * into every part's text; lib/ai-grading.ts composeQuestionText joins the
+ * two back together, so what the marker reads is unchanged. Q1's lead-in
+ * ("Evaluate ... Show all work.") stays in each part on purpose: it is the
+ * command each part's mark depends on, and rule A6 of
+ * lib/ask-what-you-mark.ts says a demand made only in a stem does not carry
+ * into a part.
  */
 
 import type { StandardsRubric } from "../standards-rubric";
@@ -21,6 +32,8 @@ export interface SeedItem {
   questionNumber: number;
   partLabel: string;
   maxMarks: number;
+  /** The question's shared lead-in for a lettered part, null for a whole-question item or a question with no shared lead-in. */
+  stemText: string | null;
   questionText: string;
   markschemeText: string;
 }
@@ -39,8 +52,11 @@ const Q6_SEQUENCE =
   "Consider the repeating sequence: position 1, 2, 3, 4, 5, 6, 7, 8, 9, ... has terms $-3, 0, 3, -3, 0, 3, -3, 0, 3, \\ldots$ (the block $-3, 0, 3$ repeats forever).";
 const Q7_CONTEXT =
   "The 84 students in fifth grade are gathering in the auditorium. The teachers choose $x$ students to perform a skit, and then split the remaining students into equal groups of 5 for a project activity.";
+// The live Q9 stem since 20260918123826: it describes the printed figures
+// and says nothing about how they grow, because the earlier wording stated
+// the answer to part (a) and the grader marked on its vocabulary.
 const Q9_CONTEXT =
-  "Look at the pattern made from arrangements of $1 \\times 1$ square tiles: Figure 1 has 4 tiles, Figure 2 has 7 tiles, Figure 3 has 10 tiles. Each figure is a row of tiles with a column of tiles rising from it; each new figure adds 2 tiles to the row and 1 tile to the column.";
+  "Look at the pattern made from arrangements of $1 \\times 1$ square tiles. [Marker's note, describing the figures PRINTED on the paper. The student read no such sentence, so none of its words are required in any answer: Figure 1 is a row of 3 tiles with 1 further tile meeting the row at its centre (4 tiles); Figure 2 is a row of 5 with a line of 2 (7 tiles); Figure 3 is a row of 7 with a line of 3 (10 tiles).]";
 
 export const KA1_UNIT1_ITEMS: SeedItem[] = [
   // -- Q1: evaluate expressions [3] ------------------------------------------
@@ -48,6 +64,7 @@ export const KA1_UNIT1_ITEMS: SeedItem[] = [
     questionNumber: 1,
     partLabel: "a",
     maxMarks: 1,
+    stemText: null,
     questionText: "Evaluate the algebraic expression for the given variable value. Show all work. $4m + 2(m - 5)$ when $m = 3$.",
     markschemeText:
       "A full-mark response shows correct substitution and evaluation with brackets: $4(3) + 2(3 - 5) = 12 + 2(-2) = 12 - 4 = 8$. Answer: 8. The substitution must be shown; a bare 8 with no substitution does not earn the mark.",
@@ -56,6 +73,7 @@ export const KA1_UNIT1_ITEMS: SeedItem[] = [
     questionNumber: 1,
     partLabel: "b",
     maxMarks: 1,
+    stemText: null,
     questionText:
       "Evaluate the algebraic expression for the given variable value. Show all work. $\\frac{1}{2}t^2 - 5t$ when $t = 6$.",
     markschemeText:
@@ -65,6 +83,7 @@ export const KA1_UNIT1_ITEMS: SeedItem[] = [
     questionNumber: 1,
     partLabel: "c",
     maxMarks: 1,
+    stemText: null,
     questionText:
       "Evaluate the algebraic expression for the given variable value. Show all work. $-3(w + 4) - 5w$ when $w = -4$.",
     markschemeText:
@@ -75,15 +94,17 @@ export const KA1_UNIT1_ITEMS: SeedItem[] = [
     questionNumber: 2,
     partLabel: "a",
     maxMarks: 1,
-    questionText: `${Q2_SEQUENCE} Describe the sequence in words, including the first term and how it changes.`,
+    stemText: Q2_SEQUENCE,
+    questionText: "Describe the sequence in words, including the first term and how it changes.",
     markschemeText:
-      "A full-mark response names the first term 88 AND the change of $-6$ each term (\"starts at 88 and goes down by 6\"). Both are needed for the mark; \"it goes down by 6\" alone, or \"starts at 88\" alone, earns 0.",
+      "A full-mark response gives how the sequence changes: it goes down by 6 each term (a change of $-6$). The question asks for the first term as well, and \"starts at 88 and goes down by 6\" is the complete description, but the mark is for the change: \"it goes down by 6\" earns it on its own, in any wording, and so does a correct change of $-6$ given with a wrong first term. \"Starts at 88\" alone, a change of the wrong size or sign (\"goes up by 6\", \"subtracts 8\"), or only continuing the list of terms ($88, 82, 76, 70, 64, 58, \\ldots$) earns 0.",
   },
   {
     questionNumber: 2,
     partLabel: "b",
     maxMarks: 2,
-    questionText: `${Q2_SEQUENCE} Write an explicit rule to find the $n$th term in the sequence.`,
+    stemText: Q2_SEQUENCE,
+    questionText: "Write an explicit rule to find the $n$th term in the sequence.",
     markschemeText:
       "A full-mark response gives a correct explicit rule: $94 - 6n$ (accept any equivalent, e.g. $88 - 6(n - 1)$ or $-6n + 94$). 2 marks: one for the structure (a linear rule in $n$ with the common difference $-6$ as the coefficient), one for the correct constant so the rule gives 88 at $n = 1$. An off-by-one rule such as $88 - 6n$ earns 1 (correct difference, wrong starting value). A recursive description (\"subtract 6 each time\") is not an explicit rule and earns 0.",
   },
@@ -91,7 +112,8 @@ export const KA1_UNIT1_ITEMS: SeedItem[] = [
     questionNumber: 2,
     partLabel: "c",
     maxMarks: 1,
-    questionText: `${Q2_SEQUENCE} What is the value of the 20th term?`,
+    stemText: Q2_SEQUENCE,
+    questionText: "What is the value of the 20th term?",
     markschemeText:
       "A full-mark response uses the rule for the 20th term: $94 - 6(20) = -26$. Answer: $-26$. Follow-through: award the mark for correctly evaluating the student's own rule from part (b) at $n = 20$, even if that rule was wrong. Listing out all 20 terms correctly also earns the mark.",
   },
@@ -99,7 +121,8 @@ export const KA1_UNIT1_ITEMS: SeedItem[] = [
     questionNumber: 2,
     partLabel: "d",
     maxMarks: 2,
-    questionText: `${Q2_SEQUENCE} Is $-52$ a term of this sequence? Justify your answer.`,
+    stemText: Q2_SEQUENCE,
+    questionText: "Is $-52$ a term of this sequence? Justify your answer.",
     markschemeText:
       "A full-mark response concludes that $-52$ is NOT a term because solving $94 - 6n = -52$ gives $n = 24.33\\ldots$ (or $146/6$), which is not a whole number, so no position has that value. 2 marks: one for a valid method that tests $-52$ against the rule (solving for $n$, or showing the terms around it: $-50$ at $n = 24$ and $-56$ at $n = 25$), one for the correct conclusion justified by that reasoning. A bare \"no\" with no reasoning earns 0; \"no, because it is not in the list\" without showing the neighbouring terms earns 0. Follow-through from an incorrect rule in part (b) applies if the reasoning is sound for that rule.",
   },
@@ -108,7 +131,8 @@ export const KA1_UNIT1_ITEMS: SeedItem[] = [
     questionNumber: 3,
     partLabel: "a",
     maxMarks: 1,
-    questionText: `${Q3_SEQUENCE} Describe the pattern or rule of the sequence in words.`,
+    stemText: Q3_SEQUENCE,
+    questionText: "Describe the pattern or rule of the sequence in words.",
     markschemeText:
       "A full-mark response states the alternating rule: subtract 1, then add 4, repeating (accept \"down 1, up 4\" or \"every two terms it goes up by 3\" together with the alternation). \"It goes down and then up\" without the amounts earns 0.",
   },
@@ -116,7 +140,8 @@ export const KA1_UNIT1_ITEMS: SeedItem[] = [
     questionNumber: 3,
     partLabel: "b",
     maxMarks: 1,
-    questionText: `${Q3_SEQUENCE} The 11th term of the sequence is 27. What is the 13th term? Show how you know.`,
+    stemText: Q3_SEQUENCE,
+    questionText: "The 11th term of the sequence is 27. What is the 13th term? Show how you know.",
     markschemeText:
       "A full-mark response finds the 13th term from the 11th: from position 11 (odd, value 27) the next term is $27 - 1 = 26$ and then $26 + 4 = 30$, or equivalently two positions on is $+3$. Answer: 30, with the reasoning shown.",
   },
@@ -124,16 +149,18 @@ export const KA1_UNIT1_ITEMS: SeedItem[] = [
     questionNumber: 3,
     partLabel: "c",
     maxMarks: 2,
-    questionText: `${Q3_SEQUENCE} Find the 40th term of the sequence. Show how you know.`,
+    stemText: Q3_SEQUENCE,
+    questionText: "Find the 40th term of the sequence. Show how you know.",
     markschemeText:
-      "A full-mark response uses the even positions to find the 40th term: the even-position terms are 11, 14, 17, ... (start 11, add 3), so the 40th term is the 20th even term, $11 + 3(19) = 68$. Answer: 68. 2 marks: one for using the structure (separating odd and even positions, or a rule for the even positions), one for the correct value. Listing all 40 terms correctly earns both marks; listing with an error earns at most 1 for a correct method.",
+      "A full-mark response uses the structure of the sequence to find the 40th term: the even-position terms are 11, 14, 17, ... (start 11, add 3), so the 40th term is the 20th even term, $11 + 3(19) = 68$. Answer: 68. 2 marks: one for using the structure, one for the correct value. The structure mark is for any working that shows how the pattern moves: separating odd and even positions, a rule for the even positions, listing the terms, or the alternating step itself ($-1$ then $+4$, \"take away 1, then add 4\", written on the list or used to build the terms). It is earned even if the arithmetic then goes wrong. The value mark is for 68 only. So listing all 40 terms correctly earns both marks, and a list or pattern that shows the structure but goes off track earns 1.",
   },
   // -- Q4: bus pass [4] -------------------------------------------------------
   {
     questionNumber: 4,
     partLabel: "a",
     maxMarks: 1,
-    questionText: `${Q4_CONTEXT} Complete the table to show the TOTAL amount Maya has spent by the end of each week (assuming 5 commuting days per week): weeks 1 to 5.`,
+    stemText: Q4_CONTEXT,
+    questionText: "Complete the table to show the TOTAL amount Maya has spent by the end of each week (assuming 5 commuting days per week): weeks 1 to 5.",
     markschemeText:
       "A full-mark response completes the table: 30, 50, 70, 90, 110 (week 1 is $10 + 5 \\times 4 = 30$, then $+20$ each week). All five values must be correct for the mark.",
   },
@@ -141,7 +168,8 @@ export const KA1_UNIT1_ITEMS: SeedItem[] = [
     questionNumber: 4,
     partLabel: "b",
     maxMarks: 2,
-    questionText: `${Q4_CONTEXT} Write an explicit rule to find the total amount of money Maya has spent by the end of the $n$th week.`,
+    stemText: Q4_CONTEXT,
+    questionText: "Write an explicit rule to find the total amount of money Maya has spent by the end of the $n$th week.",
     markschemeText:
       "A full-mark response gives a rule with the starting value: $20n + 10$ (accept equivalents such as $10 + 20n$ or $30 + 20(n - 1)$). 2 marks: one for the rate $20n$, one for the correct constant so the rule gives 30 at $n = 1$. A rule that leaves out the card fee ($20n$) or uses the weekly $+20$ wrongly earns 1 if the rate is right. Follow-through from part (a) applies.",
   },
@@ -149,7 +177,8 @@ export const KA1_UNIT1_ITEMS: SeedItem[] = [
     questionNumber: 4,
     partLabel: "c",
     maxMarks: 1,
-    questionText: `${Q4_CONTEXT} How much money will Maya have spent in total by the end of 1 year (52 weeks)?`,
+    stemText: Q4_CONTEXT,
+    questionText: "How much money will Maya have spent in total by the end of 1 year (52 weeks)?",
     markschemeText:
       "A full-mark response uses the rule for 52 weeks: $20(52) + 10 = 1050$. Answer: \\$1050. Follow-through: award the mark for correctly evaluating the student's own rule from part (b) at $n = 52$.",
   },
@@ -158,6 +187,7 @@ export const KA1_UNIT1_ITEMS: SeedItem[] = [
     questionNumber: 5,
     partLabel: "",
     maxMarks: 4,
+    stemText: null,
     questionText:
       "The 4th and 8th terms of an arithmetic sequence are 21 and 33, respectively. What is the first term of the sequence?",
     markschemeText:
@@ -168,14 +198,16 @@ export const KA1_UNIT1_ITEMS: SeedItem[] = [
     questionNumber: 6,
     partLabel: "a",
     maxMarks: 1,
-    questionText: `${Q6_SEQUENCE} Find the sum of the first 3 terms.`,
+    stemText: Q6_SEQUENCE,
+    questionText: "Find the sum of the first 3 terms.",
     markschemeText: "A full-mark response gives the sum of one cycle: $-3 + 0 + 3 = 0$. Answer: 0.",
   },
   {
     questionNumber: 6,
     partLabel: "b",
     maxMarks: 1,
-    questionText: `${Q6_SEQUENCE} Find the sum of the first 7 terms.`,
+    stemText: Q6_SEQUENCE,
+    questionText: "Find the sum of the first 7 terms.",
     markschemeText:
       "A full-mark response gives the sum of the first 7 terms: two full cycles (sum 0) plus the 7th term $-3$, so $-3$. Answer: $-3$. Adding the seven terms directly and getting $-3$ also earns the mark.",
   },
@@ -183,7 +215,8 @@ export const KA1_UNIT1_ITEMS: SeedItem[] = [
     questionNumber: 6,
     partLabel: "c",
     maxMarks: 1,
-    questionText: `${Q6_SEQUENCE} Find the sum of the first 8 terms.`,
+    stemText: Q6_SEQUENCE,
+    questionText: "Find the sum of the first 8 terms.",
     markschemeText:
       "A full-mark response gives the sum of the first 8 terms: two full cycles plus $-3 + 0$, so $-3$. Answer: $-3$.",
   },
@@ -191,30 +224,34 @@ export const KA1_UNIT1_ITEMS: SeedItem[] = [
     questionNumber: 6,
     partLabel: "d",
     maxMarks: 3,
-    questionText: `${Q6_SEQUENCE} The sum of the first $k$ terms is $-3$. What can you conclude about the value of $k$? Explain your reasoning.`,
+    stemText: Q6_SEQUENCE,
+    questionText: "The sum of the first $k$ terms is $-3$. What can you conclude about the value of $k$? Explain your reasoning.",
     markschemeText:
-      "A full-mark response gives the general rule with reasons: each group of three terms adds to 0, so the sum of the first $k$ terms is 0 when $k$ is a multiple of 3, and $-3$ when $k$ is one or two more than a multiple of 3 (the leftover terms are $-3$, or $-3 + 0$). So $k$ is NOT a multiple of 3 (accept: $k$ leaves a remainder of 1 or 2 when divided by 3; $k = 3m + 1$ or $3m + 2$). 3 marks: one for the observation that each cycle of three sums to 0, one for identifying which leftover positions give $-3$ (the 1st or 2nd term of a cycle), one for the correct general conclusion about $k$. A response that only lists examples ($k = 1, 2, 4, 5, 7, 8$) without the general rule earns at most 2; a bare \"$k$ is not a multiple of 3\" with no reasoning earns 1.",
+      "A full-mark response gives the general rule with reasons: each group of three terms adds to 0, so the sum of the first $k$ terms is 0 when $k$ is a multiple of 3, and $-3$ when $k$ is one or two more than a multiple of 3 (the leftover terms are $-3$, or $-3 + 0$). So $k$ is NOT a multiple of 3 (accept: $k$ leaves a remainder of 1 or 2 when divided by 3; $k = 3m + 1$ or $3m + 2$). 3 marks: one for the observation that each cycle of three sums to 0, one for identifying which leftover positions give $-3$ (the 1st or 2nd term of a cycle), one for the correct general conclusion about $k$ with that reason. Any conclusion stated in terms of multiples of 3 (groups of three, \"every third term\", dividing $k$ by 3) shows the three-term structure and earns the first two marks, even with nothing else written and even the wrong way round (\"$k$ must be a multiple of 3\"). The third mark needs the correct conclusion, that $k$ is NOT a multiple of 3, together with the reason: each cycle sums to 0 and the leftover terms are $-3$ or $-3 + 0$. So a bare \"$k$ is not a multiple of 3\" with no reasoning earns 2, a conclusion the wrong way round earns at most 2, and a response that only lists examples ($k = 1, 2, 4, 5, 7, 8$) without the general rule earns at most 2. A response that says nothing about threes earns the first two marks only if it shows that structure some other way.",
   },
   // -- Q7: 84 students, groups of 5 [5] ----------------------------------------
   {
     questionNumber: 7,
     partLabel: "a",
     maxMarks: 1,
-    questionText: `${Q7_CONTEXT} If 4 students are selected to perform the skit, how many groups will be needed for the remaining students?`,
+    stemText: Q7_CONTEXT,
+    questionText: "If 4 students are selected to perform the skit, how many groups will be needed for the remaining students?",
     markschemeText: "A full-mark response computes $(84 - 4) \\div 5 = 80 \\div 5 = 16$ groups. Answer: 16.",
   },
   {
     questionNumber: 7,
     partLabel: "b",
     maxMarks: 1,
-    questionText: `${Q7_CONTEXT} If 14 students are selected to perform the skit, how many groups will be needed for the remaining students?`,
+    stemText: Q7_CONTEXT,
+    questionText: "If 14 students are selected to perform the skit, how many groups will be needed for the remaining students?",
     markschemeText: "A full-mark response computes $(84 - 14) \\div 5 = 70 \\div 5 = 14$ groups. Answer: 14.",
   },
   {
     questionNumber: 7,
     partLabel: "c",
     maxMarks: 1,
-    questionText: `${Q7_CONTEXT} Write an algebraic expression to determine the number of groups needed if $x$ students are chosen for the skit.`,
+    stemText: Q7_CONTEXT,
+    questionText: "Write an algebraic expression to determine the number of groups needed if $x$ students are chosen for the skit.",
     markschemeText:
       "A full-mark response writes $(84 - x) \\div 5$ WITH the brackets (accept $\\frac{84 - x}{5}$). An expression missing its grouping, such as $84 - x \\div 5$, earns 0: the rubric names the missing brackets as the error.",
   },
@@ -222,44 +259,49 @@ export const KA1_UNIT1_ITEMS: SeedItem[] = [
     questionNumber: 7,
     partLabel: "d",
     maxMarks: 2,
-    questionText: `${Q7_CONTEXT} Does your expression in part (c) yield a valid whole number of groups for all whole-number values of $x$? Explain.`,
+    stemText: Q7_CONTEXT,
+    questionText: "Does your expression in part (c) yield a valid whole number of groups for all whole-number values of $x$? Explain.",
     markschemeText:
-      "A full-mark response says NO, gives a counterexample, and says when it works: for example $x = 5$ gives $79 \\div 5 = 15.8$, not a whole number; the expression gives a whole number only when $84 - x$ is a multiple of 5 (i.e. $x = 4, 9, 14, \\ldots$, or $x$ ends in 4 or 9), and $x$ must not exceed 84. 2 marks: one for a correct counterexample (or an equivalent demonstration that some $x$ fails), one for a correct condition on $x$ for the expression to work. A bare \"no\" earns 0; \"no, because not all numbers divide by 5\" with no example and no condition earns 0.",
+      "A full-mark response answers what was asked: NO, with mathematics behind it. Either route is complete on its own -- a counterexample worked through ($x = 5$ gives $79 \\div 5 = 15.8$, not a whole number), or the general reason ($84 - x$ has to be a multiple of 5, and it is not for every whole-number $x$). The question asks whether the expression works for all $x$, and for an explanation; it does NOT ask for the condition under which it does work, so do not require one. 2 marks: one for the conclusion NO reached from mathematics rather than asserted, one for the supporting reason being correct and complete. A student who gives both a counterexample and the condition has answered more than was asked, and earns 2, not more. A bare \"no\" earns 0, and \"no, because you never know what $x$ might be\" earns 0 -- neither contains any mathematics. \"No, it only works when $x$ is divisible by 5\" earns 1: the conclusion is right and divisibility is the right idea, but the condition is on the wrong quantity.",
   },
   // -- Q8: equivalent expressions [5] ------------------------------------------
   {
     questionNumber: 8,
     partLabel: "",
     maxMarks: 5,
+    stemText: null,
     questionText:
       "Expression A, $3(x + k) + j(2x - 4)$, and Expression B, $11x + 5$, are equivalent. What must be the value of $j$ and $k$? Show your algebraic steps.",
     markschemeText:
-      "A full-mark response expands, matches coefficients, and solves: $3(x + k) + j(2x - 4) = 3x + 3k + 2jx - 4j = (3 + 2j)x + (3k - 4j)$; matching with $11x + 5$ gives $3 + 2j = 11$ so $j = 4$, and $3k - 4j = 5$ so $3k - 16 = 5$ and $k = 7$. Answer: $j = 4$, $k = 7$. 5 marks: one for expanding both brackets correctly, one for collecting into the form $(3 + 2j)x + (3k - 4j)$, one for setting up the $x$-coefficient equation and finding $j = 4$, one for setting up the constant equation, one for $k = 7$. Guess-and-check that reaches $j = 4$ and $k = 7$ with a verification shown earns at most 2 (the rubric's Approaching descriptor names guess-and-check); correct answers with no algebra earn 0.",
+      "The question asks for the values of $j$ and $k$ and for algebraic steps; it does not prescribe a method, so ANY valid algebraic route to $j = 4$, $k = 7$ earns all 5 marks. Route 1 (match coefficients): $3(x + k) + j(2x - 4) = 3x + 3k + 2jx - 4j = (3 + 2j)x + (3k - 4j)$; matching with $11x + 5$ gives $3 + 2j = 11$ so $j = 4$, and $3k - 4j = 5$ so $3k - 16 = 5$ and $k = 7$. Route 2 (substitute and verify): $3(x + 7) + 4(2x - 4) = 3x + 21 + 8x - 16 = 11x + 5$, which IS Expression B, so $j = 4$ and $k = 7$ are the values that make the two expressions equivalent. Route 2 is a complete algebraic argument and earns the same 5 marks as Route 1 - do not cap it, and do not call it guess-and-check. Answer: $j = 4$, $k = 7$. 5 marks: one for expanding both brackets correctly (either $3x + 3k + 2jx - 4j$, or $3x + 21 + 8x - 16$ once the values are substituted); one for collecting into a single linear expression (either $(3 + 2j)x + (3k - 4j)$, or $11x + 5$); one for $j = 4$; one for work connecting the constant terms (either $3k - 4j = 5$, or $21 - 16 = 5$); one for $k = 7$. Judge each of the five on its own evidence, whichever route the student took. A copying slip when restating Expression A - for example writing $4(6x - 4)$ but expanding it correctly as $8x - 16$ - is a notation slip, not an expansion error. Correct values with no working at all earn the two answer marks.",
   },
   // -- Q9: tile pattern [5] ----------------------------------------------------
   {
     questionNumber: 9,
     partLabel: "a",
     maxMarks: 2,
-    questionText: `${Q9_CONTEXT} Describe how the visual pattern is changing. You may use colours or symbols to support your description.`,
+    stemText: Q9_CONTEXT,
+    questionText: "Describe how the visual pattern is changing. You may use colours or symbols to support your description.",
     markschemeText:
-      "A full-mark response says where the new tiles go: each figure adds 2 tiles to the row and 1 tile to the column (3 new tiles per figure, placed at those positions). 2 marks: one for naming which parts grow and by how much (2 in the row, 1 in the column), one for a description that would let someone draw the next figure. A description giving only the total change (\"it adds 3 each time\") earns 1. An annotated sketch showing the added tiles counts as description.",
+      "A full-mark response describes the change well enough that a reader could draw the next figure: 3 tiles are added each time, one at each of the three growing ends -- the two ends of the row, and the far end of the line meeting it. 2 marks: one for the amount (3 tiles per figure, or 2 on one part and 1 on the other), one for WHERE the new tiles go. The question asks only for a description, so mark the content and not the vocabulary: \"one on the left, one on the right and one on the bottom\", \"two on each side and one below\", \"each arm grows by one\" and \"2 in the row, 1 in the column\" are the same answer, and each earns both marks. Do not require the words \"row\" or \"column\", and do not require the orientation to match this note -- which way the line runs is what the student sees on the page, not a mathematical claim. A description giving only the total change (\"it adds 3 each time\"), with nothing about where, earns 1. An annotated sketch showing the added tiles counts as description.",
   },
   {
     questionNumber: 9,
     partLabel: "b",
     maxMarks: 1,
-    questionText: `${Q9_CONTEXT} How many squares are in Figure 5? Explain how you know using your description from part (a). You may sketch on the grid.`,
+    stemText: Q9_CONTEXT,
+    questionText: "How many squares are in Figure 5? Explain how you know using your description from part (a). You may sketch on the grid.",
     markschemeText:
-      "A full-mark response gives 16 squares, explained from the structure: Figure 3 has 10, so Figure 4 has 13 and Figure 5 has 16 (adding 3 each time), or from a row of 11 and a column of 5 above it. Answer: 16. Follow-through from a wrong but consistently applied description in part (a).",
+      "A full-mark response gives 16 squares, explained from the structure: Figure 3 has 10, so Figure 4 has 13 and Figure 5 has 16 (adding 3 each time), or from a row of 11 and a line of 5 meeting it. Answer: 16. A sketch of Figure 5 on the grid counts as the explanation: a drawing that shows about 16 tiles (typically a row of 11 with a line of 5 meeting it) earns the mark with no words, even if the hand-drawn squares cannot be counted exactly, and without writing 16 or the $+3$ separately. A sketch that clearly shows a different number of tiles (13, which is Figure 4, or a count well away from 16) earns 0. Follow-through: an answer that follows consistently from a wrong description in part (a) earns the mark.",
   },
   {
     questionNumber: 9,
     partLabel: "c",
     maxMarks: 2,
-    questionText: `${Q9_CONTEXT} Write an expression that would give the number of squares in Figure $n$. How does your explicit rule relate to your answer from part (a)?`,
+    stemText: Q9_CONTEXT,
+    questionText: "Write an expression that would give the number of squares in Figure $n$. How does your explicit rule relate to your answer from part (a)?",
     markschemeText:
-      "A full-mark response gives $3n + 1$ (accept equivalents such as $4 + 3(n - 1)$) AND links its parts to the figure: the $3n$ is the 3 tiles added per figure (2 in the row, 1 in the column), the $+1$ is the corner tile (or the one tile that is there before any growth). 2 marks: one for a correct expression, one for explaining what $3n$ and $+1$ each count in the picture. A correct expression with no link to the figure earns 1.",
+      "A full-mark response gives $3n + 1$ (accept equivalents such as $4 + 3(n - 1)$) AND relates it to the student's OWN answer to part (a), which is what the question asks for. 2 marks: one for a correct expression, one for the link. The link earns its mark when the student says what the 3 counts -- the tiles added per figure, in whatever words their own (a) used (\"the 3 is the 3 squares added each time\"; \"the common difference is 3, which is the 2 on the sides and the 1 below\"). Naming what the $+1$ counts (the one tile that is there before any growth) is a fuller answer, but the question does not ask for the two parts separately, so do not withhold the mark for its absence. A correct expression with no reference to the pattern at all earns 1; \"it relates because it works when I test Figure 3\" is a verification rather than a link, and earns nothing for the link. Follow-through: a student whose (a) was wrong earns the link mark for relating the rule to what they themselves described.",
   },
 ];
 

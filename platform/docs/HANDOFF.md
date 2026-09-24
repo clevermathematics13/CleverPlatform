@@ -257,7 +257,7 @@ must exercise Server Actions.
 
 ## 4. Database and migrations
 
-**The migration ledger and the repo agree on versions: 178 files, 178 rows**
+**The migration ledger and the repo agree on versions: 179 files, 179 rows**
 (verified 23 Sep 2026; it read 83/83 when this handoff was written, 95/95 after
 the second reconciliation, 116/116 after the third, 149/149 on 13 Sep and
 171/171 on 20 Sep). Two
@@ -2994,15 +2994,206 @@ Assessment 1 sat on "Loading this assessment…" for about 43 s.
   sandbox's Node with `UND_ERR_HEADERS_OVERFLOW` (the reply's headers passed
   Node's 16 KB default) until `--max-http-header-size` was raised; production
   answered 200, so it did not bite there. The new query sends one id per
-  student. What remains of the load: Vercel functions run in iad1 and the
-  database is in sa-east-1, so every database round trip is about 120 ms and
-  every API call spends about three of them on authentication; `/api/students`
-  (about 3 s) is now the slowest of the four. Moving the function region, or
-  lighter auth checks, would cut that for every page; neither was done here.
-  `BatchGradeTab` still mounts, hidden, on every visit and fetches
-  `/ai-grade/batch`.
+  student. What remains of the load: Vercel functions ran in iad1 and the
+  database is in sa-east-1, so every database round trip was about 120 ms and
+  every API call spent two of them on sign-in (`getApiTeacher`; the proxy is
+  not registered in production, see section 31). The first production load
+  after this change (24 Sep 02:09 UTC) took about 8 s: about 4 s before the
+  four requests started, then about 4 s for them together. Section 31 moves
+  the functions to São Paulo. `BatchGradeTab` still mounts, hidden, on every
+  visit and fetches `/ai-grade/batch`.
+## 30. The Expand panel shows the question, and Grade 9 papers get a stem (24 Sep 2026)
 
-## 30. Evidence crops: bounded at the next part, re-cut idempotently, and a layout proposed from the class (24 Sep 2026)
+The teacher, marking KA1 Q3(b), asked for the row's "Why?" toggle to read
+"Expand", for the question stem to be visible inside the expanded panel
+(minimised, like the student's work), and whether the evidence crop or the
+design tools already know what a stem is.
+
+**What the crop does.** Nothing in `fetchEvidenceCrops` targets printed
+text. A "Located by marker" crop is the grader's own handwriting box
+(`lib/ai-grading.ts` asks for handwriting only) padded by `padModelBox` --
+18% a side plus 0.15 of the page downward, then grown by the CV service
+while ink touches an edge. The printed "b." line above the work and the
+start of "c." below it in that screenshot are the padding, not a stem crop.
+There is no stem region in `test_item_anchors` or the paper-layout editor,
+so the stem on screen is text.
+
+**Which tools identify the stem.** The assessment creator does:
+`formative-assessment-bridge.ts` writes `stem_text` from the question's
+prompt and `question_text` from each subpart's. Two paths did not: the
+Grade 9 standards importer told the model to repeat the stem in every
+part's `questionText` and its save route never wrote `stem_text`; and the
+KA1 seed (`20260915165036`, from the fixture) did the same by hand, so all
+26 live KA1 rows had `stem_text` null with the stem pasted into
+`question_text` for Q2, Q3, Q4, Q6, Q7 and Q9. The NA tools have no stem
+notion at all (`na-rubric-bridge.ts` drops it; `na_anchors` has no stem
+box); not touched here.
+
+**What changed.**
+- `ai-grade-client.tsx`: the toggle is "Expand" / "Hide" (tooltips and
+  comments follow). A text-backed part gets a collapsible "Question" block
+  in the panel, in the slot the bank-image block uses and on the same
+  `questionShown` set (a row has one or the other): the full stem, then
+  the part's own wording, LaTeX rendered. Shown on EVERY part's panel; the
+  row header keeps its first-part-only rule.
+- Migration `20260924024538_ka1_unit1_split_stems`:
+  moves the lead-in of Q2/3/4/6/7/9 into `stem_text` and leaves the part's
+  wording in `question_text`, idempotent on `stem_text is null` plus a
+  `starts_with` guard (`like` was avoided because two stems carry `\ldots`
+  and `\times`, and `\` is LIKE's escape). The marker's input is unchanged:
+  `composeQuestionText` joins the two. **Q1 is deliberately left whole**:
+  "Evaluate ... Show all work." is the command each part's mark depends on,
+  and rule A6 (`ask-what-you-mark.ts`) says a demand made only in a stem
+  does not carry into a part. The fixture gained `stemText` to match, and
+  `ai-grading.test.ts` builds KA1 units through `composeQuestionText`.
+- Standards importer: `ExtractedItemSchema` and the draft schema carry
+  `stemText` (nullable; defaulted on the draft so an older payload still
+  parses), the prompt's QUESTION TEXT rule now puts the shared stem in
+  `stemText` word for word on every lettered part and only the part's
+  wording in `questionText` (with the A6 caveat spelled out), the save
+  route writes `stem_text` on lettered parts, and the review page has a
+  per-question "Stem" box that edits every part of that question at once.
+- `SCHEMA.md` `test_items` now lists `stem_text` and `marking_notes`.
+- Follow-up, same day: the fixture's mark schemes were re-synced from the
+  live rows. Eight parts had drifted, not the two the PR body named: 2(a),
+  3(c), 6(d), 7(d), 8, 9(a), 9(b), 9(c), i.e. every scheme the 18 and 23 Sep
+  migrations rewrote without touching the fixture. All 26 items now compare
+  equal to the database on stem, question and scheme.
+
+## 31. Functions run in São Paulo, next to the database (24 Sep 2026)
+
+- **What changed.** `vercel.json` now sets `"regions": ["gru1"]`. Until now
+  every function ran in iad1 (Washington), while Supabase is in sa-east-1 (São
+  Paulo) and the users are in Lima (`appsscript.json` time zone). Every
+  database round trip crossed the continent, about 120 ms each (section 29).
+  Requests make those round trips one after another:
+  - every API route makes two for sign-in (`getApiTeacher`), then 1-9
+    queries;
+  - the dashboard layout makes at least four on every page render;
+  - grading makes one Storage upload per graded part.
+- **Before, for comparison.** Key Assessment 1's marking page on 24 Sep at
+  02:09 UTC, after section 29: page request 02:09:47, the four data requests
+  02:09:51, roster 02:09:55 -- about 8 s. Compare the same timeline in the
+  Vercel runtime log after this change.
+- **What ends up farther away:**
+  - the Railway CV service, whose region is recorded nowhere: one `/crop` per
+    scan, and one `/page-image` per page viewed, which can be about 10 MB of
+    base64, so "Locate on page" views may get slower if Railway is in the US;
+  - Anthropic, which takes one long call per job, so the extra distance is
+    negligible;
+  - Vercel Workflow's queue. The installed `@workflow/world-vercel` 4.5.1
+    hardcodes `iad1` (`dist/queue.js`), which still works at the cost of a
+    few cross-continent calls per step.
+  - Nothing in the code assumes a region: no `VERCEL_REGION`, no
+    `preferredRegion`, no edge runtime, no crons.
+- **Pricing and rollback.** Vercel prices compute per region, so check the
+  rate for gru1. To roll back, delete the line; the next deploy returns to
+  iad1.
+- **Found while checking: `platform/src/proxy.ts` is not registered in
+  production builds.**
+  - Next 16 takes `proxy.ts` only from beside `app/`, and from `src/` only when
+    the app lives in `src/app`
+    (`node_modules/next/dist/docs/01-app/03-api-reference/03-file-conventions/proxy.md:23`).
+    Here `app/` is at the top of `platform/`.
+  - A local production build writes an empty
+    `.next/server/middleware-manifest.json` and prints no "Proxy (Middleware)"
+    line.
+  - Pages (`requireTeacher`/`getProfile`) and API routes (`getApiTeacher`)
+    check sign-in themselves, so nothing is exposed. But the proxy's session
+    refresh and /login redirect do not run in production, and API routes do
+    not pay its extra `getUser` call.
+  - `CLAUDE.md` forbids renaming the file, so this is left for the owner to
+    decide.
+
+## 32. The marking page renders its roster on the server (24 Sep 2026)
+
+- **What was still slow after section 29.** The page arrived saying "Loading
+  this assessment...", downloaded and started 748 KB (207 KB gzipped) of its
+  own JavaScript, and only then sent four requests, each signing the teacher
+  in again, before it could draw the roster. Section 31 moved the functions
+  next to the database; this section removes most of the rest.
+- **Less JavaScript.** Measured from the route's client-reference manifest in
+  local production builds of `3b7428c` and of this change:
+  - the page's own chunks went from 748 KB raw / 207 KB gzipped to
+    71 KB / 21 KB;
+  - its whole first load, framework and layouts included, went from
+    1,517 KB / 423 KB to 840 KB / 237 KB.
+
+  What moved:
+  - **KaTeX (256 KB).** `LatexRenderer` loads with `next/dynamic` and is
+    fetched once the page is idle, so the first review still opens at once.
+  - **mafs (52 KB).** `LatexRenderer` imported the graph-marker helpers from
+    `components/IbGraph.tsx`, which imports mafs, so IbGraph's own
+    `next/dynamic` did nothing on any page that renders LaTeX. The helpers
+    now live in the mafs-free `components/ib-graph-spec.ts`, re-exported by
+    IbGraph. That fixes every page with LaTeX, not only this one.
+  - **zod (281 KB).** It was only needed to parse a Standard Level rubric, and
+    the page now does that on the server. The zod-free half of
+    `lib/standards-rubric.ts` (types, levels, `buildStandardsReport`) is now
+    `lib/standards-report.ts`, re-exported from `lib/standards-rubric.ts`, so
+    no other caller changed. **Client components import
+    `lib/standards-report.ts`; importing `lib/standards-rubric.ts` from one
+    puts zod back in its bundle.**
+  - **`lib/assignments` (49 KB).** It came along for a 25-line helper.
+    `paperQuestionPrefixes` and `formatQuestionLabel` now live in
+    `lib/paper-labels.ts`, re-exported from `lib/assignments`.
+  - **The batch tab.** It mounts the first time it is opened and then stays
+    mounted, so its restore fetch no longer runs on every visit.
+- **The roster is in the first HTML.**
+  - `page.tsx` reads the whole test with `lib/test-detail.ts`, the select
+    GET /api/tests/[id] also uses, and starts the roster's own loads
+    alongside it.
+  - The header goes out at once. The roster streams in behind a Suspense
+    boundary whose fallback is the old loading line.
+  - The loads are the routes' own, moved into shared server loaders:
+    `lib/course-roster.ts` for GET /api/students, and
+    `lib/ai-grade-overview.ts` for the whole-class GET
+    /api/tests/[id]/ai-grade and GET .../absences. Each route keeps its auth,
+    parameters and response. Checked byte for byte against the old handlers
+    on five live tests (read-only).
+  - What the client used to work out from those answers is now
+    `buildRosterOptions` and `deriveOverviewState` in
+    `lib/ai-grade-review.ts`, and both sides call them. `load-initial.ts`
+    builds the client's initial state; on the same five tests it equalled
+    what the old client computed, roster order included.
+  - Key Assessment 1 gets 91 KB of initial state (each student's newest
+    complete run and newer attempt) instead of the 508 KB run list the
+    browser used to fetch. That costs about ten queries on the server.
+  - If any load fails, the initial state is null and the client loads exactly
+    as before: the same four requests and the same error messages.
+  - The roster now sorts with an explicit "en" collation (`ROSTER_COLLATOR`).
+    `localeCompare` without a locale used each runtime's own, and a
+    Spanish-language browser sorts n-tilde after every "n", so a refresh
+    could have reordered the server's list.
+  - On mount the client now makes only two calls: the Anthropic key check,
+    and the overnight collect poll when a run is outstanding. The poll now
+    starts at once instead of after the roster fetch.
+  - One behaviour change: a rubric edited in another tab now shows only after
+    a reload. Before, the next roster refresh picked it up.
+- **Collapsed classes are remembered.**
+  - The cookie is `cp_ai_grade_collapsed`, built in
+    `lib/ai-grade-collapsed-classes.ts`. It holds a JSON array of class
+    names.
+  - It is scoped to `/dashboard/tests`, kept a year, SameSite Lax, and Secure
+    on https. It is deleted once nothing is collapsed.
+  - It is written when a class heading is clicked, and read in `page.tsx` with
+    `cookies()`, so those classes are collapsed in the first HTML.
+  - A malformed value reads as nothing collapsed.
+- **Checked locally on a fixture page, in dev and a production build:**
+  - no hydration warnings and no data requests on mount;
+  - the cookie's classes are collapsed in the server HTML;
+  - toggling writes and deletes the cookie, and it is not sent outside
+    `/dashboard/tests`;
+  - the batch tab's chunk and its single restore fetch wait for the first
+    click;
+  - the KaTeX chunk arrives after the load event, and a review renders
+    KaTeX;
+  - the fallback path renders the identical roster.
+- **After deploy.** The Vercel log for a load of the marking page should show
+  the page request and none of /api/students, /api/tests/[id],
+  /api/tests/[id]/ai-grade or /absences after it.
+
+## 33. Evidence crops: bounded at the next part, re-cut idempotently, and a layout proposed from the class (24 Sep 2026)
 
 The teacher's screenshot of Key Assessment 1 (Grade 9 Standard), Q1(c): the
 "Student's work" crop, badged **Located by marker**, showed one line of the

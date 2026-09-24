@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getApiTeacher } from "@/lib/auth";
+import { TEST_DETAIL_SELECT } from "@/lib/test-detail";
 
 /** An emptied text field means "no value", not an empty string. */
 function blankToNull(value: unknown): string | null {
@@ -21,16 +22,10 @@ export async function GET(
   const { supabase } = auth;
   const { id } = await params;
 
-  // courses!tests_course_id_fkey, not a bare courses(name) -- see
-  // app/dashboard/tests/page.tsx for why the bare form fails.
+  // Shared with the AI-grade page's first render (lib/test-detail.ts).
   const { data, error } = await supabase
     .from("tests")
-    .select(`
-      id, name, short_name, test_date, exam_time, release_at, total_marks, course_id, hidden, hidden_from_gradebook, custom_content, require_self_assessment,
-      boundary_set_id, paper_url, mark_scheme_url, assessment_kind, standards_rubric,
-      courses!tests_course_id_fkey(name),
-      test_items(id, question_number, part_label, max_marks, subtopic_codes, sort_order, stem_text, question_text, marking_notes)
-    `)
+    .select(TEST_DETAIL_SELECT)
     .eq("id", id)
     .single();
 

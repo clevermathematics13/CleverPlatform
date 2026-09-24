@@ -3,7 +3,11 @@
 import katex from "katex";
 import React from "react";
 import dynamic from "next/dynamic";
-import { type IbGraphSpec, GRAPH_MARKER_RE, decodeGraphSpec } from "./IbGraph";
+// Type-only import of IbGraph plus the marker helpers from their own module:
+// a value import from ./IbGraph would pull mafs into every page that renders
+// LaTeX and defeat the dynamic import below (see ib-graph-spec.ts).
+import type { IbGraphSpec } from "./IbGraph";
+import { GRAPH_MARKER_RE, decodeGraphSpec } from "./ib-graph-spec";
 import { splitHfillMark } from "@/lib/latex-hfill";
 
 const IbGraph = dynamic(() => import("./IbGraph"), { ssr: false });

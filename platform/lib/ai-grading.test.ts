@@ -1573,7 +1573,7 @@ function ka1Units(): GradingUnit[] {
       partLabel: it.partLabel,
       maxMarks: it.maxMarks,
       questionCode: "",
-      questionLatex: it.questionText,
+      questionLatex: composeQuestionText(it.stemText, it.questionText),
       markscheme: it.markschemeText,
       markschemeSource: "custom",
       standards: { strand: { code: strand.code, name: strand.name, standards: strand.standards }, rubric: KA1_UNIT1_RUBRIC },
