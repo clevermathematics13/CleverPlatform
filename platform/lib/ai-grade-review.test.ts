@@ -11,6 +11,8 @@ import {
   summariseSelfAssessment,
   selfMarkFor,
   selfMarkDiffers,
+  latestRunsByStudent,
+  acceptanceByRunFrom,
 } from "./ai-grade-review";
 import { unitLabel } from "./ai-grading";
 
@@ -90,6 +92,136 @@ describe("rowsForRun", () => {
   // Falling back to "all rows" here is what mixes two students' results.
   it("returns nothing when the run is unresolved", () => {
     expect(rowsForRun(null, rows)).toEqual([]);
+  });
+});
+
+describe("latestRunsByStudent", () => {
+  const INVITED_LUCIANA = `invited-${LUCIANA}`;
+  type Run = { id: string; student_id: string | null; status: string; created_at?: string };
+
+  it("takes each student's first complete run, newest first as the route orders them", () => {
+    const { latestComplete, newerAttempt } = latestRunsByStudent([
+      { id: "salim-new", student_id: SALIM, status: "complete" },
+      { id: "luciana-new", student_id: LUCIANA, status: "complete" },
+      { id: "salim-old", student_id: SALIM, status: "complete" },
+      { id: "luciana-old", student_id: LUCIANA, status: "complete" },
+    ]);
+    expect(latestComplete[SALIM].id).toBe("salim-new");
+    expect(latestComplete[LUCIANA].id).toBe("luciana-new");
+    // The newest run is the complete one, so there is no newer attempt.
+    expect(newerAttempt).toEqual({});
+  });
+
+  // A failed re-mark once hid a student's real graded work behind an empty
+  // run: the complete run below it must stay the one reviewed and counted.
+  it("keeps the complete run under a newer failed, running or queued attempt", () => {
+    for (const status of ["failed", "running", "submitted"]) {
+      const { latestComplete, newerAttempt } = latestRunsByStudent([
+        { id: "attempt", student_id: LUCIANA, status },
+        { id: "graded", student_id: LUCIANA, status: "complete" },
+      ]);
+      expect(latestComplete[LUCIANA].id).toBe("graded");
+      expect(newerAttempt[LUCIANA].id).toBe("attempt");
+    }
+  });
+
+  it("lists a student with no complete run under newerAttempt only", () => {
+    const { latestComplete, newerAttempt } = latestRunsByStudent([
+      { id: "queued", student_id: SALIM, status: "submitted" },
+      { id: "failed", student_id: SALIM, status: "failed" },
+    ]);
+    expect(latestComplete[SALIM]).toBeUndefined();
+    expect(newerAttempt[SALIM].id).toBe("queued");
+  });
+
+  it("keeps an invited subject apart from a signed-in student with the same uuid", () => {
+    const { latestComplete } = latestRunsByStudent([
+      { id: "invited-run", student_id: INVITED_LUCIANA, status: "complete" },
+      { id: "profile-run", student_id: LUCIANA, status: "complete" },
+    ]);
+    expect(latestComplete[INVITED_LUCIANA].id).toBe("invited-run");
+    expect(latestComplete[LUCIANA].id).toBe("profile-run");
+  });
+
+  // The route and the page must pick the same run, so neither may re-sort:
+  // array position (the route's created_at desc, id asc) is the only order.
+  it("goes by array position, never by created_at", () => {
+    const { latestComplete } = latestRunsByStudent<Run>([
+      { id: "first", student_id: LUCIANA, status: "complete", created_at: "2026-09-01T00:00:00Z" },
+      { id: "second", student_id: LUCIANA, status: "complete", created_at: "2026-09-20T00:00:00Z" },
+      { id: "tie-a", student_id: SALIM, status: "complete", created_at: "2026-09-05T00:00:00.000001Z" },
+      { id: "tie-b", student_id: SALIM, status: "complete", created_at: "2026-09-05T00:00:00.000001Z" },
+    ]);
+    expect(latestComplete[LUCIANA].id).toBe("first");
+    expect(latestComplete[SALIM].id).toBe("tie-a");
+  });
+
+  it("skips a run with no subject and leaves the input untouched", () => {
+    const runs: Run[] = [
+      { id: "orphan", student_id: null, status: "complete" },
+      { id: "hers", student_id: LUCIANA, status: "complete" },
+    ];
+    const before = JSON.stringify(runs);
+    const { latestComplete, newerAttempt } = latestRunsByStudent(runs);
+    expect(Object.keys(latestComplete)).toEqual([LUCIANA]);
+    expect(newerAttempt).toEqual({});
+    expect(JSON.stringify(runs)).toBe(before);
+  });
+
+  // The loop the page ran inline before this function existed -- and the one
+  // a tab left open across the deploy still runs. The route now counts only
+  // the runs this function picks, so for any list both must agree.
+  it("picks exactly what the page's old inline loop picked", () => {
+    const oldLoop = (allRuns: Run[]) => {
+      const latestComplete: Record<string, Run> = {};
+      const newestAny: Record<string, Run> = {};
+      for (const r of allRuns) {
+        if (!newestAny[r.student_id as string]) newestAny[r.student_id as string] = r;
+        if (r.status === "complete" && !latestComplete[r.student_id as string]) {
+          latestComplete[r.student_id as string] = r;
+        }
+      }
+      const newerAttempt: Record<string, Run> = {};
+      for (const [studentId, r] of Object.entries(newestAny)) {
+        if (latestComplete[studentId]?.id !== r.id) newerAttempt[studentId] = r;
+      }
+      return { latestComplete, newerAttempt };
+    };
+    // A small deterministic PRNG, so a failure reproduces.
+    let seed = 20260923;
+    const random = () => {
+      seed = (seed * 1103515245 + 12345) % 2147483648;
+      return seed / 2147483648;
+    };
+    const subjects = [LUCIANA, SALIM, `invited-${SALIM}`, "a8f5f167-f44f-4964-8f4b-4ea3a8d3a2c1"];
+    const statuses = ["complete", "complete", "failed", "running", "submitted"];
+    for (let trial = 0; trial < 500; trial++) {
+      const runs: Run[] = Array.from({ length: Math.floor(random() * 14) }, (_, i) => ({
+        id: `run-${trial}-${i}`,
+        student_id: subjects[Math.floor(random() * subjects.length)],
+        status: statuses[Math.floor(random() * statuses.length)],
+      }));
+      expect(latestRunsByStudent(runs)).toEqual(oldLoop(runs));
+    }
+  });
+});
+
+describe("acceptanceByRunFrom", () => {
+  it("counts each run's rows and how many of them are accepted", () => {
+    expect(
+      acceptanceByRunFrom([
+        { run_id: "runA", accepted: true },
+        { run_id: "runB", accepted: false },
+        { run_id: "runA", accepted: false },
+        { run_id: "runA", accepted: true },
+      ])
+    ).toEqual({ runA: { accepted: 2, total: 3 }, runB: { accepted: 0, total: 1 } });
+  });
+
+  // No entry, not { accepted: 0, total: 0 }: the roster draws no dot for a
+  // run it has no rows for, and a red "none accepted" dot for one it does.
+  it("gives a run with no rows no entry", () => {
+    expect(acceptanceByRunFrom([])).toEqual({});
   });
 });
 

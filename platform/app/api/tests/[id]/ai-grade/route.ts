@@ -20,6 +20,8 @@ import {
   loadStudentDisplayName,
   persistGradeOutcome,
 } from "@/lib/ai-grading-run";
+import { latestRunsByStudent } from "@/lib/ai-grade-review";
+import type { AcceptanceRef } from "@/lib/ai-grade-review";
 import { fetchAllRows } from "@/lib/na-scanning";
 import { findScansMarkedBefore, uprightScan } from "@/lib/scan-orientation";
 
@@ -71,9 +73,14 @@ interface ResultRow {
 
 /**
  * GET /api/tests/[id]/ai-grade?studentId=...
- * Returns grading runs and their results, for the review UI. With a
- * studentId, also that student's self-assessment of the test as
- * `self_scores` (see loadSelfScores below).
+ * For the review UI, in two shapes:
+ *   - without studentId (the roster): every run of the test, and `results`
+ *     cut down to { run_id, accepted } for each student's newest complete
+ *     run -- the acceptance counts the roster shows, and nothing else;
+ *   - with studentId (one student's review panel): their last few runs with
+ *     full result rows, signed evidence crops, PPQ images, what Clev's Marks
+ *     holds for each part, and their self-assessment of the test as
+ *     `self_scores` (see loadSelfScores below).
  */
 export async function GET(
   request: NextRequest,
@@ -146,12 +153,46 @@ export async function GET(
     });
   }
 
-  // A whole class's runs carry well over PostgREST's 1000-row cap (60 runs x
-  // ~39 items = 2,337 rows on 5 Sep 2026), and a single .in() query returns
-  // only the first 1000 with no error. Whichever runs land past the cap then
-  // have no results in the response, so the review UI shows them as never
-  // graded (no acceptance counts, no green dot) even though every mark is
-  // accepted. Page through .range() so every run's results reach the page.
+  // -- The whole-class load: acceptance counts and nothing else --------------
+  // From this call the roster reads one thing per student: how many parts of
+  // their newest complete run are accepted into Clev's Marks (the status dot,
+  // and the "already accepted" warning before a re-mark). It used to receive
+  // every result row of every run the test had ever had, crops signed and
+  // PPQ images attached, and count run_id/accepted over a fraction of them.
+  // On Key Assessment 1 (23 Sep 2026) that was 18,119 rows in a 20 MB
+  // response to count 1,752, and the page sat on "Loading this assessment..."
+  // for over half a minute. So count only the runs the page will show --
+  // chosen by the same function the page uses -- and send only those two
+  // columns, under the same keys, so a tab still running the old page reads
+  // them unchanged. One student's review (?studentId=) is what needs full
+  // rows, and it still gets them below.
+  if (!studentId) {
+    const latestIds = Object.values(latestRunsByStudent(runs).latestComplete).map((r) => r.id);
+    if (latestIds.length === 0) return NextResponse.json({ runs, results: [] });
+    let acceptance: AcceptanceRef[];
+    try {
+      // Still paged: the newest runs alone pass PostgREST's 1000-row cap on
+      // a big class (49 runs x 36 parts on Key Assessment 1).
+      acceptance = await fetchAllRows<AcceptanceRef>((from, to) =>
+        supabase
+          .from("ai_grade_results")
+          .select("run_id, accepted")
+          .in("run_id", latestIds)
+          .order("id", { ascending: true })
+          .range(from, to)
+      );
+    } catch (e) {
+      return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 500 });
+    }
+    return NextResponse.json({ runs, results: acceptance });
+  }
+
+  // Only a single student's review gets here, and their last few runs sit
+  // far below PostgREST's 1000-row cap. It pages through .range() anyway: a
+  // single .in() query past the cap returns only the first 1000 rows with no
+  // error -- which once made fully accepted students read as never graded
+  // (60 runs x ~39 items = 2,337 rows on 5 Sep 2026) -- and paging costs
+  // nothing when one page holds everything.
   const runIds = runs.map((r) => r.id);
   let rows: ResultRow[];
   try {

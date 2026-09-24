@@ -2940,3 +2940,64 @@ be.
   And reading a stored file straight after overwriting it can return the
   storage CDN's cached copy for a while; a `?cb=` query on the
   `/object/authenticated/` endpoint returns the new one.
+
+## 29. The marking page took ~45 s to show its roster (23 Sep 2026)
+
+The teacher asked for `/dashboard/tests/[id]/ai-grade` to load faster: Key
+Assessment 1 sat on "Loading this assessment…" for about 43 s.
+
+- **Where the time went.** The Vercel request log for one load: page 18:38:24,
+  `GET /api/tests/[id]` 18:38:28, `/api/students` 18:38:30,
+  `/api/tests/[id]/ai-grade` 18:38:33, `/absences` 18:39:05. The whole-class
+  `ai-grade` GET took about 32 s. It paged every result row of every run the
+  test has ever had (507 runs, 18,119 rows, 19 sequential pages, each URL
+  carrying all 507 run ids), signed an evidence URL on nearly every row,
+  assembled PPQ images, and sent about 20 MB, of which the page read
+  `run_id` and `accepted` to count acceptance for each student's newest
+  complete run: 49 runs, 1,752 rows. The four requests were also awaited one
+  after another, although only the roster depends on another one (it needs
+  `course_id`).
+- **The contract now.** The whole-class GET (no `studentId`) returns every
+  run as before, but `results` is only `{ run_id, accepted }` for each
+  subject's newest complete run. Nothing else is in that response; anything
+  that needs full rows, crops, `marks_awarded` or `self_scores` must use
+  `?studentId=`, which is unchanged. The same keys were kept on purpose: a
+  tab still running the old page reads only those two fields, so it renders
+  the same dots and the same "already accepted" warning before a re-mark.
+- **One rule for "the run".** `latestRunsByStudent` (`lib/ai-grade-review.ts`)
+  picks each subject's newest complete run and newer attempt. The route uses
+  it to choose whose rows to count and the page uses it to choose what to
+  show, so they cannot disagree. It walks the route's order (`created_at
+  desc, id asc`) and never re-sorts; a test pins it to the loop it replaced.
+- **Requests start together.** `page.tsx` passes the test's `course_id`, and
+  `loadOverview` starts all four requests at once (`Promise.allSettled`),
+  then reads them in the old order with the old early returns, so each
+  failure leaves the page as it did before. If the test detail names a
+  different course than the page passed, the roster is fetched again for the
+  right one. One deliberate change: an absences request that throws (not
+  just one that errors) no longer blanks the roster's dots behind a red box
+  -- absences stay best-effort, as the code always said.
+- **Measured against live data.** The real GET handler was called in-process
+  with a read-only service-role client standing in for the session, before
+  and after. Key Assessment 1: 20.2 MB / 22.4 s / 25 database requests down
+  to 0.5 MB / 1.8 s / 3. Unit 1: 21.6 MB / 15.9 s down to 0.4 MB / 0.65 s.
+  On all five tests with runs, the acceptance counts per student matched a
+  direct count over every row, from the new page code and from the old page
+  code reading the new response. Per-student responses from the old and new
+  handler, called at the same moment, were identical apart from signed-URL
+  tokens (15 of 15).
+  The page itself was driven headlessly against fixtures: the four requests
+  start within 3 ms, and a roster 500, an aborted runs request, an aborted
+  absences request, a stale course and a missing course all behave as
+  above. No teacher session was minted.
+- **Worth knowing.** The old results query's 20 KB URL failed from this
+  sandbox's Node with `UND_ERR_HEADERS_OVERFLOW` (the reply's headers passed
+  Node's 16 KB default) until `--max-http-header-size` was raised; production
+  answered 200, so it did not bite there. The new query sends one id per
+  student. What remains of the load: Vercel functions run in iad1 and the
+  database is in sa-east-1, so every database round trip is about 120 ms and
+  every API call spends about three of them on authentication; `/api/students`
+  (about 3 s) is now the slowest of the four. Moving the function region, or
+  lighter auth checks, would cut that for every page; neither was done here.
+  `BatchGradeTab` still mounts, hidden, on every visit and fetches
+  `/ai-grade/batch`.

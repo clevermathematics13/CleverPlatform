@@ -13,6 +13,11 @@
  *
  * Keeping the run/row pairing and the row ordering here, as pure functions,
  * is what makes both testable without rendering the component.
+ *
+ * The roster's choice of each student's run (latestRunsByStudent) lives here
+ * too, and GET /api/tests/[id]/ai-grade imports it: the route counts accepted
+ * parts only for the run the page will show, so the two must pick the same
+ * run, and one function is how they cannot drift apart.
  */
 
 /** Minimal shape of ai_grade_runs needed to pick a student's current run. */
@@ -68,6 +73,78 @@ export function runsForStudent<R extends ReviewRunRef>(studentId: string, runs: 
 export function rowsForRun<T extends ReviewResultRef>(runId: string | null, rows: T[]): T[] {
   if (!runId) return [];
   return rows.filter((r) => r.run_id === runId);
+}
+
+/** Minimal shape of ai_grade_runs needed to pick each student's run for the roster. */
+export interface OverviewRunRef {
+  id: string;
+  /** The opaque subject id (lib/grading-subject.ts); null only for a run with neither identity column set. */
+  student_id: string | null;
+  status: string;
+}
+
+/**
+ * Each student's runs as the roster reads them, out of the whole-class list:
+ *
+ *   latestComplete  the newest COMPLETE run -- the one reviewed, counted and
+ *                   accepted. A failed or half-finished attempt has no
+ *                   results, and treating it as "the" run once hid a
+ *                   student's real graded work behind an empty one.
+ *   newerAttempt    the newest run of any status when that is NOT the
+ *                   complete one (a failed re-mark, one still running, one
+ *                   queued overnight), kept so the roster can still show it.
+ *
+ * `runs` must already be newest first, in the order GET
+ * /api/tests/[id]/ai-grade returns them (created_at desc, then id asc), and
+ * the first match wins. It deliberately never re-sorts. The route picks the
+ * runs whose acceptance it counts with this function over that same array,
+ * and a tab still running the page from before this function existed walks
+ * the array the same way, so all of them agree on a student's run by
+ * construction. Re-sorting on parsed timestamps could split them: one
+ * overnight submission inserts a whole class at the same microsecond, and
+ * Date.parse keeps only milliseconds.
+ *
+ * A run with no subject is skipped -- no roster row can show it.
+ */
+export function latestRunsByStudent<R extends OverviewRunRef>(
+  runs: readonly R[]
+): { latestComplete: Record<string, R>; newerAttempt: Record<string, R> } {
+  const latestComplete: Record<string, R> = {};
+  const newestAny: Record<string, R> = {};
+  for (const r of runs) {
+    if (!r.student_id) continue;
+    if (!newestAny[r.student_id]) newestAny[r.student_id] = r;
+    if (r.status === "complete" && !latestComplete[r.student_id]) latestComplete[r.student_id] = r;
+  }
+  const newerAttempt: Record<string, R> = {};
+  for (const [studentId, r] of Object.entries(newestAny)) {
+    if (latestComplete[studentId]?.id !== r.id) newerAttempt[studentId] = r;
+  }
+  return { latestComplete, newerAttempt };
+}
+
+/** Minimal shape of ai_grade_results needed to count a run's accepted parts. */
+export interface AcceptanceRef {
+  run_id: string;
+  accepted: boolean;
+}
+
+/**
+ * How many of each run's result rows are accepted into Clev's Marks, keyed by
+ * run id -- what the roster's status dot shows. A run with no rows gets no
+ * entry at all, which the roster reads as "nothing to show".
+ */
+export function acceptanceByRunFrom(
+  rows: readonly AcceptanceRef[]
+): Record<string, { accepted: number; total: number }> {
+  const counts: Record<string, { accepted: number; total: number }> = {};
+  for (const r of rows) {
+    const c = counts[r.run_id] ?? { accepted: 0, total: 0 };
+    c.total += 1;
+    if (r.accepted) c.accepted += 1;
+    counts[r.run_id] = c;
+  }
+  return counts;
 }
 
 const ROMAN_RANK: Record<string, number> = { i: 1, ii: 2, iii: 3, iv: 4, v: 5 };

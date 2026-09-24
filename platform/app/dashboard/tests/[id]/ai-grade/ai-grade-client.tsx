@@ -18,8 +18,10 @@ import {
   summariseSelfAssessment,
   selfMarkFor,
   selfMarkDiffers,
+  latestRunsByStudent,
+  acceptanceByRunFrom,
 } from "@/lib/ai-grade-review";
-import type { SelfScoreRef } from "@/lib/ai-grade-review";
+import type { AcceptanceRef, SelfScoreRef } from "@/lib/ai-grade-review";
 import type { AssessmentKind } from "@/lib/assessment-kind";
 import { paperQuestionPrefixes } from "@/lib/assignments";
 import { buildStandardsReport, parseStandardsRubric } from "@/lib/standards-rubric";
@@ -252,11 +254,28 @@ function itemLabel(item: TestItem | undefined, paperPrefixes: Map<number, string
   return item.part_label ? `${prefix}(${item.part_label})` : prefix;
 }
 
+/**
+ * The value of one of loadOverview's concurrent requests, or its rejection
+ * re-thrown -- so a request that threw fails the load at the point where it
+ * used to be awaited, never ahead of an earlier request's own error.
+ */
+function settledValue<T>(result: PromiseSettledResult<T>): T {
+  if (result.status === "rejected") throw result.reason;
+  return result.value;
+}
+
 export function AiGradeClient({
   testId,
+  courseId = null,
   assessmentKind = "formative",
 }: {
   testId: string;
+  /**
+   * The test's course (tests.course_id) as the page read it, so the roster
+   * request can start without waiting for the test detail to name it. Only
+   * trusted while the test detail agrees -- see loadOverview.
+   */
+  courseId?: string | null;
   /** Decides what "Accept all" actually covers -- see lib/summative-grading-gate.ts. */
   assessmentKind?: AssessmentKind;
 }) {
@@ -457,10 +476,30 @@ export function AiGradeClient({
   };
 
   // -- Initial load: test detail (for items + course), roster, latest runs --
+  // The four requests do not depend on each other, so they all start at once.
+  // Awaiting them in turn made every load as slow as all four added together.
+  // The roster needs the test's course, which the page passes in (courseId) so
+  // that request need not wait for the test detail to name it. The answers
+  // are then read in the order they used to be awaited, with the same early
+  // returns, so a failure leaves the page exactly as it always did.
   const loadOverview = useCallback(async () => {
     setError(null);
+    // includeTrackSiblings: a Grade 9 test is attached to one class (9G)
+    // but the scanned pile mixes every class in its track (9A, 9C, 9G),
+    // so the roster pools them all -- signed in or not.
+    const rosterUrl = (course: string | null) =>
+      `/api/students?courseId=${course}&includeInvited=true&includeTrackSiblings=true`;
+    // allSettled, not all: one request throwing (offline, mid-deploy) must
+    // neither throw away the others' answers nor jump ahead of an earlier
+    // request's own error -- settledValue re-throws each in its turn below.
+    const [testSettled, rosterSettled, runsSettled, absencesSettled] = await Promise.allSettled([
+      fetchJson(`/api/tests/${testId}`),
+      courseId ? fetchJson(rosterUrl(courseId)) : Promise.resolve(null),
+      fetchJson(`/api/tests/${testId}/ai-grade`),
+      fetchJson(`/api/tests/${testId}/absences`),
+    ]);
     try {
-      const test1 = await fetchJson(`/api/tests/${testId}`);
+      const test1 = settledValue(testSettled);
       if (!test1.ok) {
         setError((test1.data.error as string) ?? "Could not load this assessment.");
         return;
@@ -468,12 +507,12 @@ export function AiGradeClient({
       const testData = test1.data as unknown as TestDetail;
       setTest(testData);
 
-      // includeTrackSiblings: a Grade 9 test is attached to one class (9G)
-      // but the scanned pile mixes every class in its track (9A, 9C, 9G),
-      // so the roster pools them all -- signed in or not.
-      const students1 = await fetchJson(
-        `/api/students?courseId=${testData.course_id}&includeInvited=true&includeTrackSiblings=true`
-      );
+      // The early roster is only good for the course the page named. Should
+      // the test now say otherwise (moved to another class since the page
+      // rendered) or no course came in, ask again for the course the test
+      // names, as this load always used to.
+      const prefetched = courseId && testData.course_id === courseId ? settledValue(rosterSettled) : null;
+      const students1 = prefetched ?? (await fetchJson(rosterUrl(testData.course_id)));
       if (!students1.ok) {
         setError((students1.data.error as string) ?? "Could not load the class roster.");
         return;
@@ -512,7 +551,7 @@ export function AiGradeClient({
         );
       setStudents(roster);
 
-      const runs1 = await fetchJson(`/api/tests/${testId}/ai-grade`);
+      const runs1 = settledValue(runsSettled);
       if (!runs1.ok) {
         setError((runs1.data.error as string) ?? "Could not load grading runs.");
         return;
@@ -522,17 +561,10 @@ export function AiGradeClient({
       // as "the" run used to hide a student's real graded work behind an
       // empty run (seen when a re-mark failed on API credits). The newer
       // attempt is kept separately so its error still shows in the roster.
+      // Picked by the same function the route uses to decide whose acceptance
+      // it counts, so the counts below are always for the run shown.
       const allRuns = (runs1.data.runs as RunRow[]) ?? [];
-      const latestComplete: Record<string, RunRow> = {};
-      const newestAny: Record<string, RunRow> = {};
-      for (const r of allRuns) {
-        if (!newestAny[r.student_id]) newestAny[r.student_id] = r;
-        if (r.status === "complete" && !latestComplete[r.student_id]) latestComplete[r.student_id] = r;
-      }
-      const newerAttempt: Record<string, RunRow> = {};
-      for (const [studentId, r] of Object.entries(newestAny)) {
-        if (latestComplete[studentId]?.id !== r.id) newerAttempt[studentId] = r;
-      }
+      const { latestComplete, newerAttempt } = latestRunsByStudent(allRuns);
       setRunsByStudent(latestComplete);
       setNewerAttemptByStudent(newerAttempt);
       // Counted off the raw run list, not the newest-run-per-student map: a
@@ -554,26 +586,22 @@ export function AiGradeClient({
         ).length
       );
 
-      // Absences are loaded best-effort: a failure here should not hide
-      // the roster, it just means nobody shows as absent.
-      const absences1 = await fetchJson(`/api/tests/${testId}/absences`);
-      if (absences1.ok) {
+      // Absences are loaded best-effort: a failure here -- an error answer or
+      // a request that never completed -- should not hide the roster, it
+      // just means nobody shows as absent.
+      if (absencesSettled.status === "fulfilled" && absencesSettled.value.ok) {
+        const absences1 = absencesSettled.value;
         const ids = ((absences1.data.absences as { studentId: string }[]) ?? []).map((a) => a.studentId);
         setAbsentStudents(new Set(ids));
       }
 
-      const counts: Record<string, { accepted: number; total: number }> = {};
-      for (const r of ((runs1.data.results as { run_id: string; accepted: boolean }[]) ?? [])) {
-        const c = counts[r.run_id] ?? { accepted: 0, total: 0 };
-        c.total += 1;
-        if (r.accepted) c.accepted += 1;
-        counts[r.run_id] = c;
-      }
-      setAcceptanceByRun(counts);
+      // The route sends { run_id, accepted } for each student's newest
+      // complete run only -- exactly what this counts.
+      setAcceptanceByRun(acceptanceByRunFrom((runs1.data.results as AcceptanceRef[]) ?? []));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not load this assessment.");
     }
-  }, [testId]);
+  }, [testId, courseId]);
 
   useEffect(() => {
     loadOverview().finally(() => setLoading(false));
