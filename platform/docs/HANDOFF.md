@@ -3104,3 +3104,91 @@ box); not touched here.
     not pay its extra `getUser` call.
   - `CLAUDE.md` forbids renaming the file, so this is left for the owner to
     decide.
+
+## 32. The marking page renders its roster on the server (24 Sep 2026)
+
+- **What was still slow after section 29.** The page arrived saying "Loading
+  this assessment...", downloaded and started 748 KB (207 KB gzipped) of its
+  own JavaScript, and only then sent four requests, each signing the teacher
+  in again, before it could draw the roster. Section 31 moved the functions
+  next to the database; this section removes most of the rest.
+- **Less JavaScript.** Measured from the route's client-reference manifest in
+  local production builds of `3b7428c` and of this change:
+  - the page's own chunks went from 748 KB raw / 207 KB gzipped to
+    71 KB / 21 KB;
+  - its whole first load, framework and layouts included, went from
+    1,517 KB / 423 KB to 840 KB / 237 KB.
+
+  What moved:
+  - **KaTeX (256 KB).** `LatexRenderer` loads with `next/dynamic` and is
+    fetched once the page is idle, so the first review still opens at once.
+  - **mafs (52 KB).** `LatexRenderer` imported the graph-marker helpers from
+    `components/IbGraph.tsx`, which imports mafs, so IbGraph's own
+    `next/dynamic` did nothing on any page that renders LaTeX. The helpers
+    now live in the mafs-free `components/ib-graph-spec.ts`, re-exported by
+    IbGraph. That fixes every page with LaTeX, not only this one.
+  - **zod (281 KB).** It was only needed to parse a Standard Level rubric, and
+    the page now does that on the server. The zod-free half of
+    `lib/standards-rubric.ts` (types, levels, `buildStandardsReport`) is now
+    `lib/standards-report.ts`, re-exported from `lib/standards-rubric.ts`, so
+    no other caller changed. **Client components import
+    `lib/standards-report.ts`; importing `lib/standards-rubric.ts` from one
+    puts zod back in its bundle.**
+  - **`lib/assignments` (49 KB).** It came along for a 25-line helper.
+    `paperQuestionPrefixes` and `formatQuestionLabel` now live in
+    `lib/paper-labels.ts`, re-exported from `lib/assignments`.
+  - **The batch tab.** It mounts the first time it is opened and then stays
+    mounted, so its restore fetch no longer runs on every visit.
+- **The roster is in the first HTML.**
+  - `page.tsx` reads the whole test with `lib/test-detail.ts`, the select
+    GET /api/tests/[id] also uses, and starts the roster's own loads
+    alongside it.
+  - The header goes out at once. The roster streams in behind a Suspense
+    boundary whose fallback is the old loading line.
+  - The loads are the routes' own, moved into shared server loaders:
+    `lib/course-roster.ts` for GET /api/students, and
+    `lib/ai-grade-overview.ts` for the whole-class GET
+    /api/tests/[id]/ai-grade and GET .../absences. Each route keeps its auth,
+    parameters and response. Checked byte for byte against the old handlers
+    on five live tests (read-only).
+  - What the client used to work out from those answers is now
+    `buildRosterOptions` and `deriveOverviewState` in
+    `lib/ai-grade-review.ts`, and both sides call them. `load-initial.ts`
+    builds the client's initial state; on the same five tests it equalled
+    what the old client computed, roster order included.
+  - Key Assessment 1 gets 91 KB of initial state (each student's newest
+    complete run and newer attempt) instead of the 508 KB run list the
+    browser used to fetch. That costs about ten queries on the server.
+  - If any load fails, the initial state is null and the client loads exactly
+    as before: the same four requests and the same error messages.
+  - The roster now sorts with an explicit "en" collation (`ROSTER_COLLATOR`).
+    `localeCompare` without a locale used each runtime's own, and a
+    Spanish-language browser sorts n-tilde after every "n", so a refresh
+    could have reordered the server's list.
+  - On mount the client now makes only two calls: the Anthropic key check,
+    and the overnight collect poll when a run is outstanding. The poll now
+    starts at once instead of after the roster fetch.
+  - One behaviour change: a rubric edited in another tab now shows only after
+    a reload. Before, the next roster refresh picked it up.
+- **Collapsed classes are remembered.**
+  - The cookie is `cp_ai_grade_collapsed`, built in
+    `lib/ai-grade-collapsed-classes.ts`. It holds a JSON array of class
+    names.
+  - It is scoped to `/dashboard/tests`, kept a year, SameSite Lax, and Secure
+    on https. It is deleted once nothing is collapsed.
+  - It is written when a class heading is clicked, and read in `page.tsx` with
+    `cookies()`, so those classes are collapsed in the first HTML.
+  - A malformed value reads as nothing collapsed.
+- **Checked locally on a fixture page, in dev and a production build:**
+  - no hydration warnings and no data requests on mount;
+  - the cookie's classes are collapsed in the server HTML;
+  - toggling writes and deletes the cookie, and it is not sent outside
+    `/dashboard/tests`;
+  - the batch tab's chunk and its single restore fetch wait for the first
+    click;
+  - the KaTeX chunk arrives after the load event, and a review renders
+    KaTeX;
+  - the fallback path renders the identical roster.
+- **After deploy.** The Vercel log for a load of the marking page should show
+  the page request and none of /api/students, /api/tests/[id],
+  /api/tests/[id]/ai-grade or /absences after it.
