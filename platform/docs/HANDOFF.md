@@ -257,8 +257,8 @@ must exercise Server Actions.
 
 ## 4. Database and migrations
 
-**The migration ledger and the repo agree on versions: 179 files, 179 rows**
-(verified 23 Sep 2026; it read 83/83 when this handoff was written, 95/95 after
+**The migration ledger and the repo agree on versions: 180 files, 180 rows**
+(verified 24 Sep 2026; it read 83/83 when this handoff was written, 95/95 after
 the second reconciliation, 116/116 after the third, 149/149 on 13 Sep and
 171/171 on 20 Sep). Two
 rows applied through MCP on 18 Sep (`20260918205816`, `20260918210444`) had no
@@ -2790,14 +2790,14 @@ available yet".
   (`20260923184029_ka1_unit1_6d_note_matches_scheme`, generated from the
   live note by exact replacement; every other paragraph is byte-identical
   and every ruling stands).
-- **`lib/fixtures/g9-standard-ka1-unit1.ts` is no longer the live paper.**
-  Its header calls it the source the seed was written from, and the 18 Sep
-  migration `20260918123826` says it is "kept 1:1" with it, but that edit
-  never reached the fixture: 7(d), 8 and 9(a)-(c) already differed from the
-  live rows, and 2(a), 3(c), 6(d) and 9(b) now do too. It is not read at
-  runtime and its tests pin marks and strands, not wording. Never regenerate
-  SQL for this paper from it -- that would quietly revert every fix above.
-  Read the live `test_items` rows instead.
+- **`lib/fixtures/g9-standard-ka1-unit1.ts` drifted from the live paper,
+  and was re-synced on 24 Sep (section 30).** The 18 Sep migration
+  `20260918123826` called it "kept 1:1", but none of the 18 and 23 Sep
+  scheme rewrites reached it: 2(a), 3(c), 6(d), 7(d), 8 and 9(a)-(c) had all
+  drifted. It is not read at runtime, so nothing broke -- but SQL
+  regenerated from a stale fixture would quietly revert every fix above.
+  When a migration rewrites this paper's live text, update the fixture in
+  the same change.
 - **Each 9D submission (re)writes a 9D PowerSchool file for this paper.**
   9D has a stored scores template (from Formative Assessment 1), so
   `/api/gradebook/self-assessment-export` retargets it and fills it -- with
@@ -3294,3 +3294,45 @@ layout derived from a master PDF's text layer -- KA1 has no master in Storage,
 and the standards importer does not keep the paper it reads; worth doing for the
 next imported paper (store the PDF at import, read the printed part labels with
 pdfjs the way `paper-layout-derive.ts` reads anchor marks).
+
+## 34. Extended KA1's mark scheme brought in line with its marking notes (24 Sep 2026)
+
+The teacher asked for the same alignment as the Standard paper got in
+section 26, on Grade 9 Extended Key Assessment 1. All eleven parts that carry
+marking notes had moved away from their printed scheme, in both directions:
+more lenient on 2.1(a) ("cost" supplies the units), 2.2(a) (any equivalent
+of 6m - 8), 3.1 (a copying slip costs one mark only), 3.4(a) (one slipped
+product still earns the method mark), 4.1 (the conclusion need not say "for
+every x"), 4.3(b) (a third route, "90% of 80% of c is not 70% of c") and
+4.2(a) (every student gets both marks, as material not yet assessed);
+stricter or more exact on 1.3(a) (the sum must be evaluated to 0), 2.1(b)
+("dollars" must be written; "total cost" alone earns 0 -- note the contrast
+with 2.1(a), which is the teacher's ruling, kept as it stands), 3.2(b) (w = 6
+with no valid working earns nothing) and 4.3(a) (the answer mark needs 0.72c
+written simplified).
+
+Migration `20260924113414_ka1_extended_schemes_match_rulings` rewrites the
+eleven texts from the notes. **This paper lives in two places**: it was
+written in the creator, so the student page and the per-part scheme beside
+each self-grade box read `tests.custom_content`, while the grader reads
+`test_items.markscheme_text` -- the migration updates both, in place, with
+`jsonb_set` on the draft. Re-saving through the creator is the thing not to
+do: `syncTestItems` recreates `test_items` with new ids and cuts the
+accepted marks loose from them. A `do` block first checks all 22 texts
+against the md5 they were written against and raises, applying nothing, if
+any has changed; every update is guarded the same way. There are no
+triggers on `tests` or `test_items`.
+
+- Each part keeps its leading M1/A1/R1 openings, which the Formative
+  Assessment marker itemises; outcomes are said in words ("the answer mark",
+  "1 of 3") because the student page strips the codes, and "earns M1A0"
+  stripped reads as "earns". Every text was proof-read in its stripped,
+  student-facing form before applying.
+- Verified after applying: the draft and the items agree on all 36 parts,
+  the eleven new texts are in place, and the real mark-scheme route, run as
+  a 9C student against live data, serves them. The notes were not touched,
+  so no mark changes.
+- **Not updated: the archived teacher mark scheme PDF**
+  (`tests.mark_scheme_pdf_storage_path`), which is rendered when the draft is
+  saved and still shows the earlier wording. Regenerating it goes through
+  the save route, which is the re-save above.
