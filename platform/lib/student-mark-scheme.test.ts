@@ -254,9 +254,17 @@ describe("studentMarkSchemeParts", () => {
     const parts = studentMarkSchemeParts(null, items);
 
     expect(parts.size).toBe(26);
-    for (const part of parts.values()) {
+    for (const [id, part] of parts) {
+      // Each part's text is ITS item's scheme: check for that scheme's own
+      // opening words (before any maths, which renders as KaTeX markup),
+      // not for a phrase every scheme happens to share. Q8's scheme opens
+      // "The question asks for..." since 20260918210444, and it is a scheme
+      // like the others.
+      const item = KA1_UNIT1_ITEMS[Number(id.replace("ka1-", ""))];
+      const lead = item.markschemeText.split("$")[0].slice(0, 40);
+      expect(lead.length).toBeGreaterThan(10);
       expect(part.answer_html).toBeNull();
-      expect(part.how_marked_html).toContain("full-mark response");
+      expect(part.how_marked_html).toContain(lead);
     }
     expect(parts.get("ka1-0")?.how_marked_html).toContain('class="katex"');
   });

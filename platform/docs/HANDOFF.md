@@ -3053,3 +3053,8 @@ box); not touched here.
   route writes `stem_text` on lettered parts, and the review page has a
   per-question "Stem" box that edits every part of that question at once.
 - `SCHEMA.md` `test_items` now lists `stem_text` and `marking_notes`.
+- Follow-up, same day: the fixture's mark schemes were re-synced from the
+  live rows. Eight parts had drifted, not the two the PR body named: 2(a),
+  3(c), 6(d), 7(d), 8, 9(a), 9(b), 9(c), i.e. every scheme the 18 and 23 Sep
+  migrations rewrote without touching the fixture. All 26 items now compare
+  equal to the database on stem, question and scheme.
