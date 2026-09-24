@@ -3294,3 +3294,48 @@ layout derived from a master PDF's text layer -- KA1 has no master in Storage,
 and the standards importer does not keep the paper it reads; worth doing for the
 next imported paper (store the PDF at import, read the printed part labels with
 pdfjs the way `paper-layout-derive.ts` reads anchor marks).
+
+---
+
+## 34. A carried row lost the reason it was not "high" (24 Sep 2026)
+
+The teacher asked why Key Assessment 1 Q10(c) (printed 3.4(c), "Simplify
+completely") was marked **low** when its Why? panel said "The marker's own
+call: nothing was corrected after the fact". It was not the marker's own call.
+On 17 Sep the marker's reasoning settled on the student's `6ab² − 5b` (0 of 1)
+while its own breakdown awarded A1 "Correctly combined like terms: 6ab² + 5b".
+`validateGradeResponse` never lets a breakdown raise a total, so it kept 0,
+forced low, and wrote `10(c): model reported 0 mark(s) but its own breakdown
+awards 1 token(s) ...` plus a hedge warning ("appears to"). The doubt was the
+model's reading of one sign; the crop reads −5b, so the 0 stands.
+
+**Why the panel lost it.** A partial re-mark copies every part it was not
+asked to mark from the previous complete run (`persistGradeOutcome`), but
+wrote `coverage.warnings` from the new run's own warnings only. The panel and
+`scripts/confidence-calibration.ts` read a row's warnings from the run the row
+is stored under, so every carried part lost its reason. This student had eight
+one-part re-marks of other questions after 17 Sep (each of a part that carries
+a marking note); each copied 10(c) verbatim and dropped its two warnings.
+
+**What changed.**
+
+- `persistGradeOutcome` copies the previous run's warnings for the parts it
+  carries, through `warningsForParts` in `lib/ai-grade-review.ts` (beside
+  `warningsForPart`, tested).
+- `scripts/backfill-carried-warnings.ts` repairs the runs written before:
+  each student's runs in completion order, only ever adding a missing warning
+  string to `coverage.warnings`, so it can be run twice. Dry run, 24 Sep: 1026
+  warnings missing from 625 of 859 partial re-marks, all on Key Assessment 1
+  and Key Assessment 1 - Unit 1. On the newest runs (the ones the panel shows)
+  that is 69 warnings across 47 students, and 45 rows below "high" that read
+  "the marker's own call": 18 were breakdown caps, 27 the hedge cap §23 B
+  retired. **Not applied as of this commit**; run it with `--yes`.
+- §23's calibration numbers predate partial re-marks (the first was 20 Sep
+  20:04 UTC) and are unaffected. A calibration run between then and the
+  backfill would count carried caps as the marker's own call.
+
+**Not done.** The deliberation scan (`lib/examiner-reasoning.ts`) matches
+"wait," but not "Wait -", "Re-examining" or "looking again", which is how this
+reasoning changed its mind. Three parts on newest runs use them, all already
+low, so adding them would move no label today, only the reason shown. Run the
+calibration after it if it is done (§23 A).

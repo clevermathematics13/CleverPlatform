@@ -39,6 +39,7 @@ import {
   type GradingUnit,
   type ValidatedGrade,
 } from "./ai-grading";
+import { warningsForParts } from "./ai-grade-review";
 import { cropRegions, cvServiceEndpoint, type CropRegion } from "./cv-crop-service";
 import {
   anchorCropPlan,
@@ -488,9 +489,9 @@ export async function persistGradeOutcome(args: {
    * Set when the run was asked to mark only these parts
    * (ai_grade_runs.requested_test_item_ids). Every other gradeable part's row
    * is copied from the student's previous complete run -- mark, reasoning,
-   * crop and acceptance alike -- so the new run is still a whole paper. A
-   * student with no previous complete run gets only the requested parts,
-   * and a warning says so.
+   * crop and acceptance alike, and the validator's warnings for it -- so the
+   * new run is still a whole paper. A student with no previous complete run
+   * gets only the requested parts, and a warning says so.
    */
   requestedTestItemIds?: Set<string> | null;
 }): Promise<
@@ -534,10 +535,12 @@ export async function persistGradeOutcome(args: {
   const priorAccepted = new Map<string, { suggested_marks: number; accepted_at: string | null; accepted_by: string | null }>();
   /** The previous complete run's full rows, needed only for a partial re-mark (see requestedTestItemIds). */
   const priorFullRows: Record<string, unknown>[] = [];
+  /** The previous complete run's warnings, likewise for a partial re-mark: the carried rows' own go with them. */
+  let priorWarnings: string[] = [];
   {
     let priorCompleteQuery = supabase
       .from("ai_grade_runs")
-      .select("id")
+      .select("id, coverage")
       .eq("test_id", testId)
       .eq("status", "complete")
       .neq("id", runId)
@@ -563,6 +566,8 @@ export async function persistGradeOutcome(args: {
           )
           .eq("run_id", priorRun.id);
         for (const r of fullRows ?? []) priorFullRows.push(r as Record<string, unknown>);
+        const priorCoverage = priorRun.coverage as Partial<GradeCoverage> | null;
+        if (Array.isArray(priorCoverage?.warnings)) priorWarnings = priorCoverage.warnings;
       }
     }
   }
@@ -611,9 +616,17 @@ export async function persistGradeOutcome(args: {
   // id. The crop path still points at the previous run's file, which stays
   // in Storage. A part the previous run never marked is simply absent, the
   // same as a part the model returned nothing for.
+  //
+  // The previous run's warnings for those parts are copied too. The review
+  // panel and scripts/confidence-calibration.ts read a row's warnings from
+  // the run it is stored under, so a carried "low" without them reads as
+  // "the marker's own call" when the validator forced it. Partial re-marks
+  // written before this was fixed (from 20 Sep 2026) dropped them;
+  // scripts/backfill-carried-warnings.ts restores those runs.
   let carriedRows: typeof rows = [];
   let carriedSuggested = 0;
   const carriedNeedsReview: string[] = [];
+  const carriedLabels: string[] = [];
   if (requested) {
     const marked = new Set(rows.map((r) => r.test_item_id));
     const unitById = new Map(gradeable.map((u) => [u.testItemId, u]));
@@ -626,7 +639,9 @@ export async function persistGradeOutcome(args: {
       void _drop;
       carriedRows.push({ ...(rest as Omit<(typeof rows)[number], "run_id" | "test_item_id">), run_id: runId, test_item_id: itemId } as (typeof rows)[number]);
       carriedSuggested += prior.suggested_marks as number;
-      if ((prior.confidence as string) !== "high" || prior.work_found === false) carriedNeedsReview.push(unitLabel(unit));
+      const label = unitLabel(unit);
+      carriedLabels.push(label);
+      if ((prior.confidence as string) !== "high" || prior.work_found === false) carriedNeedsReview.push(label);
     }
     if (priorFullRows.length === 0) {
       warnings.push(
@@ -657,7 +672,7 @@ export async function persistGradeOutcome(args: {
     testTotalMarks,
     needsReview,
     acceptedCarriedForward,
-    warnings: [...assemblyWarnings, ...warnings],
+    warnings: [...assemblyWarnings, ...warnings, ...warningsForParts(carriedLabels, priorWarnings)],
   };
 
   // The result rows are already in, so a lost run update is not a lost mark

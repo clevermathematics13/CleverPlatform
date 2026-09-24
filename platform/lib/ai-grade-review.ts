@@ -395,6 +395,24 @@ export function warningsForPart(label: string, warnings: readonly string[] | nul
 }
 
 /**
+ * The warnings that belong to any of these parts, prefix KEPT, in the order
+ * they were written. This is what a partial re-mark copies from the previous
+ * run for the parts it carries forward (lib/ai-grading-run.ts,
+ * persistGradeOutcome): the row is copied verbatim, so the reason it is not
+ * "high" must travel with it, or the panel reads the carried part's warnings
+ * from the new run, finds none, and calls a validator cap the marker's own
+ * call.
+ */
+export function warningsForParts(
+  labels: Iterable<string>,
+  warnings: readonly string[] | null | undefined
+): string[] {
+  const prefixes = [...labels].map((label) => `${label}: `);
+  if (prefixes.length === 0) return [];
+  return (warnings ?? []).filter((w) => prefixes.some((prefix) => w.startsWith(prefix)));
+}
+
+/**
  * Why the validator flagged a part, classified from the warning text it
  * wrote. "none" means every warning on the part is some other kind (or there
  * are none), so a non-high label is the model's own call.

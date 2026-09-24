@@ -7,6 +7,7 @@ import {
   partitionByConfidence,
   partWarningLabel,
   warningsForPart,
+  warningsForParts,
   capCauseForPart,
   summariseSelfAssessment,
   selfMarkFor,
@@ -556,6 +557,47 @@ describe("warningsForPart / capCauseForPart", () => {
     expect(capCauseForPart("6", warnings)).toBe("numeric");
     expect(capCauseForPart("2", warnings)).toBe("none");
     expect(capCauseForPart("2", undefined)).toBe("none");
+  });
+});
+
+describe("warningsForParts", () => {
+  // The two warnings are the ones Key Assessment 1 Q10(c) was marked with
+  // before a run of one-part re-marks carried it forward without them.
+  const warnings = [
+    "10(c): model reported 0 mark(s) but its own breakdown awards 1 token(s); kept 0 — a breakdown is never used to raise a mark beyond what this pass granted — and flagged for teacher review",
+    "1: model awarded 4 of a possible 3; clamped to 3 and flagged low confidence",
+    "1(a): reasoning hedges on reading the student's work (\"seems to\") — check the crop before accepting",
+    "11(a): examiner reasoning exposes internal deliberation (\"wait,\") — flagged for teacher review",
+    "10(c): reasoning hedges on reading the student's work (\"appears to\") — check the crop before accepting",
+    "This test's standards rubric could not be read and was ignored: bad json",
+  ];
+
+  it("returns every listed part's warnings with the prefix kept, in written order", () => {
+    expect(warningsForParts(["10(c)", "1(a)"], warnings)).toEqual([warnings[0], warnings[2], warnings[4]]);
+  });
+
+  it("does not pick up a part whose label only starts the same way", () => {
+    expect(warningsForParts(["1"], warnings)).toEqual([warnings[1]]);
+    expect(warningsForParts(["1(a)"], warnings)).toEqual([warnings[2]]);
+    expect(warningsForParts(["10"], warnings)).toEqual([]);
+  });
+
+  it("never carries a warning with no part prefix", () => {
+    expect(warningsForParts(["1", "1(a)", "10(c)", "11(a)"], warnings)).not.toContain(warnings[5]);
+  });
+
+  it("is empty with no labels or no warnings", () => {
+    expect(warningsForParts([], warnings)).toEqual([]);
+    expect(warningsForParts(new Set<string>(), warnings)).toEqual([]);
+    expect(warningsForParts(["10(c)"], null)).toEqual([]);
+    expect(warningsForParts(["10(c)"], undefined)).toEqual([]);
+  });
+
+  it("keeps each part's cause, so a carried row reads the same as the run that marked it", () => {
+    for (const label of ["10(c)", "1", "1(a)", "11(a)", "2"]) {
+      expect(capCauseForPart(label, warningsForParts([label], warnings))).toBe(capCauseForPart(label, warnings));
+    }
+    expect(capCauseForPart("10(c)", warningsForParts(["10(c)"], warnings))).toBe("breakdown");
   });
 });
 
