@@ -15,8 +15,10 @@ import {
   INVITED_SUBJECT_PREFIX,
   buildSegmentationUserPrompt,
   validateSegmentationResponse,
+  holdOtherClassNames,
   matchSegmentsToRoster,
   rematchUnmatchedSegments,
+  type ClassRosterEntry,
   type ProposedSegment,
   type RosterEntry,
 } from "@/lib/ai-grading";
@@ -34,7 +36,7 @@ export const maxDuration = 300;
  * "Batch upload" tab to show prior batches and their segmentation status.
  *
  * POST /api/tests/[id]/ai-grade/batch
- * Body: { storagePath: string, fileName?: string, readMode?: "quick" | "deep" }
+ * Body: { storagePath: string, fileName?: string, readMode?: "quick" | "deep", courseId?: string }
  *
  * The client uploads the raw PDF directly to Supabase Storage (bucket
  * "exam-scans", path "batches/<uuid>/<fileName>") BEFORE calling this route —
@@ -78,6 +80,19 @@ export const maxDuration = 300;
  * split and graded as an ordinary batch. No database row is written for
  * the parent upload — its parts carry "(part i of n, pages a-b)" in their
  * file_name, which is all the linkage the review UI needs.
+ *
+ * courseId is the class whose scripts are in the scan (9C), and names are
+ * matched against that class only -- the cover-page read is shown only its
+ * students, and so is the roster match after it. A Grade 9 paper is sat by
+ * every class in its track, and matching one class's pile against all of
+ * them is how a cover reading just "Santiago" in 9C's pile went to the one
+ * Santiago in 9A on 15 Sep 2026 (the model called him "the only Santiago
+ * enrolled" with both on the list it was given). A cover that is exactly the
+ * name of a student in another class is held for the teacher rather than
+ * matched (holdOtherClassNames). Without courseId -- the "mixed classes"
+ * choice, or a client from before 24 Sep 2026 -- the whole track is used, as
+ * before. The class is stored on the batch row, so re-reads and the batch
+ * list's re-matching use it too.
  */
 
 /**
@@ -97,11 +112,18 @@ export const maxDuration = 300;
  * the roster /api/students serves the dropdown, or a name matched here
  * would have no option to land on.
  */
-async function loadGradingRoster(supabase: SupabaseClient, courseId: string | null): Promise<RosterEntry[]> {
-  if (!courseId) return [];
-  const { roster } = await loadInvitedRoster(supabase, courseId, { includeTrackSiblings: true });
-  return roster
-    .map((r): RosterEntry => ({
+interface GradingRoster {
+  /** Every student who sits the test, across the classes of its track. */
+  all: ClassRosterEntry[];
+  /** Those classes, id to name ("9C"). */
+  classNames: Record<string, string>;
+}
+
+async function loadGradingRoster(supabase: SupabaseClient, courseId: string | null): Promise<GradingRoster> {
+  if (!courseId) return { all: [], classNames: {} };
+  const { roster, sourceCourseNames } = await loadInvitedRoster(supabase, courseId, { includeTrackSiblings: true });
+  const all = roster
+    .map((r): ClassRosterEntry => ({
       // Registered students resolve straight to their real profile id, so
       // a returning student's batch scan is written the ordinary way.
       // Not-yet-registered students get the composite subject id instead
@@ -109,8 +131,37 @@ async function loadGradingRoster(supabase: SupabaseClient, courseId: string | nu
       profileId: r.profileId ?? `${INVITED_SUBJECT_PREFIX}${r.invitedId}`,
       displayName: r.fullName,
       aliases: r.aliases ?? [],
+      courseId: r.sourceCourseId,
+      className: sourceCourseNames[r.sourceCourseId] ?? null,
     }))
     .filter((r) => !!r.displayName);
+  return { all, classNames: sourceCourseNames };
+}
+
+/**
+ * The names a scan is matched against: its class's students when it was
+ * uploaded as one class's pile, every class in the track otherwise.
+ */
+function rosterForScan(roster: GradingRoster, scanCourseId: string | null): RosterEntry[] {
+  return scanCourseId ? roster.all.filter((r) => r.courseId === scanCourseId) : roster.all;
+}
+
+/**
+ * holdOtherClassNames for a class-scoped scan; a mixed-classes scan already
+ * matched against everyone, so there is no other class to hold for.
+ */
+function holdForScan(
+  segments: ProposedSegment[],
+  roster: GradingRoster,
+  scanCourseId: string | null
+): ProposedSegment[] {
+  if (!scanCourseId) return segments;
+  return holdOtherClassNames(
+    segments,
+    rosterForScan(roster, scanCourseId),
+    roster.all.filter((r) => r.courseId !== scanCourseId),
+    roster.classNames[scanCourseId] ?? "this class"
+  );
 }
 
 export async function GET(
@@ -129,7 +180,7 @@ export async function GET(
   const { data: batches, error } = await supabase
     .from("ai_grade_batches")
     .select(
-      "id, test_id, status, read_mode, source_storage_path, file_name, page_count, proposed_segments, confirmed_segments, unassigned_pages, blank_pages, error, created_at, segmented_at, split_at"
+      "id, test_id, status, read_mode, course_id, source_storage_path, file_name, page_count, proposed_segments, confirmed_segments, unassigned_pages, blank_pages, error, created_at, segmented_at, split_at"
     )
     .eq("test_id", testId)
     .order("created_at", { ascending: false })
@@ -181,8 +232,9 @@ export async function GET(
   // Proposals are frozen when a batch is read, so a spelling recorded
   // afterwards (or a student added to the roster since) never reached
   // rows read earlier. Re-match the unmatched ones against today's roster
+  // -- the batch's own class when it was uploaded as one class's pile --
   // and persist what changed, so the restored panel pre-fills them.
-  let rematchRoster: RosterEntry[] = [];
+  let rematchRoster: GradingRoster = { all: [], classNames: {} };
   try {
     const { data: test } = await supabase.from("tests").select("course_id").eq("id", testId).maybeSingle();
     rematchRoster = await loadGradingRoster(supabase, (test?.course_id as string | null) ?? null);
@@ -192,9 +244,14 @@ export async function GET(
   const refreshed = await Promise.all(
     (batches ?? []).map(async (b) => {
       const proposals = Array.isArray(b.proposed_segments) ? (b.proposed_segments as ProposedSegment[]) : null;
-      if (!proposals || rematchRoster.length === 0 || !["segmented", "split"].includes(b.status as string)) return b;
-      const { segments, changed } = rematchUnmatchedSegments(proposals, rematchRoster);
-      if (!changed) return b;
+      const scanCourseId = (b.course_id as string | null) ?? null;
+      const roster = rosterForScan(rematchRoster, scanCourseId);
+      if (!proposals || roster.length === 0 || !["segmented", "split"].includes(b.status as string)) return b;
+      const { segments: rematched } = rematchUnmatchedSegments(proposals, roster);
+      // A re-match against one class can land a cover that names another
+      // class's student on a namesake, exactly as a fresh read can.
+      const segments = holdForScan(rematched, rematchRoster, scanCourseId);
+      if (JSON.stringify(segments) === JSON.stringify(proposals)) return b;
       await supabase.from("ai_grade_batches").update({ proposed_segments: segments }).eq("id", b.id);
       return { ...b, proposed_segments: segments };
     })
@@ -366,7 +423,13 @@ export async function POST(
   const { supabase, user } = auth;
   const { id: testId } = await params;
 
-  let body: { storagePath?: unknown; fileName?: unknown; forceResegment?: unknown; readMode?: unknown };
+  let body: {
+    storagePath?: unknown;
+    fileName?: unknown;
+    forceResegment?: unknown;
+    readMode?: unknown;
+    courseId?: unknown;
+  };
   try {
     body = await request.json();
   } catch {
@@ -442,7 +505,23 @@ export async function POST(
   // oversized-upload path also hands the name list to its cover-page checks
   // (constrained recognition against real names beats open-vocabulary
   // handwriting OCR).
-  const roster = await loadGradingRoster(supabase, (test.course_id as string | null) ?? null);
+  const gradingRoster = await loadGradingRoster(supabase, (test.course_id as string | null) ?? null);
+
+  // The class whose pile this is (see the route comment). It has to be one of
+  // the classes that sit this test, and have students in it: anything else is
+  // a stale or tampered client, and matching against nobody would propose
+  // nobody for every cover page.
+  const scanCourseId = typeof body.courseId === "string" && body.courseId.trim() ? body.courseId.trim() : null;
+  if (scanCourseId && !Object.prototype.hasOwnProperty.call(gradingRoster.classNames, scanCourseId)) {
+    return NextResponse.json({ error: "That class does not sit this assessment." }, { status: 400 });
+  }
+  const roster = rosterForScan(gradingRoster, scanCourseId);
+  if (scanCourseId && roster.length === 0) {
+    return NextResponse.json(
+      { error: `${gradingRoster.classNames[scanCourseId]} has no students to match this scan against.` },
+      { status: 400 }
+    );
+  }
 
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -502,12 +581,16 @@ export async function POST(
   // proposal it is meant to replace would silently ignore the request.
   const sourceSha256 = createHash("sha256").update(buffer).digest("hex");
   if (body.forceResegment !== true) {
-    const { data: prior } = await supabase
+    const priorQuery = supabase
       .from("ai_grade_batches")
       .select("id, read_mode, proposed_segments, unassigned_pages, blank_pages")
       .eq("test_id", testId)
       .eq("source_sha256", sourceSha256)
-      .in("read_mode", readMode === "deep" ? ["deep"] : ["quick", "deep"])
+      .in("read_mode", readMode === "deep" ? ["deep"] : ["quick", "deep"]);
+    // Only a proposal matched against the same names: a quick read's labels
+    // ARE its roster matches, so one made against the whole track (or another
+    // class) would carry that roster's guesses into this class's pile.
+    const { data: prior } = await (scanCourseId ? priorQuery.eq("course_id", scanCourseId) : priorQuery.is("course_id", null))
       .in("status", ["segmented", "split"])
       .not("proposed_segments", "is", null)
       .order("created_at", { ascending: false })
@@ -522,6 +605,7 @@ export async function POST(
         .insert({
           test_id: testId,
           created_by: user.id,
+          course_id: scanCourseId,
           status: "segmented",
           source_storage_path: storagePath,
           file_name: fileName,
@@ -566,6 +650,7 @@ export async function POST(
     .insert({
       test_id: testId,
       created_by: user.id,
+      course_id: scanCourseId,
       status: "segmenting",
       source_storage_path: storagePath,
       file_name: fileName,
@@ -637,7 +722,7 @@ export async function POST(
         502
       );
     }
-    proposedSegments = matchSegmentsToRoster(plan.students, roster);
+    proposedSegments = holdForScan(matchSegmentsToRoster(plan.students, roster), gradingRoster, scanCourseId);
     unassignedPages = plan.unassignedPages;
     // A quick read has no blank list of its own: every page is claimed by
     // construction (each student runs to the page before the next cover),
@@ -706,7 +791,11 @@ export async function POST(
     if (!validation || !validation.ok) return failBatch(lastError, 502);
 
     // -- Match against the class roster --------------------------------------
-    proposedSegments = matchSegmentsToRoster(validation.response.students, roster);
+    proposedSegments = holdForScan(
+      matchSegmentsToRoster(validation.response.students, roster),
+      gradingRoster,
+      scanCourseId
+    );
     unassignedPages = [
       ...new Set([
         ...validation.response.unassignedPages,

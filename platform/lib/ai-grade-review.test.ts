@@ -360,7 +360,9 @@ describe("buildRosterOptions", () => {
       [row(null, "Nobody", "c", "9A"), row(`invited-${SALIM}`, "Salim Fellah", "c", "9A")],
       "c"
     );
-    expect(options).toEqual([{ profile_id: `invited-${SALIM}`, display_name: "Salim Fellah", class_name: "9A" }]);
+    expect(options).toEqual([
+      { profile_id: `invited-${SALIM}`, display_name: "Salim Fellah", class_name: "9A", class_id: "c" },
+    ]);
   });
 
   // The server sorts the first render and the browser every refresh after

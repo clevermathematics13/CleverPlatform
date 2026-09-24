@@ -113,5 +113,6 @@ async function buildInitial(
     // Best-effort, as in the client: a failed read means nobody shows as
     // absent, not that the roster cannot be shown.
     absentStudentIds: absences.ok ? absences.absences.map((a) => a.studentId) : [],
+    unmarkedFromBatches: overview.unmarked,
   };
 }

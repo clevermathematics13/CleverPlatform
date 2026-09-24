@@ -228,6 +228,12 @@ export interface RosterOption {
    * by this. Null when the roster could not name the class.
    */
   class_name: string | null;
+  /**
+   * That class's course id, which the Batch upload tab sends as the class a
+   * scan came from (names on its cover pages are matched against that class
+   * only). Null when the roster could not say.
+   */
+  class_id: string | null;
 }
 
 /**
@@ -264,7 +270,12 @@ export function buildRosterOptions(rows: readonly RosterSourceRef[], ownCourseId
         fullName && nickname && nickname !== fullName
           ? `${fullName} (${nickname})`
           : fullName || nickname || "Unknown";
-      return { profile_id: s.profile_id, display_name: label, class_name: s.course_name ?? null };
+      return {
+        profile_id: s.profile_id,
+        display_name: label,
+        class_name: s.course_name ?? null,
+        class_id: s.course_id ?? null,
+      };
     })
     .sort(
       (a, b) =>

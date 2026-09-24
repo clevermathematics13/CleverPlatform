@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  holdOtherClassNames,
   rematchUnmatchedSegments,
   AA_HL_PAPER_2_NUMERICAL_ACCURACY_POLICY,
   G9_FORMATIVE_ASSESSMENT_MARKING_PRINCIPLES,
@@ -19,6 +20,7 @@ import {
   isImpliedToken,
   matchSegmentsToRoster,
   validateGradeResponse,
+  type ClassRosterEntry,
   type GradingUnit,
   type RosterEntry,
 } from "./ai-grading";
@@ -81,6 +83,58 @@ describe("rematchUnmatchedSegments", () => {
     ]);
     expect(changed).toBe(false);
     expect(segments[0].matchedStudentId).toBeNull();
+  });
+});
+
+describe("holdOtherClassNames", () => {
+  // 9C's scan, matched against 9C only; 9A sits the same paper.
+  const nineC: RosterEntry[] = [
+    { profileId: "ruiz", displayName: "Santiago Ruiz" },
+    { profileId: "park", displayName: "Mina Park", aliases: ["Nina Pak"] },
+  ];
+  const nineA: ClassRosterEntry[] = [
+    { profileId: "ortega", displayName: "Santiago Ortega", courseId: "9a", className: "9A" },
+    { profileId: "mori", displayName: "Kenji Mori", aliases: ["Ken M"], courseId: "9a", className: "9A" },
+  ];
+  const read = (label: string) => ({ label, pages: [1, 2], confidence: "medium" as const, note: "read from the cover" });
+
+  it("holds a cover that names a student in another class, where class-only matching would pick the wrong one", () => {
+    // The risk this guards: against 9C alone, "Santiago Ortega" shares a first
+    // name with one student and no rival, which is enough to propose him.
+    const [proposed] = matchSegmentsToRoster([read("Santiago Ortega")], nineC);
+    expect(proposed.matchedStudentId).toBe("ruiz");
+
+    const [held] = holdOtherClassNames([proposed], nineC, nineA, "9C");
+    expect(held.matchedStudentId).toBeNull();
+    expect(held.matchedStudentName).toBeNull();
+    expect(held.note).toContain('The cover reads "Santiago Ortega", the name of Santiago Ortega in 9A, not a student in 9C.');
+    expect(held.note).toContain("read from the cover");
+  });
+
+  it("leaves a cover alone when no other class has that exact name", () => {
+    const segments = matchSegmentsToRoster([read("Santiago")], nineC);
+    expect(holdOtherClassNames(segments, nineC, nineA, "9C")).toEqual(segments);
+  });
+
+  it("counts a recorded alias of the other student as their name", () => {
+    const [held] = holdOtherClassNames(matchSegmentsToRoster([read("Ken M")], nineC), nineC, nineA, "9C");
+    expect(held.matchedStudentId).toBeNull();
+    expect(held.note).toContain("the name of Kenji Mori in 9A");
+  });
+
+  it("keeps an exact match in the scan's own class when another class has a student of the same name", () => {
+    const twin: ClassRosterEntry[] = [
+      { profileId: "other-park", displayName: "Mina Park", courseId: "9a", className: "9A" },
+    ];
+    const segments = matchSegmentsToRoster([read("Mina Park")], nineC);
+    expect(segments[0].matchedStudentId).toBe("park");
+    expect(holdOtherClassNames(segments, nineC, twin, "9C")).toEqual(segments);
+  });
+
+  it("does not stack its note when run again", () => {
+    const once = holdOtherClassNames(matchSegmentsToRoster([read("Santiago Ortega")], nineC), nineC, nineA, "9C");
+    const twice = holdOtherClassNames(once, nineC, nineA, "9C");
+    expect(twice).toEqual(once);
   });
 });
 

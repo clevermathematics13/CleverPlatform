@@ -33,6 +33,7 @@ import {
   buildRosterOptions,
 } from "@/lib/ai-grade-review";
 import type { AcceptanceRef, RosterOption, RosterSourceRef, SelfScoreRef } from "@/lib/ai-grade-review";
+import { formatPageRanges, type UnmarkedBatchStudent } from "@/lib/batch-unmarked";
 import { writeCollapsedClassesCookie } from "@/lib/ai-grade-collapsed-classes";
 import type { AssessmentKind } from "@/lib/assessment-kind";
 // Not "@/lib/assignments": that module carries the AI prompt builders too.
@@ -285,6 +286,8 @@ export interface AiGradeInitial {
   submittedStudentCount: number;
   outstandingCollectCount: number;
   absentStudentIds: string[];
+  /** Students a batch scan was confirmed for who have no run at all (lib/batch-unmarked.ts). */
+  unmarkedFromBatches: UnmarkedBatchStudent[];
 }
 
 export function AiGradeClient({
@@ -352,6 +355,14 @@ export function AiGradeClient({
   const [loading, setLoading] = useState(initial === null);
   const [error, setError] = useState<string | null>(null);
   const [statusLine, setStatusLine] = useState<string | null>(null);
+  /**
+   * Anyone a batch scan was confirmed for who has no marking at all -- their
+   * pages could not be stored at the split, or never reached marking. Flagged
+   * on their row with a way to recover them (recoverFromBatch).
+   */
+  const [unmarkedFromBatches, setUnmarkedFromBatches] = useState<UnmarkedBatchStudent[]>(
+    initial?.unmarkedFromBatches ?? []
+  );
 
   const [focusStudent, setFocusStudent] = useState<string | null>(null);
   const [results, setResults] = useState<ResultRow[]>([]);
@@ -591,6 +602,7 @@ export function AiGradeClient({
       setNewerAttemptByStudent(overview.newerAttemptByStudent);
       setSubmittedStudentCount(overview.submittedStudentCount);
       setOutstandingCollectCount(overview.outstandingCollectCount);
+      setUnmarkedFromBatches((runs1.data.unmarked as UnmarkedBatchStudent[] | undefined) ?? []);
 
       // Absences are loaded best-effort: a failure here -- an error answer or
       // a request that never completed -- should not hide the roster, it
@@ -845,6 +857,75 @@ export function AiGradeClient({
   // when the result lands (usually within the hour). The default for a
   // re-mark since 20 Sep 2026, because nobody waits on one: half of all
   // marking runs were re-marks, at full price, with a tab open. -------------
+  // -- Recover a student a batch scan was confirmed for but never marked ------
+  // (lib/batch-unmarked.ts). When the split never stored their pages, they are
+  // cut from the batch's own scan again (the split route's retry), then marked
+  // the two ways any stored scan is: overnight at half price, or now.
+  const recoverFromBatch = async (u: UnmarkedBatchStudent, when: "overnight" | "now") => {
+    const name = students.find((st) => st.profile_id === u.studentId)?.display_name ?? u.label;
+    setBusyStudent(u.studentId);
+    setError(null);
+    try {
+      let storagePath = u.storagePath;
+      if (!storagePath) {
+        setStatusLine(`Saving ${name}'s pages from ${u.fileName ?? "the batch scan"}…`);
+        const { ok, data } = await fetchJson(`/api/tests/${testId}/ai-grade/batch/${u.batchId}/split`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ retryStudentIds: [u.studentId] }),
+        });
+        const row = ((data.results as { studentId: string; status: string; storagePath?: string; error?: string }[] | undefined) ?? [])
+          .find((r) => r.studentId === u.studentId);
+        if (!ok || !row || row.status !== "split" || !row.storagePath) {
+          throw new Error((data.error as string | undefined) ?? row?.error ?? `Could not save ${name}'s pages from the batch scan.`);
+        }
+        const saved = row.storagePath;
+        storagePath = saved;
+        // Held here too, so a second click after a failed marking does not
+        // cut the pages out again.
+        setUnmarkedFromBatches((prev) =>
+          prev.map((x) => (x.studentId === u.studentId ? { ...x, storagePath: saved, splitError: null } : x))
+        );
+      }
+      if (when === "overnight") {
+        setStatusLine(`Sending ${name}'s scan for overnight marking…`);
+        const { ok, data } = await fetchJson(`/api/tests/${testId}/ai-grade/queue`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ students: [{ studentId: u.studentId, storagePath }] }),
+        });
+        const refused = ((data.failed as { studentId: string; error?: string }[] | undefined) ?? [])[0];
+        if (!ok || refused) {
+          throw new Error((data.error as string | undefined) ?? refused?.error ?? "Could not send this scan for overnight marking.");
+        }
+        setStatusLine(
+          `${name} is being marked overnight at half price. The result appears here when it arrives, usually within the hour.`
+        );
+      } else {
+        setStatusLine(`Marking ${name}'s scan against the mark scheme…`);
+        const { ok, data } = await fetchJson(`/api/tests/${testId}/ai-grade`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ studentId: u.studentId, storagePath }),
+        });
+        if (!ok) throw new Error((data.error as string | undefined) ?? "Marking failed.");
+        setStatusLine(
+          `Marked ${name}` +
+            (data.suggestedTotal !== undefined && data.maxTotal !== undefined
+              ? `: suggested total ${data.suggestedTotal}/${data.maxTotal}.`
+              : ".") +
+            " Review and accept from their row."
+        );
+      }
+      await loadOverview();
+    } catch (e) {
+      setStatusLine(null);
+      setError(e instanceof Error ? e.message : "Could not recover this student's scan.");
+    } finally {
+      setBusyStudent(null);
+    }
+  };
+
   const queueRemark = async (studentId: string) => {
     const currentRun = runsByStudent[studentId];
     const storagePath = currentRun?.source_storage_path ?? newerAttemptByStudent[studentId]?.source_storage_path;
@@ -2455,6 +2536,20 @@ export function AiGradeClient({
         </div>
       )}
 
+      {unmarkedFromBatches.length > 0 && (
+        <div
+          role="alert"
+          className="rounded-lg border border-amber-400/40 bg-amber-500/15 px-4 py-3 text-sm text-amber-300"
+        >
+          ⚠ {unmarkedFromBatches.length} student{unmarkedFromBatches.length === 1 ? " was" : "s were"} in a
+          confirmed batch scan but never marked:{" "}
+          {unmarkedFromBatches
+            .map((u) => students.find((st) => st.profile_id === u.studentId)?.display_name ?? u.label)
+            .join(", ")}
+          . Each is flagged in the roster below, with a button to recover and mark them.
+        </div>
+      )}
+
       {collectError && submittedStudentCount > 0 && (
         <div
           role="alert"
@@ -2594,6 +2689,8 @@ export function AiGradeClient({
                 const run = runsByStudent[s.profile_id];
                 const newerAttempt = newerAttemptByStudent[s.profile_id];
                 const acceptance = run ? acceptanceByRun[run.id] : undefined;
+                const unmarked =
+                  !run && !newerAttempt ? unmarkedFromBatches.find((u) => u.studentId === s.profile_id) : undefined;
                 const dot =
                   run?.status === "complete" && acceptance && acceptance.total > 0
                     ? acceptance.accepted === acceptance.total
@@ -2684,6 +2781,18 @@ export function AiGradeClient({
                                 : "A newer re-mark is still running."}
                           </p>
                         )}
+                        {unmarked && (
+                          <p className="text-xs text-amber-300" title={unmarked.splitError ?? undefined}>
+                            ⚠ In {unmarked.fileName ?? "a batch scan"} (page
+                            {unmarked.pages.length === 1 ? "" : "s"} {formatPageRanges(unmarked.pages)}) but never
+                            marked —{" "}
+                            {unmarked.splitError
+                              ? "their pages could not be saved when the scan was split."
+                              : unmarked.storagePath
+                                ? "their scan was saved but never sent for marking."
+                                : "their scan was never sent for marking."}
+                          </p>
+                        )}
                       </div>
 
                       <div className="flex items-center gap-2">
@@ -2698,6 +2807,29 @@ export function AiGradeClient({
                         >
                           {busy ? "Working…" : "Upload scan & mark"}
                         </button>
+
+                        {unmarked && (
+                          <>
+                            <button
+                              type="button"
+                              disabled={busy}
+                              onClick={() => void recoverFromBatch(unmarked, "overnight")}
+                              title="Saves this student's pages from the batch scan if they were never saved, then sends them to Anthropic's batch tier: half price, result usually within the hour."
+                              className="rounded border border-amber-400/40 bg-amber-500/15 px-3 py-1 text-xs font-medium text-amber-300 hover:bg-amber-500/25 disabled:opacity-50"
+                            >
+                              Recover &amp; mark overnight (half price)
+                            </button>
+                            <button
+                              type="button"
+                              disabled={busy}
+                              onClick={() => void recoverFromBatch(unmarked, "now")}
+                              title="Saves this student's pages from the batch scan if needed and marks them right now at full price, with this tab open."
+                              className="rounded border border-da-border px-2 py-1 text-[11px] text-da-muted/80 hover:bg-da-hover disabled:opacity-50"
+                            >
+                              Mark now
+                            </button>
+                          </>
+                        )}
 
                         {(run?.source_storage_path || newerAttempt?.source_storage_path) && (
                           <>
@@ -2752,8 +2884,11 @@ export function AiGradeClient({
                             Not absent
                           </button>
                         ) : (
+                          // Not offered for a student a scan was confirmed
+                          // for: they sat it, their marking was dropped.
                           !run &&
-                          !newerAttempt && (
+                          !newerAttempt &&
+                          !unmarked && (
                             <button
                               type="button"
                               disabled={absenceBusy === s.profile_id}

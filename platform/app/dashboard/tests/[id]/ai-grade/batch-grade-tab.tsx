@@ -35,6 +35,27 @@ interface StudentOption {
   display_name: string;
   /** Real class ("9A"); the picker groups the pooled roster by this. */
   class_name: string | null;
+  /** That class's course id -- what an upload names as the class a scan came from. */
+  class_id: string | null;
+}
+
+/** One class that sits this test, as the "Class in this scan" picker offers it. */
+interface ScanClass {
+  id: string;
+  name: string;
+  studentCount: number;
+}
+
+/** The classes in the roster, by name, each with how many students it has. */
+function scanClassesOf(students: readonly StudentOption[]): ScanClass[] {
+  const byId = new Map<string, ScanClass>();
+  for (const s of students) {
+    if (!s.class_id) continue;
+    const c = byId.get(s.class_id) ?? { id: s.class_id, name: s.class_name ?? "Unnamed class", studentCount: 0 };
+    c.studentCount += 1;
+    byId.set(s.class_id, c);
+  }
+  return [...byId.values()].sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
 }
 
 interface ProposedSegment {
@@ -51,8 +72,16 @@ interface BatchRow {
   status: BatchStatus;
   file_name: string | null;
   page_count: number | null;
+  /**
+   * The class the scan was uploaded as (its cover pages were matched against
+   * that class only), or null for a mixed-classes pile or a batch uploaded
+   * before 24 Sep 2026.
+   */
+  course_id?: string | null;
   proposed_segments: ProposedSegment[];
-  confirmed_segments: { label: string; pages: number[]; matchedStudentId: string }[] | null;
+  confirmed_segments:
+    | { label: string; pages: number[]; matchedStudentId: string; storagePath?: string | null; splitError?: string | null }[]
+    | null;
   unassigned_pages: number[];
   /** Pages the model confidently identified as blank -- not shown as "needs review", unlike unassigned_pages. */
   blank_pages: number[];
@@ -139,6 +168,12 @@ interface UploadState {
    * flight was read, and every part of one file has to be read the same way.
    */
   readMode: ReadMode;
+  /**
+   * The class whose scripts are in this file (null: a mixed-classes pile).
+   * Fixed when the upload starts, like readMode, so every part -- and a
+   * later re-read of one -- is matched against the same class.
+   */
+  courseId: string | null;
   status: "uploading" | "reading" | "ready" | "failed";
   pageCount: number | null;
   parts: PartState[];
@@ -243,12 +278,13 @@ function formatPageList(pages: number[]): string {
 }
 
 /** Turn a segmentation response into the batch row + review rows a panel starts from. */
-function batchFromSegmentation(data: Record<string, unknown>, fileName: string): BatchRow {
+function batchFromSegmentation(data: Record<string, unknown>, fileName: string, courseId: string | null): BatchRow {
   return {
     id: data.batchId as string,
     status: "segmented",
     file_name: fileName,
     page_count: data.pageCount as number,
+    course_id: courseId,
     proposed_segments: (data.segments as ProposedSegment[]) ?? [],
     confirmed_segments: null,
     unassigned_pages: (data.unassignedPages as number[]) ?? [],
@@ -256,6 +292,60 @@ function batchFromSegmentation(data: Record<string, unknown>, fileName: string):
     error: null,
     created_at: new Date().toISOString(),
   };
+}
+
+/**
+ * Which class's pile a scan is. Names on its cover pages are matched against
+ * that class only: a Grade 9 paper is sat by every class in its track, and
+ * matching 9C's pile against all of them sent 9C's only Santiago to 9A's on
+ * 15 Sep 2026. "Mixed classes" is the old behaviour, for a pile that really
+ * does mix them. Like the read mode, the choice applies to the next upload.
+ */
+function ScanClassPicker({
+  classes,
+  value,
+  disabled,
+  onChange,
+  className,
+}: {
+  classes: ScanClass[];
+  value: string;
+  disabled: boolean;
+  onChange: (value: string) => void;
+  className?: string;
+}) {
+  const total = classes.reduce((n, c) => n + c.studentCount, 0);
+  return (
+    <div className={`${className ?? ""}${disabled ? " opacity-50" : ""}`}>
+      <label className="flex items-center gap-1.5 text-xs text-da-muted">
+        Class in this scan
+        <select
+          value={value}
+          disabled={disabled}
+          onChange={(e) => onChange(e.target.value)}
+          className={`rounded border bg-da-bg px-2 py-1 text-xs text-da-text focus:border-da-accent focus:outline-none ${
+            value ? "border-da-border" : "border-amber-400/60"
+          }`}
+        >
+          <option value="" disabled>
+            Choose the class…
+          </option>
+          {classes.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name} ({c.studentCount} student{c.studentCount === 1 ? "" : "s"})
+            </option>
+          ))}
+          <option value="mixed">
+            Mixed classes ({total} student{total === 1 ? "" : "s"})
+          </option>
+        </select>
+      </label>
+      <p className="mt-1 text-[11px] text-da-muted/80">
+        Names on the cover pages are matched against this class&apos;s students only. Choose
+        &ldquo;Mixed classes&rdquo; only for a pile that mixes them.
+      </p>
+    </div>
+  );
 }
 
 /**
@@ -343,6 +433,20 @@ export function BatchGradeTab({
   const [uploading, setUploading] = useState(false);
   const [uploads, setUploads] = useState<UploadState[]>([]);
   const [deepRead, setDeepRead] = useState(false);
+  const scanClasses = scanClassesOf(students);
+  /**
+   * "" until the teacher picks, a class id, or "mixed". A test sat by one
+   * class needs no choice (see scanCourseId below), so the picker is only
+   * shown -- and only required -- when more than one class sits it.
+   */
+  const [scanClassChoice, setScanClassChoice] = useState("");
+  const scanClassNeeded = scanClasses.length > 1;
+  const scanCourseId: string | null = !scanClassNeeded
+    ? (scanClasses[0]?.id ?? null)
+    : scanClassChoice === "mixed"
+      ? null
+      : scanClassChoice || null;
+  const scanClassChosen = !scanClassNeeded || scanClassChoice !== "";
   /**
    * Send the whole class to the Message Batches API instead of marking it here
    * one student at a time. Half price on every token, and nothing depends on
@@ -391,6 +495,9 @@ export function BatchGradeTab({
           // fall back to -- a needless deep read costs money, a needless
           // quick one costs the answer the teacher asked for.
           readMode: u.parts[0]?.batch.read_mode === "quick" ? "quick" : "deep",
+          // Likewise the class it was matched against, so a re-read of a
+          // part is matched against the same names as the rest of it.
+          courseId: u.parts[0]?.batch.course_id ?? null,
           status: "ready",
           pageCount: u.pageCount,
           warnings: [],
@@ -453,14 +560,15 @@ export function BatchGradeTab({
     partKey: string,
     storagePath: string,
     fileName: string,
-    readMode: ReadMode
+    readMode: ReadMode,
+    courseId: string | null
   ) => {
     updatePart(uploadKey, partKey, { status: "segmenting", error: null });
     try {
       const { ok, data } = await fetchJson(`/api/tests/${testId}/ai-grade/batch`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ storagePath, fileName, readMode }),
+        body: JSON.stringify({ storagePath, fileName, readMode, courseId }),
       });
       if (!ok) throw new Error((data.error as string) ?? "Segmentation failed.");
       if (data.chunked) {
@@ -471,7 +579,7 @@ export function BatchGradeTab({
       }
       updatePart(uploadKey, partKey, {
         status: "segmented",
-        batch: batchFromSegmentation(data, fileName),
+        batch: batchFromSegmentation(data, fileName, courseId),
         reused: !!data.reusedFromBatchId,
         warnings: data.reusedFromBatchId ? [] : ((data.warnings as string[]) ?? []),
       });
@@ -488,7 +596,7 @@ export function BatchGradeTab({
    * cut it into parts), then read each part. Never throws -- a bad file
    * marks its own upload failed and the others carry on.
    */
-  const processFile = async (uploadKey: string, file: File, readMode: ReadMode) => {
+  const processFile = async (uploadKey: string, file: File, readMode: ReadMode, courseId: string | null) => {
     try {
       // Batch scans can be very large — upload straight to Storage from the
       // browser rather than sending it as JSON through this Next.js route,
@@ -508,7 +616,7 @@ export function BatchGradeTab({
       const { ok, data } = await fetchJson(`/api/tests/${testId}/ai-grade/batch`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ storagePath, fileName: file.name, readMode }),
+        body: JSON.stringify({ storagePath, fileName: file.name, readMode, courseId }),
       });
       if (!ok) throw new Error((data.error as string) ?? "Segmentation failed.");
 
@@ -535,7 +643,7 @@ export function BatchGradeTab({
           warnings: (data.warnings as string[]) ?? [],
         });
         for (const part of parts) {
-          await segmentPart(uploadKey, part.key, part.chunk!.storagePath, part.chunk!.fileName, readMode);
+          await segmentPart(uploadKey, part.key, part.chunk!.storagePath, part.chunk!.fileName, readMode, courseId);
         }
         return;
       }
@@ -554,7 +662,7 @@ export function BatchGradeTab({
             key: "whole",
             chunk: null,
             status: "segmented",
-            batch: batchFromSegmentation(data, file.name),
+            batch: batchFromSegmentation(data, file.name, courseId),
             reused: !!data.reusedFromBatchId,
             // Carried by the upload above, which renders the same banner.
             warnings: [],
@@ -572,7 +680,7 @@ export function BatchGradeTab({
   };
 
   const handleUpload = async (files: File[]) => {
-    if (files.length === 0) return;
+    if (files.length === 0 || !scanClassChosen) return;
     setUploading(true);
     setError(null);
     setAllStatusLine(null);
@@ -586,12 +694,15 @@ export function BatchGradeTab({
     // later re-read of one of their parts -- uses the mode the teacher chose
     // when they picked the files, not whatever the box says at the time.
     const readMode: ReadMode = deepRead ? "deep" : "quick";
+    // The class too, for the same reason.
+    const courseId = scanCourseId;
     const entries = files.map((file) => ({
       file,
       upload: {
         key: crypto.randomUUID(),
         fileName: file.name,
         readMode,
+        courseId,
         status: "uploading" as const,
         pageCount: null,
         parts: [],
@@ -603,7 +714,7 @@ export function BatchGradeTab({
 
     try {
       await runPool(
-        entries.map((e) => () => processFile(e.upload.key, e.file, readMode)),
+        entries.map((e) => () => processFile(e.upload.key, e.file, readMode, courseId)),
         FILE_CONCURRENCY
       );
     } finally {
@@ -741,6 +852,15 @@ export function BatchGradeTab({
             students&apos; cover pages. Several files are uploaded and read side by side, and
             every part is reviewed and graded separately below — or all at once.
           </p>
+          {scanClassNeeded && (
+            <ScanClassPicker
+              className="mt-4"
+              classes={scanClasses}
+              value={scanClassChoice}
+              disabled={readingAny || gradingParts.length > 0}
+              onChange={setScanClassChoice}
+            />
+          )}
           <DeepReadToggle
             className="mt-4"
             checked={deepRead}
@@ -749,7 +869,8 @@ export function BatchGradeTab({
           />
           <button
             type="button"
-            disabled={uploading}
+            disabled={uploading || !scanClassChosen}
+            title={scanClassChosen ? undefined : "Choose which class's scripts are in the scan first"}
             onClick={() => fileInputRef.current?.click()}
             className="mt-4 rounded-lg border border-purple-400/40 bg-purple-500/15 px-4 py-2 text-sm font-medium text-purple-300 hover:bg-purple-500/25 disabled:opacity-50"
           >
@@ -773,7 +894,16 @@ export function BatchGradeTab({
                   : "Confirm which pages belong to which student before grading."}
               </p>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              {scanClassNeeded && (
+                <ScanClassPicker
+                  className="max-w-xs"
+                  classes={scanClasses}
+                  value={scanClassChoice}
+                  disabled={readingAny || gradingParts.length > 0}
+                  onChange={setScanClassChoice}
+                />
+              )}
               <DeepReadToggle
                 className="max-w-xs"
                 checked={deepRead}
@@ -789,7 +919,8 @@ export function BatchGradeTab({
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
-                disabled={readingAny || gradingParts.length > 0}
+                disabled={readingAny || gradingParts.length > 0 || !scanClassChosen}
+                title={scanClassChosen ? undefined : "Choose which class's scripts are in the next scan first"}
                 className="rounded border border-da-border px-3 py-1 text-xs text-da-muted hover:bg-da-hover disabled:opacity-50"
               >
                 Add more files
@@ -945,7 +1076,8 @@ export function BatchGradeTab({
                               part.key,
                               part.chunk!.storagePath,
                               part.chunk!.fileName,
-                              upload.readMode
+                              upload.readMode,
+                              upload.courseId
                             )
                           }
                           className="mt-3 rounded-lg border border-purple-400/40 bg-purple-500/15 px-4 py-2 text-sm font-medium text-purple-300 hover:bg-purple-500/25 disabled:opacity-50"
@@ -1004,7 +1136,17 @@ function BatchPanel({
   /** Reports the panel's lifecycle up to the tab -- see PanelStatus. */
   onStatus?: (status: PanelStatus) => void;
 }) {
-  const studentByName = new Map(students.map((s) => [s.display_name, s.profile_id]));
+  // The exact-name fallback for a row the server left unmatched stays inside
+  // the class the scan was uploaded as, like the server's own match: a cover
+  // naming someone in another class is left for the teacher to pick.
+  const scanClassName = batch.course_id
+    ? (students.find((s) => s.class_id === batch.course_id)?.class_name ?? null)
+    : null;
+  const studentByName = new Map(
+    students
+      .filter((s) => !batch.course_id || s.class_id === batch.course_id)
+      .map((s) => [s.display_name, s.profile_id])
+  );
 
   const [error, setError] = useState<string | null>(null);
   const [statusLine, setStatusLine] = useState<string | null>(
@@ -1377,9 +1519,11 @@ function BatchPanel({
           </h2>
           <p className="text-xs text-da-muted">
             {partLabel && `${batch.page_count} pages in this part. `}
-            Confirm which pages belong to which student. Matched names are pre-filled from
-            the roster of every class in this group, signed in or not — type the start of a
-            first or last name to find someone. Check every low-confidence row before splitting.
+            Confirm which pages belong to which student.{" "}
+            {batch.course_id
+              ? `Matched names are pre-filled from ${scanClassName ?? "this class"}'s roster only — the class this scan was uploaded as — signed in or not. Anyone in another class who sits this paper can still be picked: type the start of a first or last name.`
+              : "Matched names are pre-filled from the roster of every class in this group, signed in or not — type the start of a first or last name to find someone."}{" "}
+            Check every low-confidence row before splitting.
             {partLabel && " Page numbers here count from 1 within this part."}
           </p>
         </div>
@@ -1632,6 +1776,13 @@ function BatchPanel({
               <span className="font-semibold">Individual</span> tab and open each student&apos;s
               &quot;Review →&quot; to check and accept their marks.
             </>
+          )}
+          {splitResults.some((r) => r.status === "failed") && (
+            <p className="mt-2 text-amber-300">
+              ⚠ Every student who failed here stays on the Individual tab with a way to mark them —
+              flagged as in this scan but never marked, or showing their failed attempt — so nothing
+              about them is lost if you close this tab.
+            </p>
           )}
         </div>
       )}
