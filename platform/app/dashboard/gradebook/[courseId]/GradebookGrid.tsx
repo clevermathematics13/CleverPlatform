@@ -3,9 +3,10 @@
 import React, { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import {
   resolveGrade,
-  pctToGradeFallback,
+  aggregateGrade,
   type GradeBoundary,
 } from "@/lib/grade-bands";
+import { inSection, type TestSection } from "@/lib/test-sections";
 
 export type { GradeBoundary };
 
@@ -32,17 +33,10 @@ export type TestItem = {
  * A Formative Assessment gets its own LEVEL headings instead. Applying the Q8
  * cut to one of those papers was actively misleading -- on Formative Assessment
  * 1 it landed in the middle of LEVEL 3, so neither subtotal corresponded to
- * anything the paper was built to measure. page.tsx derives these ranges.
+ * anything the paper was built to measure. lib/test-sections.ts derives these
+ * ranges, for this grid and for the grade-boundaries page alike.
  */
-export type TestSection = {
-  /** Short column label, e.g. 'Sec A' or 'L1'. */
-  label: string;
-  /** Full name for the tooltip, e.g. 'LEVEL 3 -- CONNECT THE ALGEBRA'. */
-  title: string;
-  fromQ: number;
-  /** Inclusive upper bound; null means open-ended (the last section). */
-  toQ: number | null;
-};
+export type { TestSection };
 
 export type Test = {
   id: string;
@@ -52,7 +46,11 @@ export type Test = {
   component: "P1" | "P2" | "P3" | "IA" | null;
   // null when no boundary set has been assigned to this test
   boundary_set_id: string | null;
-  boundary_set_name: string | null;  // e.g. 'A', 'B', 'C', 'D'
+  /** Badge text: the preset's name ('B', 'Grade 9') while the lines are the
+   *  preset's, 'Own' once this assessment's own lines differ, null for none. */
+  boundary_label: string | null;
+  /** Tooltip line saying where the lines came from and whether they were decided. */
+  boundary_note: string | null;
   boundaries: GradeBoundary[] | null; // sorted grade 1→7, null if unassigned
   /** Subtotal bands for the expanded view, in display order. */
   sections: TestSection[];
@@ -151,12 +149,19 @@ function computeTestScore(
  *
  * The rule used to be "an aggregate always uses the generic fallback, because
  * no single boundary set applies across tests". That is only true when the
- * tests actually disagree. When every test a student sat carries the same set
- * -- and with one assessment in a course, that is the common case -- the set
- * plainly does apply, and ignoring it made the Overall column contradict the
- * test column beside it: on 9G's Formative Assessment 1, 43 of 50 students
- * read one level higher in Overall than in the column the marks came from,
- * purely because Overall was banding 90%-for-a-7 marks against 80%-for-a-7.
+ * tests actually disagree. When every test a student sat carries the same
+ * lines -- and with one assessment in a course, that is the common case --
+ * those lines plainly apply, and ignoring them made the Overall column
+ * contradict the test column beside it: on 9G's Formative Assessment 1, 43 of
+ * 50 students read one level higher in Overall than in the column the marks
+ * came from, purely because Overall was banding 90%-for-a-7 marks against
+ * 80%-for-a-7.
+ *
+ * Since each assessment got its own boundaries (lib/grade-bands.ts
+ * aggregateGrade), tests are compared by their LINES, not their set ids, and
+ * tests whose lines differ are blended by marks rather than dropped to the
+ * generic bands. Only a test with no boundaries at all still means the
+ * generic bands.
  *
  * `contributing` is the tests the student actually has marks for, so a student
  * who has only sat Grade 9 papers is banded as Grade 9 even if the course also
@@ -165,16 +170,8 @@ function computeTestScore(
 function bandAggregate(
   pct: number,
   contributing: Test[]
-): { grade: number; approximate: boolean } {
-  const setIds = new Set(contributing.map((t) => t.boundary_set_id));
-  const [only] = [...setIds];
-  if (setIds.size === 1 && only !== null) {
-    const boundaries = contributing[0].boundaries;
-    if (boundaries && boundaries.length > 0) {
-      return { grade: resolveGrade(pct, boundaries), approximate: false };
-    }
-  }
-  return { grade: pctToGradeFallback(pct), approximate: true };
+): { grade: number; approximate: boolean; blended: boolean } {
+  return aggregateGrade(pct, contributing);
 }
 
 function computeComponentGrade(
@@ -182,9 +179,9 @@ function computeComponentGrade(
   component: "P1" | "P2" | "P3" | "IA",
   tests: Test[],
   marks: MarksState
-): { grade: number | null; pct: number | null; approximate: boolean } {
+): { grade: number | null; pct: number | null; approximate: boolean; blended: boolean } {
   const compTests = tests.filter((t) => t.component === component);
-  if (compTests.length === 0) return { grade: null, pct: null, approximate: false };
+  if (compTests.length === 0) return { grade: null, pct: null, approximate: false, blended: false };
   let totalEarned = 0;
   let totalPossible = 0;
   const contributing: Test[] = [];
@@ -197,11 +194,11 @@ function computeComponentGrade(
     }
   }
   if (contributing.length === 0 || totalPossible === 0) {
-    return { grade: null, pct: null, approximate: false };
+    return { grade: null, pct: null, approximate: false, blended: false };
   }
   const pct = (totalEarned / totalPossible) * 100;
-  const { grade, approximate } = bandAggregate(pct, contributing);
-  return { grade, pct, approximate };
+  const { grade, approximate, blended } = bandAggregate(pct, contributing);
+  return { grade, pct, approximate, blended };
 }
 
 /** Tints for the section subtotal columns, cycled in order. The first two keep
@@ -212,13 +209,6 @@ const SECTION_TINTS = [
   { bg: "bg-cyan-950/40", cellBg: "bg-cyan-950/30", edge: "border-cyan-800/40", head: "text-cyan-300/70", text: "text-cyan-300", soft: "text-cyan-200" },
   { bg: "bg-fuchsia-950/40", cellBg: "bg-fuchsia-950/30", edge: "border-fuchsia-800/40", head: "text-fuchsia-300/70", text: "text-fuchsia-300", soft: "text-fuchsia-200" },
 ];
-
-function inSection(questionNumber: number, section: TestSection): boolean {
-  return (
-    questionNumber >= section.fromQ &&
-    (section.toQ === null || questionNumber <= section.toQ)
-  );
-}
 
 /** The test's sections that actually contain marks, so an empty band (a paper
  *  that stops at Q6 has no Section B) contributes no columns. */
@@ -280,7 +270,7 @@ function computeOverallGrade(
   profileId: string,
   tests: Test[],
   marks: MarksState
-): { grade: number | null; pct: number | null; approximate: boolean } {
+): { grade: number | null; pct: number | null; approximate: boolean; blended: boolean } {
   let totalEarned = 0;
   let totalPossible = 0;
   const contributing: Test[] = [];
@@ -293,34 +283,37 @@ function computeOverallGrade(
     }
   }
   if (contributing.length === 0 || totalPossible === 0) {
-    return { grade: null, pct: null, approximate: false };
+    return { grade: null, pct: null, approximate: false, blended: false };
   }
   const pct = (totalEarned / totalPossible) * 100;
-  const { grade, approximate } = bandAggregate(pct, contributing);
-  return { grade, pct, approximate };
+  const { grade, approximate, blended } = bandAggregate(pct, contributing);
+  return { grade, pct, approximate, blended };
 }
 
 // --- Boundary set badge -------------------------------------------------------
 
-/** Small pill shown in collapsed test column headers and grade cells. */
-function SetBadge({ name }: { name: string | null }) {
-  if (!name) {
+/** Small pill shown in collapsed test column headers: which boundaries the
+ *  test's levels come from, and the way to its grade-boundaries page. */
+function SetBadge({ testId, label, note }: { testId: string; label: string | null; note: string | null }) {
+  if (!label) {
     return (
-      <span
-        className="inline-block text-[9px] font-mono text-da-muted/60 leading-none"
-        title="No boundary set assigned — using approximate 10-point bands"
+      <a
+        href={`/dashboard/tests/${testId}/boundaries`}
+        className="inline-block text-[9px] font-mono text-da-muted/60 leading-none hover:text-da-accent"
+        title="No grade boundaries decided: using approximate 10-point bands. Click to set this assessment's boundaries."
       >
         ~
-      </span>
+      </a>
     );
   }
   return (
-    <span
-      className="inline-block text-[9px] font-mono font-bold px-1 py-px rounded bg-da-accent/15 text-da-accent leading-none"
-      title={`Grade boundaries: ${name}`}
+    <a
+      href={`/dashboard/tests/${testId}/boundaries`}
+      className="inline-block text-[9px] font-mono font-bold px-1 py-px rounded bg-da-accent/15 text-da-accent leading-none hover:bg-da-accent/25"
+      title={`${note ?? `Grade boundaries: ${label}`}\nClick to see or change this assessment's boundaries.`}
     >
-      {name}
-    </span>
+      {label}
+    </a>
   );
 }
 
@@ -1343,8 +1336,8 @@ export function GradebookGrid({
                   <th
                     key={test.id}
                     className={`${thBase} min-w-22.5 max-w-32.5`}
-                    title={`${test.name}${test.test_date ? " · " + test.test_date : ""}\nBoundary set: ${
-                      test.boundary_set_name ?? "unassigned (approx.)"
+                    title={`${test.name}${test.test_date ? " · " + test.test_date : ""}\n${
+                      test.boundary_note ?? "No grade boundaries (approximate bands)"
                     }\nClick the name to open this assessment`}
                   >
                     {/* The name is the way in to the assessment itself -- where
@@ -1365,7 +1358,7 @@ export function GradebookGrid({
                       </span>
                     )}
                     <span className="mt-0.5 flex items-center justify-center gap-1">
-                      <SetBadge name={test.boundary_set_name} />
+                      <SetBadge testId={test.id} label={test.boundary_label} note={test.boundary_note} />
                     </span>
                     <ViewPills
                       test={test}
@@ -1408,6 +1401,7 @@ export function GradebookGrid({
                 grade: overallGrade,
                 pct: overallPct,
                 approximate: overallApprox,
+                blended: overallBlended,
               } = computeOverallGrade(student.profile_id, tests, marks);
 
               return (
@@ -1422,7 +1416,7 @@ export function GradebookGrid({
                   {/* Overall / Components */}
                   {showComponents ? (
                     presentComponents.map((comp) => {
-                      const { grade: g, pct, approximate } = computeComponentGrade(
+                      const { grade: g, pct, approximate, blended } = computeComponentGrade(
                         student.profile_id,
                         comp as "P1" | "P2" | "P3" | "IA",
                         tests,
@@ -1434,7 +1428,13 @@ export function GradebookGrid({
                           className={`${tdBase} font-bold text-base ${gradeColor(g)} ${gradeBg(g)}`}
                           title={
                             pct !== null
-                              ? `${pct.toFixed(1)}% · ${approximate ? "approximate bands" : "test's own boundaries"}`
+                              ? `${pct.toFixed(1)}% · ${
+                                  approximate
+                                    ? "approximate bands (a test has no boundaries)"
+                                    : blended
+                                    ? "blended from each test's own boundaries, weighted by marks"
+                                    : "the tests' own boundaries"
+                                }`
                               : undefined
                           }
                         >
@@ -1449,7 +1449,9 @@ export function GradebookGrid({
                         overallPct !== null
                           ? `${overallPct.toFixed(1)}% · ${
                               overallApprox
-                                ? "approximate bands (tests use different boundary sets)"
+                                ? "approximate bands (a test it covers has no boundaries)"
+                                : overallBlended
+                                ? "blended from each test's own boundaries, weighted by marks"
                                 : "the boundaries of the tests it covers"
                             }`
                           : undefined
@@ -1583,7 +1585,7 @@ export function GradebookGrid({
                         title={
                           pct !== null
                             ? `${pct.toFixed(1)}% · ${
-                                test.boundary_set_name ?? "no boundary set"
+                                test.boundary_label ?? "no boundaries (approximate)"
                               }`
                             : undefined
                         }
@@ -1702,10 +1704,10 @@ export function GradebookGrid({
         <span className="text-da-border">|</span>
         <span>
           <span className="inline-block text-[9px] font-mono font-bold px-1 py-px rounded bg-da-accent/15 text-da-accent mr-1">B</span>
-          = boundary set assigned
+          = the assessment&apos;s boundaries (the preset&apos;s name until its own lines differ, then Own)
         </span>
         <span className="font-mono text-da-muted/60">~</span>
-        <span>= approximate (no set assigned)</span>
+        <span>= approximate (no boundaries decided)</span>
         <span className="text-da-border">|</span>
         <span>Hover grade cells for % and set. Enter marks and press Tab/Enter to save.</span>
         <span className="text-da-border">|</span>

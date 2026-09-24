@@ -2,64 +2,14 @@ import { requireTeacher } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { getShowHiddenStudents } from "@/lib/teacher-preferences";
 import { notFound } from "next/navigation";
-import { GradebookGrid, type GeneratedFile, type TestSection } from "./GradebookGrid";
+import { GradebookGrid, type GeneratedFile } from "./GradebookGrid";
 import { CoursePicker } from "./CoursePicker";
 import { NewScoresButton } from "./NewScoresButton";
 import { INVITED_SUBJECT_PREFIX } from "@/lib/ai-grading";
 import { fetchAllRows, loadInvitedRoster } from "@/lib/na-scanning";
 import { loadTrackLinks, trackFamilyCourseIds } from "@/lib/track-courses";
-
-/** The IB split, and the default for any paper that does not carry its own
- *  structure: Section A is short response, Section B extended response. */
-const IB_SECTIONS: TestSection[] = [
-  { label: "Sec A", title: "Section A - short response (Q1-8)", fromQ: 1, toQ: 8 },
-  { label: "Sec B", title: "Section B - extended response (Q9+)", fromQ: 9, toQ: null },
-];
-
-/** "LEVEL 3 -- CONNECT THE ALGEBRA" -> "L3", to fit a gradebook column. */
-function shortSectionLabel(heading: string, index: number): string {
-  const level = /^\s*LEVEL\s+(\d+)/i.exec(heading);
-  if (level) return `L${level[1]}`;
-  const firstWord = heading.trim().split(/[\s—-]+/)[0];
-  return firstWord && firstWord.length <= 6 ? firstWord : `S${index + 1}`;
-}
-
-/**
- * Section ranges for a Formative Assessment, from the LEVEL headings it was
- * authored with. Question numbering is global across sections (see
- * deriveTestItems in lib/formative-assessment-bridge.ts), so each section owns
- * a contiguous run of question numbers and only the per-section question
- * *count* is needed to find it.
- *
- * That count is the only thing wanted from a ~17 kB draft, and PostgREST
- * cannot aggregate inside JSONB, so the whole blob is fetched and thrown away.
- * Fine while a course holds a handful of assessments; if that stops being true,
- * put the section on test_items at write time rather than deriving it here.
- */
-function sectionsFromCustomContent(customContent: unknown): TestSection[] | null {
-  const raw = (customContent as { sections?: unknown } | null)?.sections;
-  if (!Array.isArray(raw) || raw.length === 0) return null;
-
-  const out: TestSection[] = [];
-  let lastQ = 0;
-  raw.forEach((entry, i) => {
-    const section = entry as { heading?: unknown; questions?: unknown };
-    const count = Array.isArray(section.questions) ? section.questions.length : 0;
-    if (count === 0) return; // consumes no question numbers, so lastQ is untouched
-    const heading =
-      typeof section.heading === "string" && section.heading.trim()
-        ? section.heading.trim()
-        : `Section ${i + 1}`;
-    out.push({
-      label: shortSectionLabel(heading, i),
-      title: heading,
-      fromQ: lastQ + 1,
-      toQ: lastQ + count,
-    });
-    lastQ += count;
-  });
-  return out.length > 0 ? out : null;
-}
+import { IB_SECTIONS, sectionsFromCustomContent } from "@/lib/test-sections";
+import { CUTOFF_GRADES, cutoffsFromBoundaries, sameCutoffs, type GradeBoundary } from "@/lib/grade-bands";
 
 function inferComponent(name: string): "P1" | "P2" | "P3" | "IA" | null {
   const u = name.toUpperCase();
@@ -101,33 +51,6 @@ export default async function GradebookCoursePage({
   const pickerCourses = courseOptions.some((c) => c.id === course.id)
     ? courseOptions
     : [{ id: course.id, name: course.name }, ...courseOptions];
-
-  // All boundary sets (small table — fetch once, pass to client)
-  const { data: rawSets } = await supabase
-    .from("grade_boundary_sets")
-    .select("id, name, description");
-
-  const { data: rawBoundaries } = await supabase
-    .from("grade_boundaries")
-    .select("set_id, grade, min_proportion")
-    .order("grade", { ascending: true });
-
-  // Build a lookup: setId → sorted boundary array (grade 1→7)
-  type BoundaryRow = { grade: number; min_proportion: number };
-  const boundariesBySetId: Record<string, BoundaryRow[]> = {};
-  for (const b of rawBoundaries ?? []) {
-    if (!boundariesBySetId[b.set_id]) boundariesBySetId[b.set_id] = [];
-    boundariesBySetId[b.set_id].push({
-      grade: b.grade,
-      min_proportion: Number(b.min_proportion),
-    });
-  }
-
-  // Build a lookup: setId → set name (e.g. 'B')
-  const setNameById: Record<string, string> = {};
-  for (const s of rawSets ?? []) {
-    setNameById[s.id] = s.name;
-  }
 
   // Who this gradebook is for. A track (Grade 9 Extended) pools its member
   // classes' students; a class lists its own. Either way the students are
@@ -299,8 +222,95 @@ export default async function GradebookCoursePage({
     itemsByTest[item.test_id].push(item);
   }
 
+  // Grade boundaries: only the sets these tests use, and the presets their own
+  // sets descend from. Paged -- every assessment now has its own set of seven
+  // rows, so "all bands" would pass PostgREST's silent 1000-row cap at about
+  // 140 tests.
+  const usedSetIds = [...new Set(testList.map((t) => t.boundary_set_id as string | null).filter((x): x is string => !!x))];
+  const setsById: Record<string, { name: string; test_id: string | null; origin_set_id: string | null }> = {};
+  if (usedSetIds.length > 0) {
+    const { data: usedSets } = await supabase
+      .from("grade_boundary_sets")
+      .select("id, name, test_id, origin_set_id")
+      .in("id", usedSetIds);
+    for (const s of usedSets ?? []) setsById[s.id as string] = s as (typeof setsById)[string];
+    const originIds = [...new Set(Object.values(setsById).map((s) => s.origin_set_id).filter((x): x is string => !!x))]
+      .filter((id) => !setsById[id]);
+    if (originIds.length > 0) {
+      const { data: origins } = await supabase
+        .from("grade_boundary_sets")
+        .select("id, name, test_id, origin_set_id")
+        .in("id", originIds);
+      for (const s of origins ?? []) setsById[s.id as string] = s as (typeof setsById)[string];
+    }
+  }
+  const boundariesBySetId: Record<string, GradeBoundary[]> = {};
+  const bandSetIds = Object.keys(setsById);
+  if (bandSetIds.length > 0) {
+    const bandRows = await fetchAllRows<{ id: string; set_id: string; grade: number; min_proportion: number | string }>(
+      (from, to) =>
+        supabase
+          .from("grade_boundaries")
+          .select("id, set_id, grade, min_proportion")
+          .in("set_id", bandSetIds)
+          .order("id", { ascending: true })
+          .range(from, to)
+    );
+    for (const b of bandRows) {
+      (boundariesBySetId[b.set_id] ??= []).push({ grade: b.grade, min_proportion: Number(b.min_proportion) });
+    }
+    for (const list of Object.values(boundariesBySetId)) list.sort((a, b) => a.grade - b.grade);
+  }
+  // When each assessment's boundaries were last decided (teacher-only table).
+  // Paged: a history of decisions per test adds up past the 1000-row cap.
+  // Only the badge tooltip uses it, so a failed read drops the date rather
+  // than the gradebook.
+  const decidedAtByTest: Record<string, string> = {};
+  if (testIds.length > 0) {
+    const decisions = await fetchAllRows<{ id: string; test_id: string; decided_at: string }>((from, to) =>
+      supabase
+        .from("test_boundary_decisions")
+        .select("id, test_id, decided_at")
+        .in("test_id", testIds)
+        .order("id", { ascending: true })
+        .range(from, to)
+    ).catch(() => [] as { id: string; test_id: string; decided_at: string }[]);
+    for (const d of decisions) {
+      const seen = decidedAtByTest[d.test_id];
+      if (!seen || d.decided_at > seen) decidedAtByTest[d.test_id] = d.decided_at;
+    }
+  }
+
+  /** Badge text and tooltip for a test's boundaries (see Test.boundary_label). */
+  const describeBoundaries = (
+    testId: string,
+    setId: string | null,
+    total: number
+  ): { label: string | null; note: string | null } => {
+    const set = setId ? setsById[setId] : undefined;
+    if (!setId || !set) return { label: null, note: null };
+    if (set.test_id === null) {
+      return { label: set.name, note: `Grade boundaries: the shared ${set.name} preset (not decided for this assessment yet)` };
+    }
+    const own = cutoffsFromBoundaries(boundariesBySetId[setId] ?? null, total);
+    const origin = set.origin_set_id ? setsById[set.origin_set_id] : undefined;
+    const unchanged =
+      !!origin && sameCutoffs(own, cutoffsFromBoundaries(boundariesBySetId[set.origin_set_id as string] ?? null, total));
+    const lines = own ? CUTOFF_GRADES.map((g) => own[g]).join("/") : "";
+    const decided = decidedAtByTest[testId]
+      ? `, decided ${new Date(decidedAtByTest[testId]).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}`
+      : "";
+    return {
+      label: unchanged && origin ? origin.name : "Own",
+      note: `Grade boundaries: this assessment's own${unchanged && origin ? ` (unchanged from ${origin.name})` : ""}${
+        lines ? `, ${lines} of ${total}` : ""
+      }${decided}`,
+    };
+  };
+
   const tests = testList.map((t) => {
     const setId = t.boundary_set_id as string | null;
+    const described = describeBoundaries(t.id as string, setId, t.total_marks ?? 0);
     return {
       id: t.id,
       name: t.name,
@@ -308,7 +318,8 @@ export default async function GradebookCoursePage({
       total_marks: t.total_marks ?? 0,
       component: inferComponent(t.name),
       boundary_set_id: setId,
-      boundary_set_name: setId ? (setNameById[setId] ?? null) : null,
+      boundary_label: described.label,
+      boundary_note: described.note,
       boundaries: setId ? (boundariesBySetId[setId] ?? null) : null,
       sections: sectionsFromCustomContent(t.custom_content) ?? IB_SECTIONS,
       items: (itemsByTest[t.id] ?? []).map((item) => ({

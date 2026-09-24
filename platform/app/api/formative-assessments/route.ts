@@ -173,21 +173,13 @@ export async function POST(req: Request) {
   // Required for a summative and optional for a formative. Without one the
   // gradebook falls back to generic bands and shows an "~approx" badge next
   // to the level, which is a guess -- fine on practice, not on a paper a
-  // student is graded by. Grade 9 has its own set; see HANDOFF section 3.
+  // student is graded by. The creator offers the PRESETS as a starting point;
+  // an assessment's own boundaries are decided on its Grade boundaries page
+  // and are never re-pointed from here (checked below, once the test is known).
   const boundarySetId =
     typeof body.boundarySetId === "string" && UUID_RE.test(body.boundarySetId)
       ? body.boundarySetId
       : null;
-  if (assessmentKind === "summative" && !boundarySetId) {
-    return NextResponse.json(
-      {
-        error:
-          "A summative needs a grade boundary set, or the mark reports as a raw score with an " +
-          "approximate band instead of a grade. Pick one and save again.",
-      },
-      { status: 400 },
-    );
-  }
 
   // -- Rubric quality gate -------------------------------------------------
   // A mark scheme that contradicts itself, or asks for units it never
@@ -235,6 +227,47 @@ export async function POST(req: Request) {
     body.requireSelfAssessment !== false,
   );
 
+  // An assessment with its own boundaries keeps them: the creator never
+  // re-points it at a preset. A set that belongs to another assessment is
+  // never a starting point.
+  let existingSetId: string | null = null;
+  let hasOwnSet = false;
+  if (testId) {
+    const [{ data: existing }, { data: own }] = await Promise.all([
+      supabase.from("tests").select("boundary_set_id").eq("id", testId).maybeSingle(),
+      supabase.from("grade_boundary_sets").select("id").eq("test_id", testId).maybeSingle(),
+    ]);
+    existingSetId = (existing?.boundary_set_id as string | null | undefined) ?? null;
+    hasOwnSet = !!own;
+  }
+  if (boundarySetId && !hasOwnSet) {
+    const { data: chosen } = await supabase
+      .from("grade_boundary_sets")
+      .select("id, test_id")
+      .eq("id", boundarySetId)
+      .maybeSingle();
+    if (!chosen) {
+      return NextResponse.json({ error: "That grade boundary set does not exist." }, { status: 400 });
+    }
+    if (chosen.test_id) {
+      return NextResponse.json(
+        { error: "That grade boundary set belongs to another assessment. Pick a preset." },
+        { status: 400 },
+      );
+    }
+  }
+  if (assessmentKind === "summative" && !boundarySetId && !existingSetId) {
+    return NextResponse.json(
+      {
+        error:
+          "A summative needs a grade boundary set, or the mark reports as a raw score with an " +
+          "approximate band instead of a grade. Pick one and save again.",
+      },
+      { status: 400 },
+    );
+  }
+  const boundaryWrite = boundarySetId && !hasOwnSet ? { boundary_set_id: boundarySetId } : {};
+
   const saveResult = testId
     ? await supabase
         .from("tests")
@@ -245,9 +278,10 @@ export async function POST(req: Request) {
           custom_content: draft,
           require_self_assessment: requireSelfAssessment,
           assessment_kind: assessmentKind,
-          // Only written when the creator sent one, so re-saving a formative
-          // does not clear a boundary set assigned on the test detail page.
-          ...(boundarySetId ? { boundary_set_id: boundarySetId } : {}),
+          // Only written when the creator sent a preset and the test has no
+          // boundaries of its own, so a re-save never clears or overrides a
+          // decision made on the Grade boundaries page.
+          ...boundaryWrite,
         })
         .eq("id", testId)
         .select("id, name, total_marks")
@@ -262,7 +296,7 @@ export async function POST(req: Request) {
           custom_content: draft,
           require_self_assessment: requireSelfAssessment,
           assessment_kind: assessmentKind,
-          ...(boundarySetId ? { boundary_set_id: boundarySetId } : {}),
+          ...boundaryWrite,
         })
         .select("id, name, total_marks")
         .single();

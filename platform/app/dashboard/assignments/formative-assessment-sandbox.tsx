@@ -225,6 +225,9 @@ export function FormativeAssessmentSandbox() {
   const [kind, setKind] = useState<AssessmentKind>("formative");
   const [boundarySets, setBoundarySets] = useState<BoundarySetOption[]>([]);
   const [boundarySetId, setBoundarySetId] = useState("");
+  /** The open assessment already has its own grade boundaries (decided on its
+   *  Grade boundaries page), so the preset picker is replaced by a link. */
+  const [ownBoundaries, setOwnBoundaries] = useState(false);
   const [materials, setMaterials] = useState<SourceMaterialSummary[]>([]);
   /**
    * Origins the catalogue could not read. Shown rather than swallowed: an
@@ -304,7 +307,12 @@ export function FormativeAssessmentSandbox() {
     let cancelled = false;
     void (async () => {
       const supabase = createClient();
-      const { data } = await supabase.from("grade_boundary_sets").select("id, name").order("name");
+      // Presets only: every assessment's own boundaries are rows here too.
+      const { data } = await supabase
+        .from("grade_boundary_sets")
+        .select("id, name")
+        .is("test_id", null)
+        .order("name");
       if (!cancelled && data) setBoundarySets(data as BoundarySetOption[]);
     })();
     return () => {
@@ -621,6 +629,11 @@ export function FormativeAssessmentSandbox() {
       // saves to a new test, and the archive on screen is not its archive.
       setSavedTestId(null);
       setPdfsArchived(false);
+      // Another assessment's own boundaries cannot follow a new paper.
+      if (ownBoundaries) {
+        setOwnBoundaries(false);
+        setBoundarySetId("");
+      }
       setGenerateConfirm(false);
       setNotice(null);
     } catch (err) {
@@ -701,6 +714,7 @@ export function FormativeAssessmentSandbox() {
         requireSelfAssessment?: boolean;
         assessmentKind?: AssessmentKind;
         boundarySetId?: string | null;
+        ownBoundaries?: boolean;
         pdfsArchived?: boolean;
       };
       if (!res.ok || !data.draft) throw new Error(data.error ?? `Load failed (${res.status})`);
@@ -712,6 +726,7 @@ export function FormativeAssessmentSandbox() {
       setRequireSelfAssessment(data.requireSelfAssessment !== false);
       setKind(loadedKind);
       setBoundarySetId(data.boundarySetId ?? "");
+      setOwnBoundaries(Boolean(data.ownBoundaries));
       setSavedTestId(loadId);
       setPdfsArchived(Boolean(data.pdfsArchived));
       // Findings belong to the draft that produced them; carrying them over
@@ -751,7 +766,7 @@ export function FormativeAssessmentSandbox() {
     }
     // Checked here as well as in the route. The route is the guarantee; this
     // is so the teacher finds out before a save that renders two PDFs.
-    if (kind === "summative" && !boundarySetId) {
+    if (kind === "summative" && !boundarySetId && !ownBoundaries) {
       setError(
         "Choose a grade boundary set before saving a summative -- without one the mark reports as a raw " +
           "score with an approximate band instead of a grade.",
@@ -772,7 +787,7 @@ export function FormativeAssessmentSandbox() {
           draft,
           requireSelfAssessment,
           assessmentKind: kind,
-          ...(boundarySetId ? { boundarySetId } : {}),
+          ...(boundarySetId && !ownBoundaries ? { boundarySetId } : {}),
           // Sent so the archived PDFs are the paper on screen, not a
           // default-formatted lookalike.
           formatting,
@@ -1312,7 +1327,15 @@ export function FormativeAssessmentSandbox() {
                 ))}
               </select>
             </label>
-            {kind === "summative" && (
+            {kind === "summative" && ownBoundaries && savedTestId && (
+              <p className="text-xs text-da-muted">
+                This assessment has its own grade boundaries.{" "}
+                <a href={`/dashboard/tests/${savedTestId}/boundaries`} className="text-blue-300 hover:underline">
+                  See or change them on its Grade boundaries page →
+                </a>
+              </p>
+            )}
+            {kind === "summative" && !ownBoundaries && (
               <label className="block space-y-1">
                 <span className="text-xs font-medium text-da-muted">Grade boundary set</span>
                 <select
