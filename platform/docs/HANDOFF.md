@@ -3571,14 +3571,37 @@ a missing table (PGRST205/42P01) as missing rather than unexpected.
   34 fully accepted, mean 35.04, median 37, 3/13/11/7/9/6/0 and 2/12/8/5/3/4/0),
   and loads the Standard KA1 (four strands, no boundaries), FA1 and a DP paper
   (Section A/B, set B).
+- In a browser against production (24 Sep, a teacher session minted with the
+  teacher's OK and revoked after; every POST except the key-less suggest was
+  blocked, so nothing was written):
+  - The KA1 page matched the SQL count taken 25 seconds later, including the
+    draft 45/40/35/28/23/18: 3/13/11/12/8/2/0, 9 up and 0 down (one more than
+    at 17:37, as marks had been accepted since).
+  - Suggest without the key shows its error. Both decision buttons stay
+    disabled until there is a statement, and the guidance toggle flips.
+  - The 9A, 9C, 9G, 9D and 27AH gradebooks are cell-for-cell identical to
+    main's.
+  - That run found seven UI faults, fixed in the same PR:
+    - the draft lines were drawn over identical lines in use;
+    - the page said "draft" when nothing had been drafted;
+    - empty scores were listed unsorted;
+    - messages were set at the top of the page, out of sight of the button that
+      set them (now a fixed toast);
+    - the chart was unreadable on a phone (now a 560px minimum inside its own
+      scroll box);
+    - a paper with no lines in use was pre-filled with the first preset, DP
+      "A" (now it starts empty);
+    - the tests-list chip wrapped mid-word and squeezed the card's buttons.
+  - Two warnings in that run come from the harness, not the app:
+    - a hydration warning quoting `style="caret-color: transparent"`, which
+      Playwright sets on inputs when it screenshots before hydration;
+    - `notFound()` answering 200. `app/dashboard/loading.tsx` streams every
+      dashboard page, and main's test pages do the same.
 
 ### Deliberately not done
 
 - No decision or guidance was saved on any real test: which lines KA1 uses is
   the teacher's call, on the page.
-- The page has not yet been opened in a browser against production: that needs
-  a teacher session minted with the teacher's OK (`.claude/skills/run-app`).
-  The loader, routes and RPC were checked as above; the rendered UI was not.
 - The suggest route needs `ANTHROPIC_API_KEY`, absent from agent sandboxes;
   it runs on production.
 - Students can still SELECT every set and band (the policy from 20260802224213

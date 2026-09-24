@@ -75,6 +75,12 @@ function lineList(c: Cutoffs): string {
   return CUTOFF_GRADES.map((g) => c[g]).join("/");
 }
 
+/** [31, 28, 27] -> "27, 28 or 31". */
+function orList(scores: number[]): string {
+  const s = [...scores].sort((a, b) => a - b).map(String);
+  return s.length <= 1 ? s.join("") : `${s.slice(0, -1).join(", ")} or ${s[s.length - 1]}`;
+}
+
 /** "45-50", "40-44", ... "0-19": the marks each level covers. */
 function levelRange(level: Level, c: Cutoffs | null, total: number): string {
   if (!c) return "-";
@@ -100,17 +106,17 @@ export function BoundariesClient({ data }: { data: BoundaryPageData }) {
 
   const [view, setView] = useState<CountView>("all");
   const [suggestion, setSuggestion] = useState<SuggestionRow | null>(data.latestSuggestion);
-  const firstPreset = data.presets.find((p) => p.cutoffs) ?? null;
+  // With no lines in use and no suggestion the draft starts empty: filling it
+  // from whichever preset sorts first would show a DP scale's counts and
+  // warnings on a Grade 9 paper nobody chose it for.
   const [draftText, setDraftText] = useState<DraftText>(() =>
-    toText(current.cutoffs ?? data.latestSuggestion?.cutoffs ?? firstPreset?.cutoffs ?? null)
+    toText(current.cutoffs ?? data.latestSuggestion?.cutoffs ?? null)
   );
   const [startedFrom, setStartedFrom] = useState<StartedFrom>(() =>
     current.cutoffs
       ? { kind: "current" }
       : data.latestSuggestion
       ? { kind: "suggestion", id: data.latestSuggestion.id }
-      : firstPreset
-      ? { kind: "preset", id: firstPreset.id }
       : { kind: "manual" }
   );
   const [statement, setStatement] = useState("");
@@ -124,6 +130,7 @@ export function BoundariesClient({ data }: { data: BoundaryPageData }) {
   const draftNumbers = fromText(draftText);
   const draftProblems = validateCutoffs(draftNumbers, total);
   const draft: Cutoffs | null = draftProblems.length === 0 ? (draftNumbers as Cutoffs) : null;
+  const draftBlank = CUTOFF_GRADES.every((g) => draftText[g].trim() === "");
 
   const summary = useMemo(() => scoreSummary(data.scores), [data.scores]);
   const hist = useMemo(() => scoreHistogram(data.scores, total), [data.scores, total]);
@@ -134,6 +141,9 @@ export function BoundariesClient({ data }: { data: BoundaryPageData }) {
   const watch = watchList(data.scores, total, draft ?? current.cutoffs);
   const draftChanged =
     !!draft && (!current.cutoffs || CUTOFF_GRADES.some((g) => draft[g] !== current.cutoffs?.[g]));
+  // A draft identical to the lines in use is not a draft: the chart and the
+  // wording below speak of "draft" lines only once one differs.
+  const shownDraft = draftChanged ? draft : null;
 
   const guidanceText = (id: string) => guidance.find((g) => g.id === id)?.note ?? null;
 
@@ -268,16 +278,19 @@ export function BoundariesClient({ data }: { data: BoundaryPageData }) {
 
   return (
     <div className="space-y-6">
+      {/* Fixed to the viewport: the buttons that set a message sit far down
+          the page, so a banner at its top would land out of sight. */}
       {message && (
         <div
-          role="status"
-          className={`rounded-md border p-3 text-sm ${
-            message.tone === "ok"
-              ? "border-emerald-400/40 bg-emerald-500/10 text-emerald-100"
-              : "border-red-500/40 bg-red-900/35 text-red-100"
+          role={message.tone === "error" ? "alert" : "status"}
+          className={`fixed inset-x-4 bottom-4 z-50 mx-auto flex max-w-xl items-start justify-between gap-3 rounded-md border bg-da-surface p-3 text-sm shadow-lg ${
+            message.tone === "ok" ? "border-emerald-400/60 text-emerald-100" : "border-red-500/60 text-red-100"
           }`}
         >
-          {message.text}
+          <span>{message.text}</span>
+          <button type="button" onClick={() => setMessage(null)} className="shrink-0 text-xs text-da-muted hover:text-da-text">
+            Dismiss
+          </button>
         </div>
       )}
 
@@ -402,7 +415,7 @@ export function BoundariesClient({ data }: { data: BoundaryPageData }) {
             ? ` Mean ${summary.mean.toFixed(1)}, median ${summary.median}.`
             : ""}
         </p>
-        <ScoreChart hist={hist} total={total} current={current.cutoffs} draft={draft} />
+        <ScoreChart hist={hist} total={total} current={current.cutoffs} draft={shownDraft} />
 
         {splits.length > 0 && (
           <ul className="mt-3 space-y-1 text-xs text-amber-200">
@@ -410,8 +423,9 @@ export function BoundariesClient({ data }: { data: BoundaryPageData }) {
               const near = emptyScoresNear(hist, s.line).filter((x) => x !== s.line);
               return (
                 <li key={s.grade}>
-                  The draft {s.grade} line at {s.line} separates {s.below} student{s.below === 1 ? "" : "s"} on {s.line - 1} from{" "}
-                  {s.at} on {s.line}.{near.length > 0 ? ` Nobody scored ${near.join(" or ")}.` : ""}
+                  The {draftChanged ? "draft " : ""}
+                  {s.grade} line at {s.line} separates {s.below} student{s.below === 1 ? "" : "s"} on {s.line - 1} from{" "}
+                  {s.at} on {s.line}.{near.length > 0 ? ` Nobody scored ${orList(near)}.` : ""}
                 </li>
               );
             })}
@@ -422,8 +436,8 @@ export function BoundariesClient({ data }: { data: BoundaryPageData }) {
           <div className="mt-5">
             <h3 className="text-sm font-semibold text-da-text">Check these first</h3>
             <p className={hint}>
-              Students whose level hangs on marks that are not final yet, against the{" "}
-              {draft ? "draft" : "in-use"} lines.
+              Students whose level hangs on marks that are not final yet, against{" "}
+              {draftChanged ? "the draft lines" : "the lines in use"}.
             </p>
             <div className="mt-2 overflow-x-auto">
               <table className="w-full min-w-[560px] text-sm">
@@ -519,7 +533,7 @@ export function BoundariesClient({ data }: { data: BoundaryPageData }) {
             );
           })}
         </div>
-        {draftProblems.length > 0 && (
+        {draftProblems.length > 0 && !draftBlank && (
           <ul className="mt-2 list-disc pl-5 text-xs text-red-200">
             {draftProblems.map((p) => (
               <li key={p}>{p}</li>
@@ -783,6 +797,15 @@ function ScoreChart({
 
   const occupied = hist.filter((b) => b.complete + b.provisional > 0);
   const hovered = hover === null ? null : hist[hover];
+  // The readout sits inside the plot, beside the hovered column (right of it
+  // on the left of the chart, left of it on the right), so the scroll box
+  // around the chart never clips it and it never covers the column itself.
+  const tipStyle =
+    hovered === null
+      ? undefined
+      : xLeft(hovered.score) < W * 0.6
+      ? { left: `${((xLeft(hovered.score) + band + 4) / W) * 100}%`, top: `${(m.top / H) * 100}%` }
+      : { right: `${((W - xLeft(hovered.score) + 4) / W) * 100}%`, top: `${(m.top / H) * 100}%` };
 
   return (
     <div className="mt-4">
@@ -793,133 +816,141 @@ function ScoreChart({
         <span className="inline-flex items-center gap-1.5">
           <span className="inline-block h-3 w-3 rounded-sm" style={{ background: PROVISIONAL_FILL }} /> not final yet
         </span>
-        <span className="inline-flex items-center gap-1.5">
-          <svg width="18" height="10" aria-hidden="true">
-            <line x1="0" y1="5" x2="18" y2="5" stroke="currentColor" strokeWidth="1.5" />
-          </svg>
-          lines in use
-        </span>
-        <span className="inline-flex items-center gap-1.5 text-da-amber">
-          <svg width="18" height="10" aria-hidden="true">
-            <line x1="0" y1="5" x2="18" y2="5" stroke="currentColor" strokeWidth="1.5" strokeDasharray="4 3" />
-          </svg>
-          draft lines
-        </span>
+        {current && (
+          <span className="inline-flex items-center gap-1.5">
+            <svg width="18" height="10" aria-hidden="true">
+              <line x1="0" y1="5" x2="18" y2="5" stroke="currentColor" strokeWidth="1.5" />
+            </svg>
+            lines in use
+          </span>
+        )}
+        {draft && (
+          <span className="inline-flex items-center gap-1.5 text-da-amber">
+            <svg width="18" height="10" aria-hidden="true">
+              <line x1="0" y1="5" x2="18" y2="5" stroke="currentColor" strokeWidth="1.5" strokeDasharray="4 3" />
+            </svg>
+            draft lines
+          </span>
+        )}
       </div>
 
-      <div className="relative mt-2">
-        {hovered && (
-          <div
-            className="pointer-events-none absolute z-10 -translate-x-1/2 -translate-y-full rounded border border-da-border bg-da-bg px-2 py-1 text-xs shadow"
-            style={{ left: `${((xLeft(hovered.score) + band / 2) / W) * 100}%`, top: 0 }}
+      {/* Below 560px the chart scrolls sideways rather than shrinking its
+          axis text past reading. */}
+      <div className="mt-2 overflow-x-auto">
+        <div className="relative min-w-[560px]">
+          {hovered && (
+            <div
+              className="pointer-events-none absolute z-10 whitespace-nowrap rounded border border-da-border bg-da-bg px-2 py-1 text-xs shadow"
+              style={tipStyle}
+            >
+              <span className="font-semibold text-da-text">{hovered.complete + hovered.provisional}</span>
+              <span className="text-da-muted"> on {hovered.score}</span>
+              <br />
+              <span className="text-da-muted">
+                {hovered.complete} accepted · {hovered.provisional} not final
+              </span>
+              <br />
+              <span className="text-da-muted">
+                level {levelForScore(hovered.score, total, current)}
+                {draft ? ` in use, ${levelForScore(hovered.score, total, draft)} in draft` : ""}
+              </span>
+            </div>
+          )}
+          <svg
+            viewBox={`0 0 ${W} ${H}`}
+            className="w-full text-da-muted"
+            role="img"
+            aria-label={`Students on each total mark from 0 to ${total}, with the grade boundary lines. The same numbers are in the table below.`}
+            onMouseLeave={() => setHover(null)}
           >
-            <span className="font-semibold text-da-text">{hovered.complete + hovered.provisional}</span>
-            <span className="text-da-muted"> on {hovered.score}</span>
-            <br />
-            <span className="text-da-muted">
-              {hovered.complete} accepted · {hovered.provisional} not final
-            </span>
-            <br />
-            <span className="text-da-muted">
-              level {levelForScore(hovered.score, total, current)}
-              {draft ? ` in use, ${levelForScore(hovered.score, total, draft)} in draft` : ""}
-            </span>
-          </div>
-        )}
-        <svg
-          viewBox={`0 0 ${W} ${H}`}
-          className="w-full text-da-muted"
-          role="img"
-          aria-label={`Students on each total mark from 0 to ${total}, with the grade boundary lines. The same numbers are in the table below.`}
-          onMouseLeave={() => setHover(null)}
-        >
-          {/* gridlines and y ticks */}
-          {Array.from({ length: yMax / step + 1 }, (_, i) => i * step).map((v) => (
-            <g key={v}>
-              <line x1={m.left} x2={W - m.right} y1={y(v)} y2={y(v)} stroke="#4a3038" strokeWidth={1} />
-              <text x={m.left - 6} y={y(v) + 3} textAnchor="end" fontSize={10} fill="currentColor">
-                {v}
-              </text>
-            </g>
-          ))}
-          {/* x ticks */}
-          {Array.from({ length: Math.floor(total / xTickStep) + 1 }, (_, i) => i * xTickStep).map((s) => (
-            <text key={s} x={xLeft(s) + band / 2} y={H - 10} textAnchor="middle" fontSize={10} fill="currentColor">
-              {s}
-            </text>
-          ))}
-          {/* columns */}
-          {hist.map((b) => {
-            const n = b.complete + b.provisional;
-            if (n === 0) return null;
-            const x = xLeft(b.score) + (band - barW) / 2;
-            const base = y(0);
-            const topComplete = y(b.complete);
-            const topAll = y(n);
-            const hasBoth = b.complete > 0 && b.provisional > 0;
-            return (
-              <g key={b.score} opacity={hover === null || hover === b.score ? 1 : 0.55}>
-                {b.complete > 0 &&
-                  (b.provisional > 0 ? (
-                    <rect x={x} y={topComplete} width={barW} height={base - topComplete} fill={ACCEPTED_FILL} />
-                  ) : (
-                    <path d={roundedTop(x, topComplete, barW, base - topComplete)} fill={ACCEPTED_FILL} />
-                  ))}
-                {b.provisional > 0 && (
-                  <path
-                    d={roundedTop(
-                      x,
-                      topAll,
-                      barW,
-                      Math.max(1, (hasBoth ? topComplete - 2 : base) - topAll)
-                    )}
-                    fill={PROVISIONAL_FILL}
-                  />
-                )}
+            {/* gridlines and y ticks */}
+            {Array.from({ length: yMax / step + 1 }, (_, i) => i * step).map((v) => (
+              <g key={v}>
+                <line x1={m.left} x2={W - m.right} y1={y(v)} y2={y(v)} stroke="#4a3038" strokeWidth={1} />
+                <text x={m.left - 6} y={y(v) + 3} textAnchor="end" fontSize={10} fill="currentColor">
+                  {v}
+                </text>
               </g>
-            );
-          })}
-          {/* boundary lines: in use solid, draft dashed */}
-          {current &&
-            CUTOFF_GRADES.map((g) => {
-              const x = xLeft(current[g]);
+            ))}
+            {/* x ticks */}
+            {Array.from({ length: Math.floor(total / xTickStep) + 1 }, (_, i) => i * xTickStep).map((s) => (
+              <text key={s} x={xLeft(s) + band / 2} y={H - 10} textAnchor="middle" fontSize={10} fill="currentColor">
+                {s}
+              </text>
+            ))}
+            {/* columns */}
+            {hist.map((b) => {
+              const n = b.complete + b.provisional;
+              if (n === 0) return null;
+              const x = xLeft(b.score) + (band - barW) / 2;
+              const base = y(0);
+              const topComplete = y(b.complete);
+              const topAll = y(n);
+              const hasBoth = b.complete > 0 && b.provisional > 0;
               return (
-                <g key={`c${g}`}>
-                  <line x1={x} x2={x} y1={m.top - 4} y2={y(0)} stroke="currentColor" strokeWidth={1.5} />
-                  <text x={x} y={m.top - 16} textAnchor="middle" fontSize={10} fill="currentColor">
-                    {g}
-                  </text>
-                </g>
-              );
-            })}
-          {draft &&
-            CUTOFF_GRADES.map((g) => {
-              const x = xLeft(draft[g]);
-              const same = current !== null && current[g] === draft[g];
-              return (
-                <g key={`d${g}`} className="text-da-amber">
-                  <line x1={x} x2={x} y1={m.top - 4} y2={y(0)} stroke="currentColor" strokeWidth={1.5} strokeDasharray="4 3" />
-                  {!same && (
-                    <text x={x} y={m.top - 5} textAnchor="middle" fontSize={10} fill="currentColor">
-                      {g}
-                    </text>
+                <g key={b.score} opacity={hover === null || hover === b.score ? 1 : 0.55}>
+                  {b.complete > 0 &&
+                    (b.provisional > 0 ? (
+                      <rect x={x} y={topComplete} width={barW} height={base - topComplete} fill={ACCEPTED_FILL} />
+                    ) : (
+                      <path d={roundedTop(x, topComplete, barW, base - topComplete)} fill={ACCEPTED_FILL} />
+                    ))}
+                  {b.provisional > 0 && (
+                    <path
+                      d={roundedTop(
+                        x,
+                        topAll,
+                        barW,
+                        Math.max(1, (hasBoth ? topComplete - 2 : base) - topAll)
+                      )}
+                      fill={PROVISIONAL_FILL}
+                    />
                   )}
                 </g>
               );
             })}
-          {/* hover targets: the whole column band, bigger than the mark */}
-          {hist.map((b) => (
-            <rect
-              key={`h${b.score}`}
-              x={xLeft(b.score)}
-              y={m.top}
-              width={band}
-              height={plotH}
-              fill="transparent"
-              onMouseEnter={() => setHover(b.score)}
-            />
-          ))}
-        </svg>
+            {/* boundary lines: in use solid, draft dashed */}
+            {current &&
+              CUTOFF_GRADES.map((g) => {
+                const x = xLeft(current[g]);
+                return (
+                  <g key={`c${g}`}>
+                    <line x1={x} x2={x} y1={m.top - 4} y2={y(0)} stroke="currentColor" strokeWidth={1.5} />
+                    <text x={x} y={m.top - 16} textAnchor="middle" fontSize={10} fill="currentColor">
+                      {g}
+                    </text>
+                  </g>
+                );
+              })}
+            {/* A draft line that matches the line in use is not drawn: dashed
+                over solid would hide the line in use. */}
+            {draft &&
+              CUTOFF_GRADES.map((g) => {
+                if (current !== null && current[g] === draft[g]) return null;
+                const x = xLeft(draft[g]);
+                return (
+                  <g key={`d${g}`} className="text-da-amber">
+                    <line x1={x} x2={x} y1={m.top - 4} y2={y(0)} stroke="currentColor" strokeWidth={1.5} strokeDasharray="4 3" />
+                    <text x={x} y={m.top - 5} textAnchor="middle" fontSize={10} fill="currentColor">
+                      {g}
+                    </text>
+                  </g>
+                );
+              })}
+            {/* hover targets: the whole column band, bigger than the mark */}
+            {hist.map((b) => (
+              <rect
+                key={`h${b.score}`}
+                x={xLeft(b.score)}
+                y={m.top}
+                width={band}
+                height={plotH}
+                fill="transparent"
+                onMouseEnter={() => setHover(b.score)}
+              />
+            ))}
+          </svg>
+        </div>
       </div>
 
       <details className="mt-2">
@@ -932,7 +963,7 @@ function ScoreChart({
                 <th className="py-1 pr-3 font-medium">Every part accepted</th>
                 <th className="py-1 pr-3 font-medium">Not final yet</th>
                 <th className="py-1 pr-3 font-medium">Level in use</th>
-                <th className="py-1 font-medium">Level in draft</th>
+                {draft && <th className="py-1 font-medium">Level in draft</th>}
               </tr>
             </thead>
             <tbody>
@@ -942,7 +973,7 @@ function ScoreChart({
                   <td className="py-1 pr-3">{b.complete}</td>
                   <td className="py-1 pr-3">{b.provisional}</td>
                   <td className="py-1 pr-3">{levelForScore(b.score, total, current)}</td>
-                  <td className="py-1">{draft ? levelForScore(b.score, total, draft) : "-"}</td>
+                  {draft && <td className="py-1">{levelForScore(b.score, total, draft)}</td>}
                 </tr>
               ))}
             </tbody>

@@ -563,7 +563,7 @@ export function TestsClient({ initialTests, courses }: TestsClientProps) {
                     </span>
                   </label>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 sm:shrink-0">
                   <a
                     href={`/dashboard/reflection?testId=${test.id}`}
                     className="rounded border border-blue-400/40 bg-blue-500/15 px-3 py-1 text-xs text-blue-300 hover:bg-blue-500/25"
@@ -660,10 +660,10 @@ function BoundaryStatusLink({ testId, status }: { testId: string; status: TestRo
   return (
     <>
       {" · "}
-      <span className={`rounded border px-1.5 py-0.5 text-[11px] font-medium ${chip.cls}`} title={chip.title}>
+      <span className={`whitespace-nowrap rounded border px-1.5 py-0.5 text-[11px] font-medium ${chip.cls}`} title={chip.title}>
         {chip.text}
       </span>{" "}
-      <a href={`/dashboard/tests/${testId}/boundaries`} className="text-blue-300 hover:underline">
+      <a href={`/dashboard/tests/${testId}/boundaries`} className="whitespace-nowrap text-blue-300 hover:underline">
         Boundaries →
       </a>
     </>
