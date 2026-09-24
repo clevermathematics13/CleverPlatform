@@ -21,8 +21,23 @@ function uploadErrorMessage(e: unknown): string {
   if (/fetch|network|failed to fetch/i.test(raw)) return "The upload could not reach the server. Check your connection and try again.";
   return "Upload failed. Please try again, and tell your teacher if it keeps happening.";
 }
-interface UploadSectionProps { studentId: string; testId: string; existingUpload: PdfUpload | null; disagreement: number | null; onChangeUpload?: (upload: PdfUpload | null) => void; }
-export function UploadSection({ studentId, testId, existingUpload, disagreement, onChangeUpload }: UploadSectionProps) {
+interface UploadSectionProps {
+  studentId: string;
+  testId: string;
+  existingUpload: PdfUpload | null;
+  /** Already leaves out parts waiting for a re-mark (computeDisagreement). */
+  disagreement: number | null;
+  /** How many parts that is, so the student is told why they are not counted. */
+  waitingRemarks?: number;
+  onChangeUpload?: (upload: PdfUpload | null) => void;
+}
+export function UploadSection({ studentId, testId, existingUpload, disagreement, waitingRemarks = 0, onChangeUpload }: UploadSectionProps) {
+  const waitingNote =
+    waitingRemarks === 1
+      ? "1 part waiting for a re-mark isn't counted."
+      : waitingRemarks > 1
+        ? `${waitingRemarks} parts waiting for a re-mark aren't counted.`
+        : null;
   const [upload, setUpload] = useState<PdfUpload | null>(existingUpload);
   const [uploading, setUploading] = useState(false);
   const [removing, setRemoving] = useState(false);
@@ -36,11 +51,11 @@ export function UploadSection({ studentId, testId, existingUpload, disagreement,
         <p className="font-bold text-orange-300">🔒 Upload Locked — Judgement Disagreement Must Reach 0%</p>
         {disagreement !== null && (
           <div className="text-sm text-orange-300/80 space-y-2">
-            <p>Current disagreement: <strong>{disagreement.toFixed(1)}%</strong>. The upload form unlocks only when this reaches exactly 0%.</p>
+            <p>Current disagreement: <strong>{disagreement.toFixed(1)}%</strong>. The upload form unlocks only when this reaches exactly 0%.{waitingNote ? ` ${waitingNote}` : ""}</p>
             <p className="font-semibold">Two permitted paths to consensus:</p>
             <ol className="list-decimal list-inside space-y-1">
-              <li><strong>Lower your &ldquo;Self&rdquo; mark</strong> for any question where you accept you over-awarded yourself.</li>
-              <li><strong>Challenge your teacher&apos;s mark</strong> with your exam paper and the official mark scheme.</li>
+              <li><strong>Change your &ldquo;Self&rdquo; mark</strong> for any question where you accept ClevMarks are right.</li>
+              <li><strong>Ask for a re-mark</strong> on the Compare step if you think ClevMarks are wrong: explain why, using your exam paper and the mark scheme. A part waiting for a re-mark doesn&apos;t count here.</li>
             </ol>
           </div>
         )}
@@ -92,7 +107,7 @@ export function UploadSection({ studentId, testId, existingUpload, disagreement,
   return (
     <div className="rounded-lg border-2 border-dashed border-da-border bg-da-surface p-5 space-y-4">
       <h3 className="text-lg font-semibold text-da-amber">📤 Step 3: Upload Corrected Work</h3>
-      <p className="text-sm text-da-text">Disagreement is <strong>0%</strong> — upload a single PDF of all your corrected exam answers.</p>
+      <p className="text-sm text-da-text">Disagreement is <strong>0%</strong> — upload a single PDF of all your corrected exam answers.{waitingNote ? ` ${waitingNote}` : ""}</p>
       <div className="flex items-center gap-3 flex-wrap">
         <input ref={fileRef} type="file" accept="application/pdf" className="text-sm text-da-muted file:mr-3 file:rounded file:border file:border-da-border file:bg-da-bg file:px-3 file:py-1 file:text-sm file:text-da-accent file:cursor-pointer"/>
         <button type="button" onClick={handleUpload} disabled={uploading} className="rounded-lg bg-da-accent px-4 py-2 text-sm font-bold text-da-bg hover:bg-da-amber disabled:opacity-50">{uploading?"Uploading…":"🚀 Upload"}</button>

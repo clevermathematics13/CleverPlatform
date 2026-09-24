@@ -5,11 +5,13 @@ import { useRouter } from "next/navigation";
 import type {
   ReflectionTest,
   ReflectionItem,
+  ReflectionRemark,
   ReflectionStep,
   SelfScore,
   PdfUpload,
 } from "@/lib/reflection-types";
 import { computeDisagreement } from "@/lib/reflection-utils";
+import { pendingRemarkItemIds } from "@/lib/remark-requests";
 import { StepTracker } from "@/components/reflection/StepTracker";
 import { HowItWorks } from "@/components/reflection/HowItWorks";
 import { NativeForm } from "@/components/reflection/NativeForm";
@@ -63,7 +65,10 @@ export function ReflectionClient({
   const [pdfUpload, setPdfUpload] = useState<PdfUpload | null>(initialUpload);
   const hasSelfScores = items.some((i) => i.self_marks !== null);
   const hasTeacherMarks = items.some((i) => i.marks_awarded !== null);
-  const disagreement = computeDisagreement(items);
+  // A part whose re-mark request is waiting for the teacher does not count:
+  // asking is the other way to settle a disagreement, beside changing your
+  // own mark (see computeDisagreement).
+  const disagreement = computeDisagreement(items, pendingRemarkItemIds(items));
 
   // Currently selected test object (paper/mark scheme URLs, and whether this
   // test gates Clev's Marks behind self-assessment). Read before the step
@@ -152,10 +157,25 @@ export function ReflectionClient({
       });
       setItems(updatedItems);
       // Auto-advance to upload only when disagreement reaches 0
-      const newDisagreement = computeDisagreement(updatedItems);
+      const newDisagreement = computeDisagreement(updatedItems, pendingRemarkItemIds(updatedItems));
       if (newDisagreement === 0) setStep(3);
     },
     [items, targetStudentId, readOnlyPreview]
+  );
+
+  // A re-mark request sent, reworded or withdrawn updates its part in place.
+  // Deliberately no router.refresh(): remounting would throw away any self
+  // marks typed into the Compare table and not yet saved, and would re-run
+  // the choice of landing step under the student mid-task.
+  const handleRemarkChange = useCallback(
+    (testItemId: string, remark: ReflectionRemark | null) => {
+      setItems((prev) =>
+        prev.map((item) =>
+          item.test_item_id === testItemId ? { ...item, remark_request: remark } : item
+        )
+      );
+    },
+    []
   );
 
   if (tests.length === 0) {
@@ -259,7 +279,7 @@ export function ReflectionClient({
           {selfGradeSkipped && (
             <div className="rounded-lg border border-da-border bg-da-surface px-4 py-3 text-sm">
               <p className="text-da-text">
-                Self-grading is optional for this test, so Clev&apos;s Marks are already here.
+                Self-grading is optional for this test, so ClevMarks are already here.
               </p>
               <p className="mt-1 text-da-muted">
                 You have not predicted your own marks, so there is no disagreement score yet.
@@ -284,12 +304,20 @@ export function ReflectionClient({
             editable={!readOnlyPreview && !selfGradeSkipped}
             onSave={readOnlyPreview || selfGradeSkipped ? undefined : handleSaveComparison}
             selfMarksEntered={!selfGradeSkipped}
+            // Only the student sends a re-mark request. The ?viewAs= preview
+            // shows the button as the student will see it, disabled; the
+            // ?viewStudent= view shows requests and answers only.
+            remark={{
+              mode: readOnlyPreview ? "preview" : isTeacher ? "readonly" : "interactive",
+              canWithdraw: !pdfUpload,
+              onChange: readOnlyPreview || isTeacher ? undefined : handleRemarkChange,
+            }}
           />
 
           {!hasTeacherMarks && !selfGradeSkipped && (
             <p className="text-sm text-da-muted">
-              Waiting for your teacher to enter marks — come back once grading is
-              complete to see your disagreement score.
+              Waiting for ClevMarks — come back once marking is complete to see
+              your disagreement score.
             </p>
           )}
           {hasTeacherMarks && disagreement === 0 && (
@@ -306,7 +334,7 @@ export function ReflectionClient({
 
       {step === 3 && selectedTestId && (
         <div className="space-y-4">
-          <ScoreTable items={items} editable={false} />
+          <ScoreTable items={items} editable={false} remark={{ mode: "readonly", canWithdraw: false }} />
           {readOnlyPreview ? (
             <div className="rounded-lg border-2 border-dashed border-da-border bg-da-surface p-5 text-sm text-da-muted">
               {pdfUpload
@@ -319,6 +347,7 @@ export function ReflectionClient({
               testId={selectedTestId}
               existingUpload={pdfUpload}
               disagreement={disagreement}
+              waitingRemarks={pendingRemarkItemIds(items).size}
               onChangeUpload={(u) => {
                 setPdfUpload(u);
                 if (u) setStep(4);

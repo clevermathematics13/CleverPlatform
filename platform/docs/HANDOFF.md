@@ -3401,3 +3401,137 @@ marked from here -- marking only runs on production with a teacher session.
   into a confident match on 9C's only Santiago, the same mix-up in reverse.
   Batches from before 24 Sep have `course_id` null and behave as before.
 
+
+## 36. Re-mark requests, the ClevMarks rename, and no "AI" on the student side (24 Sep 2026)
+
+The teacher asked that a student who has self-assessed, and sees their mark
+differ from the teacher's on a part, be able to send a written explanation
+of why that part should be re-marked. In the same request: teacher marks are
+now called **ClevMarks**, and **the term "AI" must never appear on the
+student side** -- not in copy, not in URLs, not anywhere. Both are now rules
+in `platform/CLAUDE.md`.
+
+### What a student sees
+
+- On the Compare step (`components/reflection/ScoreTable.tsx`), every part
+  where their SAVED self mark differs from ClevMarks (a blank counts as 0,
+  as everywhere) gets an **Ask for a re-mark** button under it
+  (`components/reflection/RemarkRequestRow.tsx`). The explanation must be
+  15-1000 characters; any difference qualifies, an under-claim included.
+- A waiting request shows their text, **Edit**, and **Withdraw** -- the
+  last only until they upload corrections for that test (the route enforces
+  it). Once answered it shows "Re-marked: ClevMarks changed from 2 to 3" or
+  "Re-mark reviewed: ClevMarks stay at 2", with the teacher's note.
+- **A part with a waiting request is left out of the disagreement %**
+  (`computeDisagreement(items, excusedItemIds)`, `lib/reflection-utils.ts`),
+  so it does not hold Upload Corrections shut -- the "challenge your
+  teacher's mark" path the locked Upload panel always listed, which nothing
+  implemented until now. Once answered the part counts again: after "Mark
+  stands" the student changes their own mark to settle it, unless they have
+  already uploaded. Whether a student has self-graded, and whether anything
+  is marked, are still read from every part.
+- Requests are attached to the items (`ReflectionItem.remark_request`, by
+  `attachRemarkRequests` in `lib/exam-service.ts`) only where the page is
+  showing marks: a request carries marks, and attaching one to items the
+  self-assessment gate has blanked would leak them. The client updates items
+  in place after a request is sent -- never `router.refresh()`, which would
+  remount and throw away unsaved Compare edits.
+- `?viewAs=` shows the button disabled (the preview must match what the
+  student sees); `?viewStudent=` and the Upload step show requests read-only.
+
+### What the teacher sees
+
+- **`/dashboard/remark-requests`** (nav: Re-mark Requests; a count card on
+  the dashboard): waiting requests across every test, grouped by test and
+  then by part in paper order, oldest first, each part's mark scheme printed
+  once as the student saw it (`studentMarkSchemeParts`, never
+  `marking_notes`). Each request: the student's words, ClevMarks and their
+  self mark now, badges for "was N when asked" / "their mark now agrees" /
+  "corrections uploaded", links to the student's view and the marking
+  screen, and **Mark stands** / **Mark changed** with an optional note.
+  Loaded by `lib/remark-requests-service.ts`, every read paged.
+- **Mark changed** (`PATCH /api/remark-requests/[id]`) writes
+  `student_marks`, a `mark_changes` row (reason `Re-mark request: <note>`,
+  through `logMarkChanges`) and flags the PowerSchool export stale -- the
+  same as a gradebook edit, so the part's `ai_grade_results` row stays as it
+  was, exactly as after a gradebook edit. The mark is written first and the
+  request second; a retry after a failed second half finds the mark in place
+  and skips the write. The page sends the ClevMark it showed
+  (`expectedCurrentMarks`) and a mark that moved since is refused with 409.
+- The reflection dashboard's grid and student preview leave waiting parts
+  out of the disagreement too (`StudentReflectionRow.pending_remark_item_ids`
+  from `getClassReflectionData`), so the two views never disagree about
+  whether a student's upload is open.
+
+### The table: `remark_requests`
+
+Migration `<ledger>_remark_requests`. One row per student per part;
+`marks_at_request` / `self_marks_at_request` are taken by the route when the
+request is made. **Students can only SELECT their own rows; nobody but the
+service role can insert or delete** (`revoke insert, delete, truncate ...
+from authenticated`, everything from anon). `app/api/remark-requests` does
+every student write with the service role, after checking in the student's
+own session what no row policy can: the test is one they can see
+(`getTestsForStudent`: track family, hidden, release time), they have
+self-graded it, and the part's ClevMark differs from their saved mark. A
+student insert policy would have let a student skip all of that, invent the
+marks they asked about, or back-date the queue, straight through PostgREST
+-- and the teacher's `?viewStudent=` session cannot file on a student's
+behalf, because no insert policy exists for anyone.
+
+Teachers SELECT and UPDATE requests on tests they own (the `student_marks`
+ownership test), not by `get_my_role()`: two of the teacher's own test
+accounts carry `role='teacher'` and own no tests. `remark_requests_guard`
+refuses to change the part, the student, the snapshots or `created_at`, any
+change to an answered request, and a reworded explanation in the write that
+answers it; `resolved_by` therefore has no ON DELETE action.
+`remark_requests` is also in `DEPENDENT_TABLES`
+(`lib/formative-assessment-bridge.ts`), so a creator re-save refuses to
+delete a part a request hangs off -- which also means a missing table makes
+Formative Assessment saves fail, so **the migration must be applied before
+this code reaches `main`**.
+
+Dry-run before applying (PGlite, Supabase-like default privileges): student
+SELECT sees own rows only, INSERT/DELETE are denied and UPDATE touches 0
+rows; the owning teacher reads and resolves; a teacher-role account owning no
+tests sees nothing; anon is denied; the guard, the four checks, the unique
+key, the `updated_at` trigger and the cascade from `test_items` all behave.
+
+### The rename
+
+"Clev's Marks" / `Clev&apos;s Marks` / `Clev&rsquo;s Marks` became
+"ClevMarks" in every UI string (57 lines, student and teacher), and the
+student-facing "Teacher" labels for the same marks followed (the Compare
+table's column, the mastery pages, the reflection dashboard's tooltips).
+Comments, test titles, migrations and this file's history keep the old
+name.
+
+- **The packet generator's copy rule lives in the database.** The canonical
+  `nuanced_analysis_specs` row wins over `lib/nuanced-analysis-spec.defaults.ts`
+  (`loadCanonicalSpecForGeneration`), so migration `<ledger>_clevmarks_copy_rule`
+  rewrites the `copy-clevs-marks` rule text in place (id and `spec_version`
+  unchanged; a no-op if the rule has been reworded). Rule 22 in
+  `lib/assignments.ts`, the edit prompt's rule 9 and the DP designer's
+  `assessment_tracker` default are code only.
+- `scripts/na_derive_anchors.py` checks a packet against its printed
+  "Clev's Marks: N" pills; its pattern now reads "ClevMarks: N" too.
+- **Deliberately left:** stored content that already says "Clev's Marks" --
+  `nuanced_analyses` drafts, parts, companions and digests, two
+  `assignment_templates` drafts, two `na_anchors` and two `na_rubric_items`
+  prompts, `na_continuity`, and the generation logs. All of it quotes paper
+  students already hold (the anchors were cut from those printed masters),
+  and none of it is page text on a student screen.
+
+### "AI" on the student side
+
+Audited every student-reachable page and every URL a student's browser
+calls. Fixed: the Mastery page's packet panel ("Claude will read the PDFs")
+and its route's error ("Empty response from AI"), and `/dashboard/graph-lab`,
+the one dashboard page with no role check (a client page mentioning Claude),
+which now has a server `layout.tsx` calling `requireTeacher()`. The new
+feature's paths (`/api/remark-requests`), fields and copy carry no "AI".
+Watch for two things: `TeacherDashboard.tsx` ships in the student's
+reflection bundle, so it must never gain an `ai-grade` URL or AI copy; and
+the IB course "Applications & Interpretation" is abbreviated AI, so a test
+or packet NAME can still put the letters on a student's screen (none visible
+today).

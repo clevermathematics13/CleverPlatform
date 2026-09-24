@@ -148,11 +148,14 @@ function itemKey(questionNumber: number, partLabel: string | null): string {
  * This list is the reason this module no longer deletes rows on its way to
  * writing them. Deleting one item row silently takes every mark, AI
  * suggestion, mark-change record and self-score awarded against that part --
- * Formative Assessment 1 carries 2091, 2378, and 1429 of them.
+ * Formative Assessment 1 carries 2091, 2378, and 1429 of them -- and every
+ * re-mark request, which can be the only student work left on a part whose
+ * mark was cleared.
  */
 const DEPENDENT_TABLES = [
   "ai_grade_results",
   "mark_changes",
+  "remark_requests",
   "student_marks",
   "student_self_scores",
 ] as const;

@@ -462,7 +462,7 @@ export function TeacherDashboard({ tests }: TeacherDashboardProps) {
                         }`}
                         title={
                           hasAny
-                            ? `Teacher: ${cell.marks_awarded ?? "—"}, Self: ${cell.self_marks ?? "—"} (click to edit)`
+                            ? `ClevMarks: ${cell.marks_awarded ?? "—"}, Self: ${cell.self_marks ?? "—"} (click to edit)`
                             : "Click to enter marks"
                         }
                         onClick={() =>
@@ -624,12 +624,15 @@ export function TeacherDashboard({ tests }: TeacherDashboardProps) {
 
         const hasSelf = reflectionItems.some((i) => i.self_marks !== null);
         const hasTeacher = reflectionItems.some((i) => i.marks_awarded !== null);
-        const disagreement = computeDisagreement(reflectionItems);
+        // The parts this student has a re-mark request waiting on are left
+        // out, as they are on the student's own page.
+        const waitingRemarks = new Set(row.pending_remark_item_ids ?? []);
+        const disagreement = computeDisagreement(reflectionItems, waitingRemarks);
 
         const stepLabel = !hasSelf
           ? "Step 1 — Awaiting self-assessment"
           : !hasTeacher
-            ? "Step 2 — Awaiting teacher marks"
+            ? "Step 2 — Awaiting ClevMarks"
             : disagreement !== 0
               ? `Step 2 — Resolving disagreement (${disagreement !== null ? disagreement.toFixed(1) + "%" : "pending"})`
               : row.pdf_url
@@ -696,6 +699,19 @@ export function TeacherDashboard({ tests }: TeacherDashboardProps) {
               </div>
             )}
 
+            {/* Deliberately links only to the requests page: this component
+                ships in the student's reflection bundle too. */}
+            {waitingRemarks.size > 0 && (
+              <a
+                href="/dashboard/remark-requests"
+                className="block rounded-lg border border-amber-400/40 bg-amber-500/10 px-4 py-2 text-sm text-amber-200 hover:bg-amber-500/20"
+              >
+                {waitingRemarks.size === 1
+                  ? "1 re-mark request waiting for your answer, not counted above →"
+                  : `${waitingRemarks.size} re-mark requests waiting for your answer, not counted above →`}
+              </a>
+            )}
+
             {!hasSelf && (
               <div className="rounded-lg border border-da-border/50 bg-da-bg px-4 py-3 text-sm text-da-muted">
                 ⏳ This student has not yet submitted their self-assessment marks.
@@ -704,13 +720,13 @@ export function TeacherDashboard({ tests }: TeacherDashboardProps) {
 
             {hasSelf && !hasTeacher && (
               <div className="rounded-lg border border-orange-700 bg-orange-900/25 px-4 py-3 text-sm text-orange-300">
-                ⏳ Self-marks submitted — waiting for you to enter teacher marks above.
+                ⏳ Self-marks submitted — waiting for you to enter ClevMarks above.
               </div>
             )}
 
             {/* Score table (read-only) */}
             {hasSelf && reflectionItems.length > 0 && (
-              <ScoreTable items={reflectionItems} editable={false} />
+              <ScoreTable items={reflectionItems} editable={false} excusedItemIds={waitingRemarks} />
             )}
 
             {/* Upload status */}
