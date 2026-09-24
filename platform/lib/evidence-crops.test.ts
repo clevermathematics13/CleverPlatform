@@ -12,7 +12,18 @@ import {
   normalizeFractionBox,
   padModelBox,
   MODEL_DOWNWARD_BIAS,
-  widenStoredModelBox,
+  NEXT_PART_OVERLAP,
+  LEGACY_NEXT_ALLOWANCE,
+  nextTopBelow,
+  regionEndBelow,
+  boundModelBoxes,
+  boundStoredModelBox,
+  boundStoredModelBoxes,
+  modelExpansionCaps,
+  sameBox,
+  anchorCropPlan,
+  modelCropPlan,
+  pointsToFractions,
 } from "./evidence-crops";
 
 describe("normalizeFractionBox", () => {
@@ -381,36 +392,324 @@ describe("firstShiftedAnchorPage", () => {
   });
 });
 
-describe("widenStoredModelBox", () => {
-  it("drops the bottom edge by the bias and leaves the other three alone", () => {
-    // Key Assessment 1 Q4(b) exactly as it is stored today.
-    const stored = { page: 3, x0: 0.0134, y0: 0.15, x1: 0.5166, y1: 0.25 };
-    const widened = widenStoredModelBox(stored)!;
-    expect(widened).toMatchObject({ page: 3, x0: 0.0134, y0: 0.15, x1: 0.5166 });
-    expect(widened.y1).toBeCloseTo(0.4, 10);
+/**
+ * Key Assessment 1 (Grade 9 Standard), one student's second page, as the
+ * marker reported it -- reconstructed from the stored boxes with the 0.03
+ * floor padding that every one of these short boxes gets. 1(c) is the crop
+ * in the 23 Sep 2026 screenshot: one line of handwriting at 0.36-0.44 and,
+ * under the old arithmetic, the whole of Q2 below it.
+ */
+const KA1_PAGE2_RAW: { key: string; raw: { page: number; x0: number; y0: number; x1: number; y1: number } }[] = [
+  { key: "1(a)", raw: { page: 2, x0: 0.05, y0: 0.04, x1: 0.6, y1: 0.12 } },
+  { key: "1(b)", raw: { page: 2, x0: 0.05, y0: 0.14, x1: 0.6, y1: 0.19 } },
+  { key: "1(c)", raw: { page: 2, x0: 0.05, y0: 0.36, x1: 0.6, y1: 0.44 } },
+  { key: "2(a)", raw: { page: 2, x0: 0.05, y0: 0.42, x1: 0.6, y1: 0.48 } },
+  { key: "2(b)", raw: { page: 2, x0: 0.05, y0: 0.47, x1: 0.6, y1: 0.55 } },
+  { key: "2(c)", raw: { page: 2, x0: 0.05, y0: 0.58, x1: 0.6, y1: 0.62 } },
+  { key: "2(d)", raw: { page: 2, x0: 0.05, y0: 0.69, x1: 0.6, y1: 0.85 } },
+];
+
+/** The same page as it is STORED today: padded, biased, raw box gone. */
+const KA1_PAGE2_STORED: { key: string; stored: { page: number; x0: number; y0: number; x1: number; y1: number } }[] = [
+  { key: "1(a)", stored: { page: 2, x0: 0, y0: 0.01, x1: 0.8352, y1: 0.3 } },
+  { key: "1(b)", stored: { page: 2, x0: 0.0494, y0: 0.11, x1: 0.2806, y1: 0.37 } },
+  { key: "1(c)", stored: { page: 2, x0: 0, y0: 0.33, x1: 0.522, y1: 0.62 } },
+  { key: "2(a)", stored: { page: 2, x0: 0, y0: 0.39, x1: 1, y1: 0.66 } },
+  { key: "2(b)", stored: { page: 2, x0: 0, y0: 0.44, x1: 0.876, y1: 0.58 } },
+  { key: "2(c)", stored: { page: 2, x0: 0, y0: 0.55, x1: 0.7526, y1: 0.8 } },
+  { key: "2(d)", stored: { page: 2, x0: 0, y0: 0.6604, x1: 1, y1: 1 } },
+];
+
+const A4 = { widthPt: 595, heightPt: 842 };
+
+describe("nextTopBelow", () => {
+  const box = { page: 2, x0: 0.1, y0: 0.4, x1: 0.9, y1: 0.5 };
+
+  it("finds the nearest top strictly below this box's top on the same page", () => {
+    const others = [
+      { page: 2, x0: 0.1, y0: 0.7, x1: 0.9, y1: 0.8 },
+      { page: 2, x0: 0.1, y0: 0.45, x1: 0.9, y1: 0.6 },
+      { page: 2, x0: 0.1, y0: 0.2, x1: 0.9, y1: 0.3 },
+    ];
+    expect(nextTopBelow(box, others)).toBe(0.45);
   });
 
-  it("agrees with what padModelBox would store for the same raw box", () => {
-    // The re-cut of an old row and a freshly marked one must not differ, or a
-    // paper would carry two kinds of model crop.
-    const raw = { page: 3, x0: 0.08, y0: 0.18, x1: 0.45, y1: 0.22 };
-    const storedUnderOldArithmetic = { page: 3, x0: 0.0134, y0: 0.15, x1: 0.5166, y1: 0.25 };
-    const fresh = padModelBox(raw)!;
-    const widened = widenStoredModelBox(storedUnderOldArithmetic)!;
-    expect(widened.y1).toBeCloseTo(fresh.y1, 10);
-    expect(widened.y0).toBeCloseTo(fresh.y0, 10);
+  it("ignores a box on another page, a box above, and the same top twice", () => {
+    expect(nextTopBelow(box, [{ page: 3, x0: 0.1, y0: 0.45, x1: 0.9, y1: 0.6 }])).toBeNull();
+    expect(nextTopBelow(box, [{ page: 2, x0: 0.1, y0: 0.1, x1: 0.9, y1: 0.39 }])).toBeNull();
+    expect(nextTopBelow(box, [{ page: 2, x0: 0.1, y0: 0.4, x1: 0.9, y1: 0.9 }])).toBeNull();
+    expect(nextTopBelow(box, [box])).toBeNull();
+  });
+});
+
+describe("regionEndBelow", () => {
+  const box = { page: 2, x0: 0.1, y0: 0.4, x1: 0.9, y1: 0.5 };
+
+  it("is the top of the box after the next one when there is one", () => {
+    const others = [
+      { page: 2, x0: 0.1, y0: 0.45, x1: 0.9, y1: 0.6 },
+      { page: 2, x0: 0.1, y0: 0.7, x1: 0.9, y1: 0.8 },
+      { page: 2, x0: 0.1, y0: 0.9, x1: 0.9, y1: 0.95 },
+    ];
+    expect(regionEndBelow(box, others)).toEqual({ y: 0.7, kind: "second-top" });
   });
 
-  it("declines a box already at the foot of the page", () => {
-    expect(widenStoredModelBox({ page: 1, x0: 0.1, y0: 0.9, x1: 0.9, y1: 1 })).toBeNull();
+  it("is the next box's own bottom when it is the last on the page", () => {
+    expect(regionEndBelow(box, [{ page: 2, x0: 0.1, y0: 0.45, x1: 0.9, y1: 0.6 }])).toEqual({ y: 0.6, kind: "next-bottom" });
   });
 
-  it("declines a box that could never be cropped", () => {
-    expect(widenStoredModelBox({ page: 1, x0: 0.5, y0: 0.5, x1: 0.5, y1: 0.6 })).toBeNull();
+  it("is null when nothing is below, on this page", () => {
+    expect(regionEndBelow(box, [{ page: 3, x0: 0.1, y0: 0.45, x1: 0.9, y1: 0.6 }])).toBeNull();
+    expect(regionEndBelow(box, [{ page: 2, x0: 0.1, y0: 0.1, x1: 0.9, y1: 0.3 }])).toBeNull();
+    expect(regionEndBelow(box, [])).toBeNull();
+  });
+});
+
+describe("boundModelBoxes", () => {
+  it("stops each KA1 box at the end of the next part's region", () => {
+    const bounded = new Map(boundModelBoxes(KA1_PAGE2_RAW).map((b) => [b.key, b]));
+    // 1(a): next is 1(b) (0.14), the box after that starts at 0.36, so the
+    // crop may reach 0.38; the bias (0.15 -> 0.30) stops it first.
+    expect(bounded.get("1(a)")!.box.y1).toBeCloseTo(0.3, 10);
+    expect(bounded.get("1(a)")!.ceiling).toBeCloseTo(0.38, 10);
+    expect(bounded.get("1(b)")!.box.y1).toBeCloseTo(0.37, 10);
+    expect(bounded.get("1(b)")!.ceiling).toBeCloseTo(0.44, 10);
+    // 1(c) -- the screenshot. 2(a) is reported INSIDE it (0.42 < 0.44) and
+    // 2(b) at 0.47, so the crop ends at 0.49: the 0.36-0.44 handwriting and
+    // Q2's heading, instead of 0.62 plus uncapped growth over Q2's text.
+    expect(bounded.get("1(c)")!.box.y1).toBeCloseTo(0.49, 10);
+    expect(bounded.get("1(c)")!.ceiling).toBeCloseTo(0.49, 10);
+    // 2(a) -- the box the marker put one part too high (on the sequence
+    // table; (a)'s answer sits under 2(b)'s box at 0.47-0.55). Bounding at
+    // 2(b)'s TOP would lose the answer; the end of 2(b)'s region keeps it.
+    expect(bounded.get("2(a)")!.box.y1).toBeCloseTo(0.6, 10);
+    expect(bounded.get("2(a)")!.ceiling).toBeCloseTo(0.6, 10);
+    expect(bounded.get("2(b)")!.box.y1).toBeCloseTo(0.71, 10);
+    expect(bounded.get("2(b)")!.ceiling).toBeCloseTo(0.71, 10);
+    // 2(c): only 2(d) is below it, so the bound is 2(d)'s own bottom plus
+    // the floor padding; the bias stops the crop first.
+    expect(bounded.get("2(c)")!.box.y1).toBeCloseTo(0.8, 10);
+    expect(bounded.get("2(c)")!.ceiling).toBeCloseTo(0.88, 10);
+    // Last on the page: nothing below it, so the full bias as before.
+    expect(bounded.get("2(d)")!.box.y1).toBe(1);
+    expect(bounded.get("2(d)")!.ceiling).toBeNull();
   });
 
-  it("never runs off the bottom of the page", () => {
-    const widened = widenStoredModelBox({ page: 1, x0: 0.1, y0: 0.8, x1: 0.9, y1: 0.95 })!;
-    expect(widened.y1).toBe(1);
+  it("never reaches further than the unbounded bias did, and never above the padded box", () => {
+    for (const b of boundModelBoxes(KA1_PAGE2_RAW)) {
+      const raw = KA1_PAGE2_RAW.find((r) => r.key === b.key)!.raw;
+      const padded = padModelBox(raw)!;
+      expect(b.box.y1).toBeLessThanOrEqual(padded.y1 + 1e-12);
+      expect(b.box.y1).toBeGreaterThanOrEqual(Math.min(1, raw.y1 + PAD_FLOOR) - 1e-12);
+    }
+  });
+
+  it("leaves the three other edges exactly as padModelBox sets them", () => {
+    for (const b of boundModelBoxes(KA1_PAGE2_RAW)) {
+      const raw = KA1_PAGE2_RAW.find((r) => r.key === b.key)!.raw;
+      const padded = padModelBox(raw)!;
+      expect(b.box.page).toBe(padded.page);
+      expect(b.box.x0).toBeCloseTo(padded.x0, 10);
+      expect(b.box.y0).toBeCloseTo(padded.y0, 10);
+      expect(b.box.x1).toBeCloseTo(padded.x1, 10);
+    }
+  });
+
+  it("bounds by position on the page, not by the order the parts are given in", () => {
+    const shuffled = [...KA1_PAGE2_RAW].reverse();
+    const summarise = (rows: ReturnType<typeof boundModelBoxes<string>>) =>
+      rows.map((b) => `${b.key}:${b.box.y1.toFixed(6)}:${b.ceiling === null ? "page" : b.ceiling.toFixed(6)}`).sort();
+    expect(summarise(boundModelBoxes(shuffled))).toEqual(summarise(boundModelBoxes(KA1_PAGE2_RAW)));
+  });
+
+  it("is not bounded by a box on another page or a box above it", () => {
+    const raw = { page: 2, x0: 0.1, y0: 0.3, x1: 0.9, y1: 0.4 };
+    const alone = padModelBox(raw)!;
+    const [otherPage] = boundModelBoxes(
+      [{ key: "p", raw }],
+      [raw, { page: 3, x0: 0.1, y0: 0.42, x1: 0.9, y1: 0.5 }]
+    );
+    expect(otherPage.box.y1).toBeCloseTo(alone.y1, 10);
+    expect(otherPage.ceiling).toBeNull();
+    const [above] = boundModelBoxes([{ key: "p", raw }], [raw, { page: 2, x0: 0.1, y0: 0.1, x1: 0.9, y1: 0.2 }]);
+    expect(above.box.y1).toBeCloseTo(alone.y1, 10);
+  });
+
+  it("reads the region end off the nearest two boxes below it", () => {
+    const raw = { page: 2, x0: 0.1, y0: 0.3, x1: 0.9, y1: 0.4 };
+    const [b] = boundModelBoxes(
+      [{ key: "p", raw }],
+      [raw, { page: 2, x0: 0.1, y0: 0.7, x1: 0.9, y1: 0.8 }, { page: 2, x0: 0.1, y0: 0.5, x1: 0.9, y1: 0.6 }]
+    );
+    expect(b.ceiling).toBeCloseTo(0.7 + NEXT_PART_OVERLAP, 10);
+    // The bias runs out (0.43 + 0.15) before the bound does.
+    expect(b.box.y1).toBeCloseTo(0.58, 10);
+  });
+
+  it("equals padModelBox for every production box when nothing is below it", () => {
+    for (const [, [x0, y0, x1, y1]] of PRODUCTION_PADDING_CASES) {
+      const raw = { page: 3, x0, y0, x1, y1 };
+      const [b] = boundModelBoxes([{ key: "only", raw }]);
+      expect(b.box).toEqual(padModelBox(raw));
+      expect(b.ceiling).toBeNull();
+    }
+  });
+
+  it("drops a degenerate box and never lets one act as a neighbour", () => {
+    const raw = { page: 2, x0: 0.1, y0: 0.3, x1: 0.9, y1: 0.4 };
+    const inverted = { page: 2, x0: 0.9, y0: 0.5, x1: 0.1, y1: 0.45 };
+    const out = boundModelBoxes([
+      { key: "good", raw },
+      { key: "bad", raw: inverted },
+    ]);
+    expect(out.map((b) => b.key)).toEqual(["good"]);
+    expect(out[0].ceiling).toBeNull();
+  });
+
+  it("is bounded by a neighbour that is only in the neighbour list", () => {
+    // The grading run passes every reported box, including parts cut from a
+    // paper layout: their reported top still says where the next part starts.
+    // One box below with nothing after it bounds at its own bottom.
+    const raw = { page: 2, x0: 0.1, y0: 0.3, x1: 0.9, y1: 0.4 };
+    const [b] = boundModelBoxes([{ key: "p", raw }], [{ page: 2, x0: 0.1, y0: 0.44, x1: 0.9, y1: 0.5 }]);
+    expect(b.ceiling).toBeCloseTo(0.5 + PAD_FLOOR, 10);
+    expect(b.box.y1).toBeCloseTo(0.53, 10);
+  });
+});
+
+describe("boundStoredModelBox", () => {
+  const stored = { page: 2, x0: 0, y0: 0.33, x1: 0.522, y1: 0.62 };
+
+  it("cuts the KA1 1(c) crop back to the end of 2(a)'s region", () => {
+    const bounded = boundStoredModelBox(stored, 0.49);
+    expect(bounded).toMatchObject({ page: 2, x0: 0, y0: 0.33, x1: 0.522 });
+    expect(bounded.y1).toBeCloseTo(0.49, 10);
+  });
+
+  it("repairs a box that Fix crops widened twice, and is a no-op on its own output", () => {
+    const widenedTwice = { ...stored, y1: 0.77 };
+    const once = boundStoredModelBox(widenedTwice, 0.49);
+    expect(once.y1).toBeCloseTo(0.49, 10);
+    expect(boundStoredModelBox(once, 0.49)).toEqual(once);
+  });
+
+  it("never widens: a far bound leaves the stored bottom alone, and no bound returns the box as it is", () => {
+    expect(boundStoredModelBox(stored, 0.9)).toEqual(stored);
+    expect(boundStoredModelBox(stored, null)).toBe(stored);
+  });
+});
+
+describe("boundStoredModelBoxes", () => {
+  it("bounds the whole KA1 page against every stored row on it", () => {
+    // 2(b) is a row stored before the bias existed; as a neighbour it still
+    // bounds 1(c) and 2(a), and its own bottom is left where it is.
+    const bounded = new Map(boundStoredModelBoxes(KA1_PAGE2_STORED).map((b) => [b.key, b]));
+    expect(bounded.get("1(a)")!.box.y1).toBeCloseTo(0.3, 10);
+    expect(bounded.get("1(a)")!.ceiling).toBeCloseTo(0.33 + LEGACY_NEXT_ALLOWANCE, 10);
+    expect(bounded.get("1(b)")!.box.y1).toBeCloseTo(0.37, 10);
+    // The screenshot row: 0.62 (plus uncapped growth) becomes 0.49.
+    expect(bounded.get("1(c)")!.box.y1).toBeCloseTo(0.49, 10);
+    expect(bounded.get("1(c)")!.ceiling).toBeCloseTo(0.44 + LEGACY_NEXT_ALLOWANCE, 10);
+    // 2(a), boxed one part too high by the marker: the end of 2(b)'s region
+    // (2(c)'s top plus the allowance) still holds (a)'s answer at 0.53-0.57.
+    expect(bounded.get("2(a)")!.box.y1).toBeCloseTo(0.6, 10);
+    expect(bounded.get("2(b)")!.box.y1).toBeCloseTo(0.58, 10);
+    // 2(c): only 2(d) below it, whose stored bottom is the page edge.
+    expect(bounded.get("2(c)")!.box.y1).toBeCloseTo(0.8, 10);
+    expect(bounded.get("2(c)")!.ceiling).toBe(1);
+    expect(bounded.get("2(d)")!.box.y1).toBe(1);
+    expect(bounded.get("2(d)")!.ceiling).toBeNull();
+  });
+
+  it("takes its neighbours from the run, not only from the rows being re-cut", () => {
+    const only1c = KA1_PAGE2_STORED.filter((r) => r.key === "1(c)");
+    const [alone] = boundStoredModelBoxes(only1c);
+    expect(alone.box.y1).toBe(0.62);
+    expect(alone.ceiling).toBeNull();
+    const [withRun] = boundStoredModelBoxes(only1c, KA1_PAGE2_STORED.map((r) => r.stored));
+    expect(withRun.box.y1).toBeCloseTo(0.49, 10);
+    expect(withRun.ceiling).toBeCloseTo(0.44 + LEGACY_NEXT_ALLOWANCE, 10);
+  });
+
+  it("drops a box that could never be cropped", () => {
+    const out = boundStoredModelBoxes([{ key: "flat", stored: { page: 1, x0: 0.5, y0: 0.5, x1: 0.5, y1: 0.6 } }]);
+    expect(out).toEqual([]);
+  });
+});
+
+describe("modelExpansionCaps", () => {
+  it("caps at the page edges when there is nothing below", () => {
+    expect(modelExpansionCaps(null, A4)).toEqual({ expandMaxX1Pt: 595, expandMaxY1Pt: 842 });
+  });
+
+  it("caps downward growth at the ceiling in points, and never past the page", () => {
+    expect(modelExpansionCaps(0.44, A4).expandMaxY1Pt).toBeCloseTo(370.48, 10);
+    expect(modelExpansionCaps(0.44, A4).expandMaxX1Pt).toBe(595);
+    expect(modelExpansionCaps(1.2, A4).expandMaxY1Pt).toBe(842);
+  });
+});
+
+describe("sameBox", () => {
+  const a = { page: 2, x0: 0, y0: 0.33, x1: 0.522, y1: 0.47 };
+  it("is true for the same edges within tolerance and false otherwise", () => {
+    expect(sameBox(a, { ...a })).toBe(true);
+    expect(sameBox(a, { ...a, y1: 0.47 + 1e-9 })).toBe(true);
+    expect(sameBox(a, { ...a, y1: 0.48 })).toBe(false);
+    expect(sameBox(a, { ...a, page: 3 })).toBe(false);
+    expect(sameBox(a, null)).toBe(false);
+    expect(sameBox(undefined, a)).toBe(false);
+  });
+});
+
+describe("anchorCropPlan", () => {
+  const anchor = { pageIndex: 2, x0Pt: 50, y0Pt: 200, x1Pt: 500, y1Pt: 300, expandMaxX1Pt: 595, expandMaxY1Pt: 396 };
+
+  it("reproduces the grading run's anchor arithmetic on a same-sized scan", () => {
+    const plan = anchorCropPlan({ anchor, referenceSize: A4, scanSize: A4 });
+    const expectedBox = anchorToEvidenceBox({
+      anchor: { x0Pt: 50, y0Pt: 200, x1Pt: 500, y1Pt: 300 },
+      referenceSize: A4,
+      page: 3,
+      maxY1Pt: 396,
+    });
+    expect(plan.box).toEqual(expectedBox);
+    expect(plan.region.pageIndex).toBe(2);
+    expect(plan.region.x0Pt).toBeCloseTo(50, 8);
+    expect(plan.region.y0Pt).toBeCloseTo(172, 8);
+    expect(plan.region.x1Pt).toBeCloseTo(500, 8);
+    expect(plan.region.y1Pt).toBeCloseTo(328, 8);
+    expect(plan.region.expandMaxX1Pt).toBeCloseTo(595, 8);
+    expect(plan.region.expandMaxY1Pt).toBeCloseTo(396, 8);
+  });
+
+  it("rescales the caps through reference fractions on a differently sized scan", () => {
+    const letter = { widthPt: 612, heightPt: 792 };
+    const plan = anchorCropPlan({ anchor, referenceSize: A4, scanSize: letter });
+    const fractions = pointsToFractions({ x0Pt: 0, y0Pt: 0, x1Pt: 595, y1Pt: 396 }, A4);
+    expect(plan.region.expandMaxX1Pt).toBeCloseTo(fractions.x1 * 612, 8);
+    expect(plan.region.expandMaxY1Pt).toBeCloseTo(fractions.y1 * 792, 8);
+    expect(plan.region.x0Pt).toBeCloseTo((50 / 595) * 612, 8);
+  });
+
+  it("caps at the page edges when the region has no caps recorded", () => {
+    const plan = anchorCropPlan({ anchor: { ...anchor, expandMaxX1Pt: null, expandMaxY1Pt: null }, referenceSize: A4, scanSize: A4 });
+    expect(plan.region.expandMaxX1Pt).toBeCloseTo(595, 8);
+    expect(plan.region.expandMaxY1Pt).toBeCloseTo(842, 8);
+    expect(plan.box.y1).toBeCloseTo(328 / 842, 10);
+  });
+});
+
+describe("modelCropPlan", () => {
+  it("sends the bounded box in scan points with its ceiling as the cap", () => {
+    const plan = modelCropPlan({ box: { page: 2, x0: 0, y0: 0.33, x1: 0.522, y1: 0.47 }, ceiling: 0.44 }, A4);
+    expect(plan.box).toEqual({ page: 2, x0: 0, y0: 0.33, x1: 0.522, y1: 0.47 });
+    expect(plan.region.pageIndex).toBe(1);
+    expect(plan.region.y0Pt).toBeCloseTo(0.33 * 842, 8);
+    expect(plan.region.y1Pt).toBeCloseTo(0.47 * 842, 8);
+    expect(plan.region.x1Pt).toBeCloseTo(0.522 * 595, 8);
+    // The cap sits INSIDE the box: the service then grows nothing, which is
+    // the point -- the box already reaches the next part.
+    expect(plan.region.expandMaxY1Pt).toBeCloseTo(370.48, 8);
+    expect(plan.region.expandMaxX1Pt).toBe(595);
   });
 });

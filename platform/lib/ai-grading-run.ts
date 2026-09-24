@@ -41,14 +41,14 @@ import {
 } from "./ai-grading";
 import { cropRegions, cvServiceEndpoint, type CropRegion } from "./cv-crop-service";
 import {
-  anchorToEvidenceBox,
+  anchorCropPlan,
+  boundModelBoxes,
   firstShiftedAnchorPage,
-  fractionBoxToPoints,
-  padModelBox,
-  pointsToFractions,
+  modelCropPlan,
   type AnchorPageObservation,
   type EvidenceBox,
   type PageSizePt,
+  type StoredAnchor,
 } from "./evidence-crops";
 
 /** One rendered crop, the box it was cut from, and where that box came from. */
@@ -61,13 +61,13 @@ export interface EvidenceCrop {
 /** Re-exported so a caller needs only this module to type a crop's box. */
 export type { EvidenceBox };
 
-interface LayoutRow {
+export interface LayoutRow {
   id: string;
   page_count: number;
   reference_page_sizes: PageSizePt[];
 }
 
-interface AnchorRow {
+export interface AnchorRow {
   question_number: number;
   part_label: string | null;
   page_index: number;
@@ -80,8 +80,21 @@ interface AnchorRow {
 }
 
 /** The natural key test_item_anchors is unique on. */
-const anchorKey = (questionNumber: number, partLabel: string | null) =>
+export const anchorKey = (questionNumber: number, partLabel: string | null) =>
   `${questionNumber}|${partLabel ?? ""}`;
+
+/** A test_item_anchors row in the shape the crop builders take (numeric comes back as strings). */
+export function storedAnchorOf(row: AnchorRow): StoredAnchor {
+  return {
+    pageIndex: row.page_index,
+    x0Pt: Number(row.x0_pt),
+    y0Pt: Number(row.y0_pt),
+    x1Pt: Number(row.x1_pt),
+    y1Pt: Number(row.y1_pt),
+    expandMaxX1Pt: row.expand_max_x1_pt === null ? null : Number(row.expand_max_x1_pt),
+    expandMaxY1Pt: row.expand_max_y1_pt === null ? null : Number(row.expand_max_y1_pt),
+  };
+}
 
 // -----------------------------------------------------------------------------
 // The grading request
@@ -263,7 +276,7 @@ export async function loadStudentDisplayName(
  * confirmation that the geometry has been checked. A half-drawn draft layout
  * must not start cutting crops for a whole class.
  */
-async function loadLockedLayout(
+export async function loadLockedLayout(
   supabase: SupabaseClient,
   testId: string
 ): Promise<{ layout: LayoutRow; anchors: Map<string, AnchorRow> } | null> {
@@ -371,6 +384,8 @@ export async function fetchEvidenceCrops(
   const boxByQid = new Map<string, EvidenceBox>();
   const sourceByQid = new Map<string, "model" | "anchor">();
   const regions: CropRegion[] = [];
+  /** Parts left to the model's own box, bounded together below. */
+  const modelCandidates: { key: string; raw: EvidenceBox }[] = [];
 
   for (const g of grades) {
     const drawn = useAnchors
@@ -385,58 +400,32 @@ export async function fetchEvidenceCrops(
       const referenceSize = locked!.layout.reference_page_sizes?.[anchor.page_index];
       const scanSize = pageSizePt[anchor.page_index];
       if (referenceSize && scanSize) {
-        const box = anchorToEvidenceBox({
-          anchor: {
-            x0Pt: Number(anchor.x0_pt),
-            y0Pt: Number(anchor.y0_pt),
-            x1Pt: Number(anchor.x1_pt),
-            y1Pt: Number(anchor.y1_pt),
-          },
-          referenceSize,
-          page: anchor.page_index + 1,
-          // The tolerance may grow the region down, but not past the cap --
-          // which is the next region's top, so it cannot reach the next part.
-          maxY1Pt: anchor.expand_max_y1_pt === null ? undefined : Number(anchor.expand_max_y1_pt),
-        });
-        // The caps are points on the REFERENCE page, so they cross through
-        // fractions too -- passing them straight across would cap growth at
-        // the wrong place on a differently sized scan.
-        const capFractions = pointsToFractions(
-          {
-            x0Pt: 0,
-            y0Pt: 0,
-            x1Pt: Number(anchor.expand_max_x1_pt ?? referenceSize.widthPt),
-            y1Pt: Number(anchor.expand_max_y1_pt ?? referenceSize.heightPt),
-          },
-          referenceSize
-        );
-        boxByQid.set(g.unit.testItemId, box);
+        const plan = anchorCropPlan({ anchor: storedAnchorOf(anchor), referenceSize, scanSize });
+        boxByQid.set(g.unit.testItemId, plan.box);
         sourceByQid.set(g.unit.testItemId, "anchor");
-        regions.push({
-          qid: g.unit.testItemId,
-          pageIndex: anchor.page_index,
-          ...fractionBoxToPoints(box, scanSize),
-          expandMaxX1Pt: capFractions.x1 * scanSize.widthPt,
-          expandMaxY1Pt: capFractions.y1 * scanSize.heightPt,
-        });
+        regions.push({ qid: g.unit.testItemId, ...plan.region });
         continue;
       }
     }
 
-    // -- Fallback: the model's own box, padded, exactly as before -----------
+    // -- Fallback: the model's own box, padded and bounded below -----------
     const reported = g.item.evidenceBox;
     if (!g.item.workFound || !reported) continue;
     const pageIndex = reported.page - 1;
     if (pageIndex < 0 || pageIndex >= pageCount) continue;
-    const padded = padModelBox(reported);
-    if (!padded) continue;
-    boxByQid.set(g.unit.testItemId, padded);
-    sourceByQid.set(g.unit.testItemId, "model");
-    regions.push({
-      qid: g.unit.testItemId,
-      pageIndex,
-      ...fractionBoxToPoints(padded, pageSizePt[pageIndex]),
-    });
+    modelCandidates.push({ key: g.unit.testItemId, raw: reported });
+  }
+
+  // Every box the marker reported on this run is a neighbour, including the
+  // parts cut from the layout above: their reported top still says where the
+  // next part's writing begins, which is what bounds the box above it. See
+  // boundModelBoxes for why a bound beats the fixed bias it replaces.
+  const neighbours = grades.flatMap((g) => (g.item.workFound && g.item.evidenceBox ? [g.item.evidenceBox] : []));
+  for (const bounded of boundModelBoxes(modelCandidates, neighbours)) {
+    const plan = modelCropPlan(bounded, pageSizePt[bounded.box.page - 1]);
+    boxByQid.set(bounded.key, plan.box);
+    sourceByQid.set(bounded.key, "model");
+    regions.push({ qid: bounded.key, ...plan.region });
   }
 
   const cropped = await cropRegions({
@@ -570,7 +559,7 @@ export async function persistGradeOutcome(args: {
         const { data: fullRows } = await supabase
           .from("ai_grade_results")
           .select(
-            "test_item_id, suggested_marks, max_marks, confidence, markscheme_source, work_found, reasoning, evidence, evidence_image_path, evidence_box, evidence_box_source, mark_breakdown, accepted, accepted_at, accepted_by"
+            "test_item_id, suggested_marks, max_marks, confidence, markscheme_source, work_found, reasoning, evidence, evidence_image_path, evidence_box, evidence_box_source, evidence_box_reported, mark_breakdown, accepted, accepted_at, accepted_by"
           )
           .eq("run_id", priorRun.id);
         for (const r of fullRows ?? []) priorFullRows.push(r as Record<string, unknown>);
@@ -604,6 +593,11 @@ export async function persistGradeOutcome(args: {
       evidence_box_source: evidenceImagePathByTestItemId.has(g.unit.testItemId)
         ? crops.get(g.unit.testItemId)?.source ?? "model"
         : null,
+      // The marker's box exactly as reported, before padding or bounding, and
+      // whether or not a crop came of it: a part the crop service failed on
+      // can still be cut later from this, and a re-cut recomputes from it
+      // rather than from a box that already carries one repair.
+      evidence_box_reported: g.item.workFound && g.item.evidenceBox ? g.item.evidenceBox : null,
       mark_breakdown: g.item.markBreakdown,
       accepted: !!carried,
       accepted_at: carried?.accepted_at ?? null,

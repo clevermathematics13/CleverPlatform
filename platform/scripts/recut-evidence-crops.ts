@@ -1,23 +1,21 @@
 /**
- * One-off: re-cut already-graded evidence crops from a paper's locked
- * regions, so work marked before the layout existed shows the same correct
- * crops as work marked after it.
+ * One-off: re-cut already-graded evidence crops for a whole assessment, so
+ * work marked before a layout was drawn (or before the marker's boxes were
+ * bounded at the next part) shows the same crops as work marked after.
  *
- * The grading model reports its evidenceBox as fractions of a page it is never
- * told the dimensions of, and synthesises a plausible layout rather than
- * measuring one. Audited in full against one 41-part paper, 22 of the 33 crops
- * it produced did not contain the work they were captioned as evidence for.
- * The crop machinery is exact -- all 33 reproduce byte-for-byte from their
- * recorded boxes -- so only the coordinates were ever wrong, and a re-cut needs
- * no model call at all.
+ * The decision of WHAT to cut for each row -- the locked layout's region when
+ * the paper has one and the scan has its pages, otherwise the marker's own box
+ * bounded at the next part -- lives in lib/evidence-recut.ts, shared with the
+ * "Re-cut crops" button on the marking screen. This script adds the things a
+ * class-wide backfill needs and a button does not: scope, a dry run, and an
+ * undo file.
  *
  * NEVER TOUCHES A MARK. Only evidence_image_path, evidence_box and
- * evidence_box_source are written, and WRITABLE_COLUMNS below is asserted
- * against at runtime rather than merely intended. suggested_marks, accepted,
- * mark_breakdown and student_marks are not read, not written, and no model is
- * called: crops are cut after marking is finished and never re-enter it, so a
- * wrong crop never produced a wrong mark and a corrected one must not produce
- * a different one.
+ * evidence_box_source are written (asserted at runtime in the lib, not merely
+ * intended). suggested_marks, accepted, mark_breakdown and student_marks are
+ * not read, not written, and no model is called: crops are cut after marking
+ * is finished and never re-enter it, so a wrong crop never produced a wrong
+ * mark and a corrected one must not produce a different one.
  *
  * REVERSIBLE BY CONSTRUCTION. Every run writes a JSON snapshot of the three
  * columns for every row it is about to touch, BEFORE touching any of them, and
@@ -34,23 +32,10 @@
  * that mismatch is visible, and refuses a whole-test run without --yes. Scope
  * with --run when a test has been sat more than once.
  *
- * SECOND MODE, --widen-model, for a paper with NO layout. Drawing regions for
- * a whole paper is the real fix and this is not a substitute for it, but it
- * needs no regions at all. The model's box is not merely wrong, it is wrong
- * in a measured DIRECTION -- the work sits a mean 0.106 page-heights below the
- * box centre -- so re-cutting each stored model box with its bottom edge
- * dropped by MODEL_DOWNWARD_BIAS recovers most of the work the original crop
- * cut off, using the coordinates already on the row and no model call. The
- * box stays stamped source='model', because a widened guess is still a guess
- * and must keep saying so in the review table. This is exactly what
- * padModelBox now does at grading time; this applies it to rows marked before
- * that change.
- *
  * Usage (from platform/):
  *   npx tsx scripts/recut-evidence-crops.ts --test <testId> --dry-run --limit 5
  *   npx tsx scripts/recut-evidence-crops.ts --run <runId> --yes
  *   npx tsx scripts/recut-evidence-crops.ts --test <testId> --yes --snapshot recut.json
- *   npx tsx scripts/recut-evidence-crops.ts --test <testId> --widen-model --yes
  *   npx tsx scripts/recut-evidence-crops.ts --revert recut.json
  *
  * Flags:
@@ -60,7 +45,6 @@
  *   --snapshot <path>  where to write the undo file (default recut-snapshot-<ts>.json)
  *   --dry-run          report what would change, write nothing
  *   --yes              required to write when the scope is a whole test
- *   --widen-model      no layout needed: re-cut model boxes with a lower bottom edge
  *   --revert <path>    restore the three columns from a snapshot and exit
  *
  * Storage retention: superseded crops are kept. Nothing in this repo deletes
@@ -70,18 +54,9 @@
  */
 import { writeFileSync, readFileSync } from "node:fs";
 import { createClient } from "@supabase/supabase-js";
-import { PDFDocument } from "pdf-lib";
-import { SCAN_BUCKET, formatGradingSubject } from "../lib/ai-grading";
-import {
-  anchorToEvidenceBox,
-  fractionBoxToPoints,
-  pointsToFractions,
-  MODEL_DOWNWARD_BIAS,
-  widenStoredModelBox,
-  type EvidenceBox,
-  type PageSizePt,
-} from "../lib/evidence-crops";
-import { cropRegions, cvServiceEndpoint } from "../lib/cv-crop-service";
+import { applyRunRecut, assertOnlyRecutColumns, planRunRecut } from "../lib/evidence-recut";
+import { cvServiceEndpoint } from "../lib/cv-crop-service";
+import type { EvidenceBox } from "../lib/evidence-crops";
 
 // ---- args -------------------------------------------------------------
 
@@ -100,7 +75,6 @@ const TEST_ID = value("test");
 const RUN_IDS = values("run");
 const LIMIT = value("limit") ? Number(value("limit")) : Infinity;
 const DRY_RUN = flag("dry-run");
-const WIDEN_MODEL = flag("widen-model");
 const YES = flag("yes");
 const REVERT_FROM = value("revert");
 const SNAPSHOT_PATH =
@@ -118,25 +92,6 @@ if (!SUPABASE_URL || !SERVICE_KEY) {
 const supabase = createClient(SUPABASE_URL, SERVICE_KEY, {
   auth: { persistSession: false, autoRefreshToken: false },
 });
-
-/**
- * The ONLY columns this script may write. Asserted before every update rather
- * than left as an intention: the whole safety claim of a crop backfill is that
- * it cannot move a mark, and a claim that is only in a comment is one edit
- * away from being false.
- */
-const WRITABLE_COLUMNS = ["evidence_image_path", "evidence_box", "evidence_box_source"] as const;
-
-function assertOnlyWritableColumns(patch: Record<string, unknown>) {
-  const offending = Object.keys(patch).filter(
-    (k) => !(WRITABLE_COLUMNS as readonly string[]).includes(k)
-  );
-  if (offending.length > 0) {
-    throw new Error(
-      `Refusing to write ${offending.join(", ")}: this script may only write ${WRITABLE_COLUMNS.join(", ")}.`
-    );
-  }
-}
 
 interface SnapshotRow {
   result_id: string;
@@ -159,7 +114,7 @@ async function revert(path: string) {
       evidence_box: row.evidence_box,
       evidence_box_source: row.evidence_box_source,
     };
-    assertOnlyWritableColumns(patch);
+    assertOnlyRecutColumns(patch);
     const { error } = await supabase.from("ai_grade_results").update(patch).eq("id", row.result_id);
     if (error) console.error(`  ${row.result_id}: ${error.message}`);
     else restored++;
@@ -168,21 +123,6 @@ async function revert(path: string) {
 }
 
 // ---- recut ------------------------------------------------------------
-
-interface AnchorRow {
-  question_number: number;
-  part_label: string | null;
-  page_index: number;
-  x0_pt: number;
-  y0_pt: number;
-  x1_pt: number;
-  y1_pt: number;
-  expand_max_x1_pt: number | null;
-  expand_max_y1_pt: number | null;
-}
-
-const anchorKey = (questionNumber: number, partLabel: string | null) =>
-  `${questionNumber}|${partLabel ?? ""}`;
 
 async function main() {
   if (REVERT_FROM) {
@@ -221,32 +161,11 @@ async function main() {
 
   const { data: layout } = await supabase
     .from("test_paper_layouts")
-    .select("id, label, page_count, reference_page_sizes, reference_run_id, created_at")
+    .select("id, label, page_count, reference_run_id, created_at")
     .eq("test_id", testId)
     .eq("is_active", true)
     .eq("anchors_locked", true)
     .maybeSingle();
-  if (!layout && !WIDEN_MODEL) {
-    console.error(
-      "This assessment has no active LOCKED paper layout. Draw and lock one first, or pass --widen-model to re-cut the model's own boxes lower instead."
-    );
-    process.exit(1);
-  }
-
-  const { data: anchorRows } = layout
-    ? await supabase
-    .from("test_item_anchors")
-    .select(
-      "question_number, part_label, page_index, x0_pt, y0_pt, x1_pt, y1_pt, expand_max_x1_pt, expand_max_y1_pt"
-    )
-    .eq("layout_id", layout.id)
-    : { data: [] };
-  const anchors = new Map<string, AnchorRow>();
-  for (const a of (anchorRows ?? []) as AnchorRow[]) anchors.set(anchorKey(a.question_number, a.part_label), a);
-  if (anchors.size === 0 && !WIDEN_MODEL) {
-    console.error("That layout has no regions drawn on it.");
-    process.exit(1);
-  }
 
   const selected = runs.slice(0, Number.isFinite(LIMIT) ? LIMIT : undefined);
 
@@ -254,11 +173,11 @@ async function main() {
   // every time, so a re-sat paper is visible before anything is written.
   const referenceRun = runs.find((r) => r.id === layout?.reference_run_id);
   console.log(
-    WIDEN_MODEL
-      ? `mode         : --widen-model (no layout; each model box re-cut ${MODEL_DOWNWARD_BIAS} of a page lower)`
-      : `layout       : "${layout!.label}" (${layout!.page_count} pages, ${anchors.size} regions)`
+    layout
+      ? `layout       : "${layout.label}" (${layout.page_count} pages, locked) -- regions cut from it; parts without one from the marker's bounded box`
+      : `layout       : none locked -- every crop cut from the marker's own box, bounded at the next part`
   );
-  if (!WIDEN_MODEL) {
+  if (layout) {
     console.log(`reference    : ${referenceRun ? `run of ${referenceRun.created_at}` : "not among these runs"}`);
   }
   console.log(`runs to recut: ${selected.length} (${selected[0].created_at} .. ${selected[selected.length - 1].created_at})`);
@@ -273,150 +192,27 @@ async function main() {
 
   const snapshot: SnapshotRow[] = [];
   let recut = 0;
+  let unchanged = 0;
   let skipped = 0;
 
   for (const run of selected) {
-    const subjectId = formatGradingSubject(run);
-    if (!subjectId) {
-      console.log(`  run ${run.id}: no student on the run, skipped`);
+    const planned = await planRunRecut(supabase, testId, run.id as string);
+    if (!planned.ok) {
+      console.log(`  run ${run.id}: ${planned.error}, skipped`);
       skipped++;
       continue;
     }
+    const { plan } = planned;
+    for (const w of plan.warnings) console.log(`  run ${run.id}: ${w}`);
+    unchanged += plan.unchanged;
 
-    const { data: results } = await supabase
-      .from("ai_grade_results")
-      .select("id, test_item_id, evidence_image_path, evidence_box, evidence_box_source")
-      .eq("run_id", run.id);
-    if (!results || results.length === 0) continue;
-
-    // The parts these results belong to, so a result can be matched to a
-    // region by the natural key the layout is stored under.
-    const { data: items } = await supabase
-      .from("test_items")
-      .select("id, question_number, part_label")
-      .in(
-        "id",
-        results.map((r) => r.test_item_id)
-      );
-    const itemById = new Map((items ?? []).map((i) => [i.id as string, i]));
-
-    const { data: pdfFile, error: dlErr } = await supabase.storage
-      .from(SCAN_BUCKET)
-      .download(run.source_storage_path as string);
-    if (dlErr || !pdfFile) {
-      console.log(`  run ${run.id}: scan unreadable (${dlErr?.message ?? "not found"}), skipped`);
-      skipped++;
+    if (plan.rows.length === 0) {
+      console.log(`  run ${run.id}: nothing to re-cut (${plan.unchanged} already right, ${plan.skipped} skipped)`);
       continue;
     }
-    const pdfBytes = Buffer.from(await pdfFile.arrayBuffer());
-    const pdfBase64 = pdfBytes.toString("base64");
-
-    let pageCount: number;
-    const pageSizePt: PageSizePt[] = [];
-    try {
-      const doc = await PDFDocument.load(pdfBytes);
-      pageCount = doc.getPageCount();
-      for (const p of doc.getPages()) pageSizePt.push({ widthPt: p.getWidth(), heightPt: p.getHeight() });
-    } catch (e) {
-      console.log(`  run ${run.id}: scan unreadable (${e instanceof Error ? e.message : String(e)}), skipped`);
-      skipped++;
-      continue;
-    }
-
-    // Same gate the grading route applies: a scan shorter than the booklet has
-    // lost a page, so every page after the gap is a different page from the one
-    // the regions were drawn on.
-    if (!WIDEN_MODEL && pageCount < (layout!.page_count as number)) {
-      console.log(`  run ${run.id}: ${pageCount}-page scan is short of the ${layout.page_count}-page paper, skipped`);
-      skipped++;
-      continue;
-    }
-
-    const boxByResult = new Map<string, EvidenceBox>();
-    const regions = [];
-    for (const result of results) {
-      const item = itemById.get(result.test_item_id as string);
-      if (!item) continue;
-
-      // --widen-model: the row already carries the coordinates, so the only
-      // arithmetic is dropping the bottom edge. A row cut from a layout or
-      // drawn by the teacher is left alone -- neither is a biased guess, and
-      // overwriting a teacher's decision is the one thing this must not do.
-      if (WIDEN_MODEL) {
-        const stored = result.evidence_box as EvidenceBox | null;
-        const storedSource = (result.evidence_box_source as string | null) ?? "model";
-        if (!stored || storedSource !== "model") continue;
-        const pageIndex = stored.page - 1;
-        const scanSize = pageSizePt[pageIndex];
-        if (pageIndex < 0 || !scanSize) continue;
-        const widened = widenStoredModelBox(stored);
-        if (!widened) continue;
-        boxByResult.set(result.id as string, widened);
-        regions.push({
-          qid: result.id as string,
-          pageIndex,
-          ...fractionBoxToPoints(widened, scanSize),
-        });
-        continue;
-      }
-
-      const anchor = anchors.get(
-        anchorKey(item.question_number as number, (item.part_label as string | null) || null)
-      );
-      if (!anchor) continue;
-      const referenceSize = (layout!.reference_page_sizes as PageSizePt[])?.[anchor.page_index];
-      const scanSize = pageSizePt[anchor.page_index];
-      if (!referenceSize || !scanSize) continue;
-
-      const box = anchorToEvidenceBox({
-        anchor: {
-          x0Pt: Number(anchor.x0_pt),
-          y0Pt: Number(anchor.y0_pt),
-          x1Pt: Number(anchor.x1_pt),
-          y1Pt: Number(anchor.y1_pt),
-        },
-        referenceSize,
-        page: anchor.page_index + 1,
-        maxY1Pt: anchor.expand_max_y1_pt === null ? undefined : Number(anchor.expand_max_y1_pt),
-      });
-      const capFractions = pointsToFractions(
-        {
-          x0Pt: 0,
-          y0Pt: 0,
-          x1Pt: Number(anchor.expand_max_x1_pt ?? referenceSize.widthPt),
-          y1Pt: Number(anchor.expand_max_y1_pt ?? referenceSize.heightPt),
-        },
-        referenceSize
-      );
-      boxByResult.set(result.id as string, box);
-      regions.push({
-        qid: result.id as string,
-        pageIndex: anchor.page_index,
-        ...fractionBoxToPoints(box, scanSize),
-        expandMaxX1Pt: capFractions.x1 * scanSize.widthPt,
-        expandMaxY1Pt: capFractions.y1 * scanSize.heightPt,
-      });
-    }
-
-    if (regions.length === 0) {
-      console.log(`  run ${run.id}: no parts matched a region, skipped`);
-      skipped++;
-      continue;
-    }
-
     if (DRY_RUN) {
-      console.log(`  run ${run.id}: would re-cut ${regions.length}/${results.length} parts`);
-      recut += regions.length;
-      continue;
-    }
-
-    // One call per run rather than per part: the service takes the whole set,
-    // and a class's worth of single-anchor calls is the difference between
-    // minutes and an hour.
-    const cropped = await cropRegions({ pdfBase64, expectedPageCount: pageCount, regions });
-    if (!cropped.ok) {
-      console.log(`  run ${run.id}: crop failed (${cropped.error}), skipped`);
-      skipped++;
+      console.log(`  run ${run.id} [${plan.mode}]: would re-cut ${plan.rows.length} parts (${plan.unchanged} already right)`);
+      recut += plan.rows.length;
       continue;
     }
 
@@ -424,58 +220,26 @@ async function main() {
     // so a run interrupted partway is still fully revertible. Flushed per run
     // rather than per crop: rewriting a growing JSON file once per part would
     // be quadratic in bytes over a class.
-    const cuttable = cropped.value.filter((c) => c.imageBase64 && boxByResult.has(c.qid));
-    for (const crop of cuttable) {
-      const result = results.find((r) => r.id === crop.qid)!;
+    for (const row of plan.rows) {
       snapshot.push({
-        result_id: result.id as string,
+        result_id: row.resultId,
         run_id: run.id as string,
-        test_item_id: result.test_item_id as string,
-        evidence_image_path: (result.evidence_image_path as string | null) ?? null,
-        evidence_box: (result.evidence_box as EvidenceBox | null) ?? null,
-        evidence_box_source: (result.evidence_box_source as string | null) ?? null,
+        test_item_id: row.testItemId,
+        ...row.previous,
       });
     }
     writeFileSync(SNAPSHOT_PATH, JSON.stringify(snapshot, null, 2));
 
-    for (const crop of cuttable) {
-      const result = results.find((r) => r.id === crop.qid)!;
-      const box = boxByResult.get(crop.qid)!;
-
-      const storagePath = `${testId}/${subjectId}/evidence/${run.id}/${result.test_item_id}--${
-        WIDEN_MODEL ? "widened" : "anchor"
-      }-${Date.now()}.png`;
-      const { error: uploadErr } = await supabase.storage
-        .from(SCAN_BUCKET)
-        .upload(storagePath, Buffer.from(crop.imageBase64!, "base64"), {
-          contentType: "image/png",
-          upsert: false,
-        });
-      if (uploadErr) {
-        console.error(`    ${result.id}: upload failed (${uploadErr.message})`);
-        continue;
-      }
-
-      const patch = {
-        evidence_image_path: storagePath,
-        evidence_box: box,
-        evidence_box_source: WIDEN_MODEL ? "model" : "anchor",
-      };
-      assertOnlyWritableColumns(patch);
-      const { error: updateErr } = await supabase
-        .from("ai_grade_results")
-        .update(patch)
-        .eq("id", result.id);
-      if (updateErr) console.error(`    ${result.id}: ${updateErr.message}`);
-      else recut++;
-    }
-    console.log(`  run ${run.id}: re-cut ${regions.length} parts`);
+    const applied = await applyRunRecut(supabase, testId, plan);
+    for (const f of applied.failures) console.error(`    ${f}`);
+    recut += applied.recut;
+    console.log(`  run ${run.id} [${plan.mode}]: re-cut ${applied.recut}/${plan.rows.length} parts`);
   }
 
   console.log(
     DRY_RUN
-      ? `\ndry run: ${recut} parts would be re-cut across ${selected.length - skipped} runs (${skipped} skipped)`
-      : `\nre-cut ${recut} parts (${skipped} runs skipped). snapshot: ${SNAPSHOT_PATH}`
+      ? `\ndry run: ${recut} parts would be re-cut across ${selected.length - skipped} runs (${unchanged} already right, ${skipped} runs skipped)`
+      : `\nre-cut ${recut} parts (${unchanged} already right, ${skipped} runs skipped). snapshot: ${SNAPSHOT_PATH}`
   );
   if (!DRY_RUN && snapshot.length > 0) {
     console.log(`revert with: npx tsx scripts/recut-evidence-crops.ts --revert ${SNAPSHOT_PATH}`);

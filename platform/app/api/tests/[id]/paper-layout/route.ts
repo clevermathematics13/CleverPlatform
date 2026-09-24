@@ -2,7 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { PDFDocument } from "pdf-lib";
 import { getApiTeacher, type ApiAuthOk } from "@/lib/auth";
 import { SCAN_BUCKET, assembleMarkScheme, unitLabel } from "@/lib/ai-grading";
+import { latestRunPerSubject } from "@/lib/ai-grade-review";
 import type { PageSizePt } from "@/lib/evidence-crops";
+import { formatGradingSubject } from "@/lib/grading-subject";
+import { fetchAllRows } from "@/lib/na-scanning";
 
 export const maxDuration = 60;
 
@@ -89,18 +92,38 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
     return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 500 });
   }
 
-  // Candidate references: any complete run on this test that still has its
-  // source scan. Newest first, one per student.
-  const { data: runs } = await supabase
-    .from("ai_grade_runs")
-    .select("id, student_id, invited_student_id, source_storage_path, created_at")
-    .eq("test_id", testId)
-    .eq("status", "complete")
-    .not("source_storage_path", "is", null)
-    .order("created_at", { ascending: false })
-    .limit(60);
+  // Candidate references: the newest complete run with a scan per student,
+  // newest first. Paged rather than capped: a class marked and re-marked a
+  // few times has hundreds of runs (KA1: 445 for 18 students), and a capped
+  // newest-60 was a few students' repeats, not the class.
+  type RunRef = { id: string; student_id: string | null; invited_student_id: string | null; source_storage_path: string | null; created_at: string };
+  let latest: RunRef[];
+  try {
+    latest = latestRunPerSubject(
+      await fetchAllRows<RunRef>((from, to) =>
+        supabase
+          .from("ai_grade_runs")
+          .select("id, student_id, invited_student_id, source_storage_path, created_at")
+          .eq("test_id", testId)
+          .eq("status", "complete")
+          .not("source_storage_path", "is", null)
+          .order("created_at", { ascending: false })
+          .order("id", { ascending: true })
+          .range(from, to)
+      )
+    );
+  } catch (e) {
+    return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 500 });
+  }
 
-  return NextResponse.json({ layout: layout ?? null, anchors, parts, referenceCandidates: runs ?? [] });
+  return NextResponse.json({
+    layout: layout ?? null,
+    anchors,
+    parts,
+    referenceCandidates: latest,
+    // The same runs, as the class re-cut loop walks them.
+    latestRuns: latest.map((r) => ({ id: r.id, studentId: formatGradingSubject(r), created_at: r.created_at })),
+  });
 }
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {

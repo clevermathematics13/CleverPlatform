@@ -126,6 +126,7 @@ partial because rows only ever leave it.
 | `evidence_image_path` | text, nullable |  |
 | `evidence_box` | jsonb, nullable |  |
 | `evidence_box_source` | text, nullable | `'model'` \| `'teacher'` \| `'anchor'` — where `evidence_box` came from. No check constraint. Null for rows graded before it existed and for rows with no box |
+| `evidence_box_reported` | jsonb, nullable | `{page, x0, y0, x1, y1}` exactly as the grading model reported it (fractions, page 1-indexed), before padding or bounding; `evidence_box` is derived from it by `boundModelBoxes` (`lib/evidence-crops.ts`) and a re-cut recomputes from it. Null for rows graded before 24 Sep 2026 (`20260924015720`), for parts the model reported no box for, and for rows a partial re-mark copied forward from such a run. Written once at grading; the teacher redraw and the re-cut never touch it |
 
 ### `ai_grade_runs`
 
@@ -1432,7 +1433,7 @@ mirror `na_anchors` so rows map straight onto the CV `/crop` request body.
 | `x0_pt` `y0_pt` `x1_pt` `y1_pt` | numeric | absolute points on the reference page |
 | `expand_max_x1_pt` `expand_max_y1_pt` | numeric, nullable | caps adaptive right/bottom growth |
 | `sort_order` | integer, nullable |  |
-| `source` | text | default `'manual_draw'` |
+| `source` | text | default `'manual_draw'` — `'manual_draw'` (drawn in the editor), `'generated'` (read out of a generated Formative Assessment's own answer boxes, `lib/paper-layout-derive.ts`), `'marker_consensus'` (proposed from the class's marker boxes by `POST /api/tests/[id]/paper-layout/propose`; the propose route overwrites only these). No check constraint |
 | `created_at` `updated_at` | timestamp with time zone | default `now()` |
 
 Unique on `(layout_id, question_number, coalesce(part_label, ''))` — the `coalesce` matters:
@@ -1443,7 +1444,8 @@ Check: `x1_pt > x0_pt and y1_pt > y0_pt`.
 
 One physical layout of a test paper. A re-sitting reuses the `tests` row, so a test can
 accumulate several; exactly one is `is_active` (partial unique index on `test_id`) and that
-is the one new grading runs use. Nothing reads these yet.
+is the one new grading runs use, once `anchors_locked` (`loadLockedLayout` in
+`lib/ai-grading-run.ts`; the re-cut route reads the same one). A draft is ignored.
 
 | column | type | default |
 |---|---|---|

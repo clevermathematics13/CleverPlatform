@@ -257,7 +257,7 @@ must exercise Server Actions.
 
 ## 4. Database and migrations
 
-**The migration ledger and the repo agree on versions: 177 files, 177 rows**
+**The migration ledger and the repo agree on versions: 179 files, 179 rows**
 (verified 23 Sep 2026; it read 83/83 when this handoff was written, 95/95 after
 the second reconciliation, 116/116 after the third, 149/149 on 13 Sep and
 171/171 on 20 Sep). Two
@@ -3202,3 +3202,95 @@ box); not touched here.
 - **After deploy.** The Vercel log for a load of the marking page should show
   the page request and none of /api/students, /api/tests/[id],
   /api/tests/[id]/ai-grade or /absences after it.
+
+## 33. Evidence crops: bounded at the next part, re-cut idempotently, and a layout proposed from the class (24 Sep 2026)
+
+The teacher's screenshot of Key Assessment 1 (Grade 9 Standard), Q1(c): the
+"Student's work" crop, badged **Located by marker**, showed one line of the
+student's handwriting at the top and then the whole of Q2 underneath -- the
+sequence table, (a), (b) and the (c) prompt. Verified against the scan through
+the CV service: the stored box ran 0.33-0.73 of the page for 0.08 of work.
+
+**Three causes, all of them in code that was right in isolation.**
+
+1. `padModelBox` added a fixed `MODEL_DOWNWARD_BIAS` of 0.15 to every marker
+   box's bottom edge (§23's neighbour, from the Q4(b) case where the marker sat a
+   whole part too high). On a one-line answer that is a crop six times taller
+   than the work.
+2. The grading run sent marker-located regions to the CV service with NO
+   growth caps, so `_adaptive_crop_bounds` grew the bottom edge 8pt at a time,
+   twelve times, while any slice of the bottom band was more than 5% dark -- and
+   Q2's PRINTED text counts as ink. That is the over-reach §5 warns about in the
+   NA pipeline, on the test path.
+3. "Fix crops" (`widen-crops`) added ANOTHER 0.15 to every marker row on every
+   press. It was written for rows stored before the bias, shipped in the same
+   commit as the bias (`a5d856f`), and never hid itself. 1,270 KA1 rows had
+   been widened once when this was found.
+
+Nothing stored the marker's own box, so nothing could be recomputed from
+source.
+
+**What changed.**
+
+- **`ai_grade_results.evidence_box_reported`** (migration `20260924015720`,
+  applied through MCP): the marker's box exactly as reported, written once at
+  grading and never touched again. `evidence_box` is derived from it.
+- **The bias is bounded by the run's own boxes** (`boundModelBoxes` in
+  `lib/evidence-crops.ts`). The marker reports a box for every part, and those
+  boxes are self-consistent on a page even when each is off, so a crop may reach
+  down to the END of the next part's region: the top of the box after the next
+  one (plus `NEXT_PART_OVERLAP`, 0.02), or the next box's own bottom when it is
+  the last on the page. Not merely the next part's top: the marker's error runs
+  to about one part, and on the very same KA1 student whose Q1(c) box was right,
+  Q2(a) was boxed on the sequence table with (a)'s answer sitting under 2(b)'s
+  box. Bounding at the next TOP made Q1(c) tidy and cut (a)'s answer out of
+  Q2(a); bounding at the end of the next region keeps the answer in both cases
+  at the cost of one part too many when the box was right. Three parts too many
+  cannot happen. The CV service's growth is capped at the same place
+  (`modelExpansionCaps`), so printed text below can no longer pull a crop down.
+- **Rows without a reported box** (everything marked before 24 Sep) take the
+  legacy rule (`boundStoredModelBoxes`): the stored bottom cut back to the same
+  region end read off the run's other stored boxes, with
+  `LEGACY_NEXT_ALLOWANCE` (0.05: a stored top sits at least `PAD_FLOOR` above its
+  raw top). It never widens, so it is idempotent and undoes the double widening
+  too. On the screenshot student's page 2 it changes only 1(c) (0.62 -> 0.49) and
+  2(a) (0.66 -> 0.60), and caps growth everywhere.
+- **"Fix crops" is gone; "Re-cut crops" replaces it** (`recut-crops` route,
+  `lib/evidence-recut.ts`, shared with `scripts/recut-evidence-crops.ts` whose
+  `--widen-model` flag is removed). One decision for both: a locked layout cuts
+  every part with a region ('anchor'); anything else is cut from the reported
+  box, else the stored box, bounded as above. A row whose recomputed box is the
+  stored box with an image on file is "already right" and not touched, so the
+  button can be pressed twice. Teacher-drawn regions are never re-cut; nothing
+  here writes a mark or `evidence_box_reported`.
+- **A paper with no layout can have one proposed from the class**
+  (`POST /api/tests/[id]/paper-layout/propose`, `lib/paper-layout-consensus.ts`):
+  the newest complete run per student, every part's box, median top per part,
+  bottom at the next part's median top on the same page (the foot of the page
+  for the last part on it), one content width for the paper. The marker's PAGE
+  agrees for every student on every KA1 part; its tops scatter +/-0.08, and the
+  median is a far better estimate than any one of them. Written to the active
+  UNLOCKED layout as `source = 'marker_consensus'`; regions drawn by hand are
+  kept; nothing cuts a crop until the teacher locks. The editor badges each
+  region (Drawn / Generated / Proposed), lists the warnings, and once locked
+  offers "Re-cut every student's crops from this layout" (one request per
+  student, stoppable). The paper-layout GET now lists one run per student
+  (`latestRunPerSubject`) instead of the newest 60 runs, which on KA1 was a few
+  students' repeats.
+
+**KA1 procedure, for the teacher.** Paper layout page -> pick a clean scan as the
+reference -> "Propose regions from the class's marker boxes" -> expect one
+warning: Q4(c) and Q5 are out of reading order on page 4 (the marker puts Q5's
+top at 0.43 and 4(c)'s at 0.49; 4(c) is given its own median bottom) -> open
+those two and drag them right; open Q2(a) and Q2(b) too, since the marker boxed
+the sequence table for (a) on at least one student -> Lock -> "Re-cut every
+student's crops". Until then, "Re-cut crops" on a student bounds that student's
+marker crops at the next part.
+
+**Deliberately not done.** No change to the grading prompt or model (§24). No
+upward padding of the marker's box: the printed prompt above the handwriting
+stays out of a marker-located crop, and the layout path shows it properly. No
+layout derived from a master PDF's text layer -- KA1 has no master in Storage,
+and the standards importer does not keep the paper it reads; worth doing for the
+next imported paper (store the PDF at import, read the printed part labels with
+pdfjs the way `paper-layout-derive.ts` reads anchor marks).

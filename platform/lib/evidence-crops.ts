@@ -98,13 +98,107 @@ export const PAD_FLOOR = 0.03;
  *
  * This is mitigation, not a cure. A paper with a locked layout takes the
  * anchor path above and never comes near this function; that is the real fix
- * for a paper marked often enough to be worth 
- * drawing regions for.
+ * for a paper marked often enough to be worth drawing regions for.
+ *
+ * SINCE 24 SEP 2026 THE BIAS IS BOUNDED, not fixed. On Key Assessment 1
+ * (Grade 9 Standard) the marker's box for Q1(c) was roughly right, and the
+ * full 0.15 on a one-line answer, followed by the crop service growing the
+ * bottom edge over Q2's PRINTED text (which counts as ink), produced a crop
+ * that led with one line of Q1(c) and then showed the whole of Q2. The marker
+ * reports a box for every part on the run, and those boxes are
+ * self-consistent on a page even when each one is off, so the run's own
+ * boxes are the natural limit -- see boundModelBoxes for exactly where.
  */
 export const MODEL_DOWNWARD_BIAS = 0.15;
 
 /**
- * Clamp, reject, and pad one model-reported box.
+ * WHERE A BOUNDED CROP MAY REACH: the end of the NEXT part's region -- the
+ * top of the box after the next one, or the next box's own bottom when
+ * nothing follows it on the page -- never merely the next part's top.
+ *
+ * Both halves are load-bearing. The marker's error runs to about one part:
+ * on KA1 Extended it boxed the printed stem of every part of Q4 and the
+ * following box covered the handwriting, and on KA1 Standard the same student
+ * whose Q1(c) box was right had Q2(a) boxed on the sequence table with (a)'s
+ * answer under 2(b)'s box (verified against the scan, 24 Sep 2026). A crop
+ * bounded at the next part's TOP is tidy when the box is right and loses the
+ * answer when it is one part high -- which is the failure that is hardest
+ * to see, since the transcription beside it stays right. Bounding at the end
+ * of the next part's region keeps the answer in both cases at the cost of one
+ * part too many when the box was right; three parts too many, the screenshot,
+ * cannot happen. The service's growth is capped at the same place.
+ *
+ * NEXT_PART_OVERLAP is the allowance past that second box's reported top: the
+ * marker boxes handwriting, so a little overlap keeps that part's printed
+ * prompt line in the crop without showing its answer. Two consecutive reported
+ * boxes on one run overlap by about this much anyway.
+ */
+export const NEXT_PART_OVERLAP = 0.02;
+
+/**
+ * The same bound for a box that was STORED before the raw box was recorded,
+ * which is every row written before evidence_box_reported existed. Its bottom
+ * edge already carries padding plus the full bias (and, where "Fix crops" was
+ * pressed, one more bias per press), and the raw box is gone, so the only
+ * repair that can be recomputed from the row is to cut the bottom back to the
+ * end of the next part's region, read off the run's other STORED boxes. A
+ * stored top sits padY (at least PAD_FLOOR) above its raw top, hence a larger
+ * allowance than NEXT_PART_OVERLAP: PAD_FLOOR plus the same overlap.
+ *
+ * The bound never WIDENS a stored box: it is a minimum against the stored
+ * bottom, which is what makes a re-cut idempotent and what stops the
+ * compounding that widenStoredModelBox (removed) used to do.
+ */
+export const LEGACY_NEXT_ALLOWANCE = PAD_FLOOR + NEXT_PART_OVERLAP;
+
+/** The CV service's growth caps for one region, in points on the scan page. */
+export interface ExpansionCaps {
+  expandMaxX1Pt: number;
+  expandMaxY1Pt: number;
+}
+
+/** A box that survives clamping with some width and height left. */
+function isCroppable(box: EvidenceBox): boolean {
+  return clamp01(box.x1) > clamp01(box.x0) && clamp01(box.y1) > clamp01(box.y0);
+}
+
+interface PaddedParts {
+  padded: EvidenceBox;
+  padY: number;
+  rawY0: number;
+  rawY1: number;
+}
+
+/**
+ * padModelBox's arithmetic, with the intermediate values a bounded box needs
+ * (the raw bottom edge and the vertical padding) handed back alongside.
+ */
+function padModelBoxParts(box: EvidenceBox): PaddedParts | null {
+  const rawX0 = clamp01(box.x0);
+  const rawY0 = clamp01(box.y0);
+  const rawX1 = clamp01(box.x1);
+  const rawY1 = clamp01(box.y1);
+  if (rawX1 <= rawX0 || rawY1 <= rawY0) return null;
+
+  const padX = Math.max((rawX1 - rawX0) * PAD_PROPORTION, PAD_FLOOR);
+  const padY = Math.max((rawY1 - rawY0) * PAD_PROPORTION, PAD_FLOOR);
+
+  return {
+    padded: {
+      page: box.page,
+      x0: clamp01(rawX0 - padX),
+      y0: clamp01(rawY0 - padY),
+      x1: clamp01(rawX1 + padX),
+      y1: clamp01(rawY1 + padY + MODEL_DOWNWARD_BIAS),
+    },
+    padY,
+    rawY0,
+    rawY1,
+  };
+}
+
+/**
+ * Clamp, reject, and pad one model-reported box, on its own.
  *
  * Returns null for a box that cannot be cropped at all -- inverted or
  * zero-width/height after clamping. That is the same "skip this part, keep
@@ -116,48 +210,174 @@ export const MODEL_DOWNWARD_BIAS = 0.15;
  * padded boxes from a graded paper through it and requires exact equality on
  * x0/y0/x1, so a change in that arithmetic cannot pass unnoticed. Only the
  * bottom edge moved, and it moved on purpose -- see MODEL_DOWNWARD_BIAS.
- * Rows already in the database keep the box they were written with; this
- * changes what the NEXT run stores and crops.
+ *
+ * This is the UNBOUNDED form: the full bias, whatever sits below the box. The
+ * grading run and the re-cut go through boundModelBoxes, which gives exactly
+ * this result for a part with no reported neighbour below it on the page.
  */
 export function padModelBox(box: EvidenceBox): EvidenceBox | null {
-  const rawX0 = clamp01(box.x0);
-  const rawY0 = clamp01(box.y0);
-  const rawX1 = clamp01(box.x1);
-  const rawY1 = clamp01(box.y1);
-  if (rawX1 <= rawX0 || rawY1 <= rawY0) return null;
-
-  const padX = Math.max((rawX1 - rawX0) * PAD_PROPORTION, PAD_FLOOR);
-  const padY = Math.max((rawY1 - rawY0) * PAD_PROPORTION, PAD_FLOOR);
-
-  return {
-    page: box.page,
-    x0: clamp01(rawX0 - padX),
-    y0: clamp01(rawY0 - padY),
-    x1: clamp01(rawX1 + padX),
-    y1: clamp01(rawY1 + padY + MODEL_DOWNWARD_BIAS),
-  };
+  return padModelBoxParts(box)?.padded ?? null;
 }
 
 /**
- * The same downward growth padModelBox now applies, for a box that was already
- * stored by the OLD symmetric arithmetic.
- *
- * Rows written before MODEL_DOWNWARD_BIAS existed carry a bottom edge that
- * stops where the printed prompt does, with the handwriting just under it.
- * Re-cutting them needs no model call and no new coordinates -- the row
- * already has the box, and the only thing wrong with it is how far down it
- * reaches. Dropping that edge by the same bias gives exactly what padModelBox
- * would produce today for the same raw box, so a re-cut row and a freshly
- * marked one agree to the last decimal.
- *
- * Returns null when there is nothing to gain -- a box already touching the
- * foot of the page -- so a caller can skip it rather than re-cut an identical
- * picture and pay for the storage.
+ * The top of the nearest box that starts BELOW this one on the same page, or
+ * null when nothing does. Strictly below: a box reported at the same top is
+ * the same region seen twice, not a neighbour. Order is by position, never by
+ * part order -- the paper decides what is underneath, not the numbering.
  */
-export function widenStoredModelBox(box: EvidenceBox): EvidenceBox | null {
-  if (!(box.x1 > box.x0) || !(box.y1 > box.y0)) return null;
-  if (box.y1 >= 1) return null;
-  return { ...box, y1: clamp01(box.y1 + MODEL_DOWNWARD_BIAS) };
+export function nextTopBelow(box: EvidenceBox, others: EvidenceBox[]): number | null {
+  let next: number | null = null;
+  for (const other of others) {
+    if (other === box || other.page !== box.page) continue;
+    if (other.y0 > box.y0 && (next === null || other.y0 < next)) next = other.y0;
+  }
+  return next;
+}
+
+/** Where the region of the box below this one ends -- see NEXT_PART_OVERLAP. */
+export interface RegionEndBelow {
+  /** The second box's top, or the next box's bottom when it is the last on the page. */
+  y: number;
+  kind: "second-top" | "next-bottom";
+}
+
+/**
+ * The end of the NEXT box's region on this page: the top of the box after
+ * it, else its own bottom. Null when nothing is below this box at all.
+ */
+export function regionEndBelow(box: EvidenceBox, others: EvidenceBox[]): RegionEndBelow | null {
+  let next: EvidenceBox | null = null;
+  for (const other of others) {
+    if (other === box || other.page !== box.page) continue;
+    if (other.y0 > box.y0 && (next === null || other.y0 < next.y0)) next = other;
+  }
+  if (!next) return null;
+  const second = nextTopBelow(next, others);
+  return second === null ? { y: next.y1, kind: "next-bottom" } : { y: second, kind: "second-top" };
+}
+
+/** One model-located box after bounding, with the growth ceiling that goes with it. */
+export interface BoundedModelBox<K = string> {
+  key: K;
+  box: EvidenceBox;
+  /**
+   * Where the CV service's downward growth must stop, as a fraction of the
+   * page, or null for "the page edge". Below the box's own bottom edge it
+   * simply suppresses growth; it is never used to shrink the box.
+   */
+  ceiling: number | null;
+}
+
+/**
+ * Pad and bound every model-reported box on one run (the RAW rule).
+ *
+ * x0/y0/x1 are padModelBox's exactly. The bottom edge drops by up to
+ * MODEL_DOWNWARD_BIAS, but no further than the end of the next part's region
+ * (regionEndBelow, plus NEXT_PART_OVERLAP past a second box's top or
+ * PAD_FLOOR past the next box's own bottom), and never above the padded
+ * box's own bottom (rawY1 + padY) -- a bound inside the box limits the bias
+ * to nothing, it does not cut into the box.
+ *
+ * `neighbours` is every box the marker reported on the run, including parts
+ * that will be cut from a paper layout instead: their reported top still says
+ * where the next part's writing begins. It defaults to the inputs' own raws.
+ * A degenerate box (inverted or empty after clamping) is dropped from the
+ * output and never acts as a neighbour.
+ */
+export function boundModelBoxes<K>(
+  inputs: { key: K; raw: EvidenceBox }[],
+  neighbours?: EvidenceBox[]
+): BoundedModelBox<K>[] {
+  const pool = (neighbours ?? inputs.map((i) => i.raw)).filter(isCroppable);
+  const out: BoundedModelBox<K>[] = [];
+  for (const { key, raw } of inputs) {
+    const parts = padModelBoxParts(raw);
+    if (!parts) continue;
+    const end = regionEndBelow(raw, pool);
+    if (end === null) {
+      out.push({ key, box: parts.padded, ceiling: null });
+      continue;
+    }
+    const floor = parts.rawY1 + parts.padY;
+    const ceiling = end.y + (end.kind === "second-top" ? NEXT_PART_OVERLAP : PAD_FLOOR);
+    const y1 = clamp01(Math.max(floor, Math.min(floor + MODEL_DOWNWARD_BIAS, ceiling)));
+    out.push({ key, box: { ...parts.padded, y1 }, ceiling });
+  }
+  return out;
+}
+
+/**
+ * Bound one box that was stored without its raw counterpart (the LEGACY
+ * rule): cut the bottom edge back to `regionEnd`, the end of the next part's
+ * region as boundStoredModelBoxes reads it off the run. Never widens, so
+ * applying it twice gives the same box, and a box with nothing below it is
+ * returned as it is.
+ */
+export function boundStoredModelBox(stored: EvidenceBox, regionEnd: number | null): EvidenceBox {
+  if (regionEnd === null) return stored;
+  return { ...stored, y1: clamp01(Math.min(stored.y1, regionEnd)) };
+}
+
+/**
+ * The legacy rule over a whole run. `neighbours` should be every stored box
+ * on the run whatever its source -- a teacher-drawn or layout-cut neighbour's
+ * top is real, and bounding against it is better than not. Defaults to the
+ * inputs' own boxes. Degenerate boxes are dropped and never neighbours.
+ *
+ * The bound is LEGACY_NEXT_ALLOWANCE past a second box's stored top, or the
+ * next box's stored bottom when it is the last on the page (that bottom
+ * already carries padding and bias, so nothing is added to it).
+ */
+export function boundStoredModelBoxes<K>(
+  inputs: { key: K; stored: EvidenceBox }[],
+  neighbours?: EvidenceBox[]
+): BoundedModelBox<K>[] {
+  const pool = (neighbours ?? inputs.map((i) => i.stored)).filter(isCroppable);
+  const out: BoundedModelBox<K>[] = [];
+  for (const { key, stored } of inputs) {
+    if (!isCroppable(stored)) continue;
+    const end = regionEndBelow(stored, pool);
+    const regionEnd = end === null ? null : end.y + (end.kind === "second-top" ? LEGACY_NEXT_ALLOWANCE : 0);
+    out.push({
+      key,
+      box: boundStoredModelBox(stored, regionEnd),
+      ceiling: regionEnd,
+    });
+  }
+  return out;
+}
+
+/**
+ * Growth caps for a model-located region. Right: the page edge, as for
+ * per-paper regions (see computeExpansionCaps). Down: the bounded ceiling in
+ * points, or the page edge when there is none.
+ *
+ * Deliberately NOT floored at the region's own bottom edge, unlike
+ * computeExpansionCaps: a cap that lands inside the box just suppresses
+ * growth (scripts/cv_crop_extract.py's _adaptive_crop_bounds only ever grows
+ * from the box's edge and never shrinks it), which is exactly what a crop
+ * already reaching the next part wants, and what noExpansionCaps relies on.
+ */
+export function modelExpansionCaps(ceiling: number | null, size: PageSizePt): ExpansionCaps {
+  return {
+    expandMaxX1Pt: size.widthPt,
+    expandMaxY1Pt: ceiling === null ? size.heightPt : Math.min(size.heightPt, ceiling * size.heightPt),
+  };
+}
+
+/** Same page and the same four edges to within `epsilon` -- for "nothing to re-cut". */
+export function sameBox(
+  a: EvidenceBox | null | undefined,
+  b: EvidenceBox | null | undefined,
+  epsilon = 1e-6
+): boolean {
+  if (!a || !b || a.page !== b.page) return false;
+  return (
+    Math.abs(a.x0 - b.x0) <= epsilon &&
+    Math.abs(a.y0 - b.y0) <= epsilon &&
+    Math.abs(a.x1 - b.x1) <= epsilon &&
+    Math.abs(a.y1 - b.y1) <= epsilon
+  );
 }
 
 export type NormalizeResult = { ok: true; box: EvidenceBox } | { ok: false; error: string };
@@ -448,5 +668,81 @@ export function anchorToEvidenceBox(args: {
     y0: clamp01(fractions.y0),
     x1: clamp01(fractions.x1),
     y1: clamp01(fractions.y1),
+  };
+}
+
+/** A test_item_anchors row as the crop builders read it, in reference points. */
+export interface StoredAnchor {
+  /** 0-indexed page of the reference PDF. */
+  pageIndex: number;
+  x0Pt: number;
+  y0Pt: number;
+  x1Pt: number;
+  y1Pt: number;
+  expandMaxX1Pt: number | null;
+  expandMaxY1Pt: number | null;
+}
+
+/** What one crop needs: the box to record, and the region to send the CV service. */
+export interface CropPlan {
+  box: EvidenceBox;
+  region: { pageIndex: number } & PointBox & ExpansionCaps;
+}
+
+/**
+ * The crop for one part from a per-paper region, on one student's scan.
+ *
+ * This used to be spelled out in both the grading run and the re-cut script,
+ * which is one copy more than a conversion between three coordinate spaces
+ * can afford. The box crosses through reference fractions
+ * (anchorToEvidenceBox), and so do the caps: passed straight across as points
+ * they would cap growth at the wrong place on a differently sized scan.
+ */
+export function anchorCropPlan(args: {
+  anchor: StoredAnchor;
+  referenceSize: PageSizePt;
+  scanSize: PageSizePt;
+}): CropPlan {
+  const { anchor, referenceSize, scanSize } = args;
+  const box = anchorToEvidenceBox({
+    anchor: { x0Pt: anchor.x0Pt, y0Pt: anchor.y0Pt, x1Pt: anchor.x1Pt, y1Pt: anchor.y1Pt },
+    referenceSize,
+    page: anchor.pageIndex + 1,
+    // The tolerance may grow the region down, but not past the cap -- which
+    // is the next region's top, so it cannot reach the next part.
+    maxY1Pt: anchor.expandMaxY1Pt === null ? undefined : anchor.expandMaxY1Pt,
+  });
+  const capFractions = pointsToFractions(
+    {
+      x0Pt: 0,
+      y0Pt: 0,
+      x1Pt: anchor.expandMaxX1Pt ?? referenceSize.widthPt,
+      y1Pt: anchor.expandMaxY1Pt ?? referenceSize.heightPt,
+    },
+    referenceSize
+  );
+  return {
+    box,
+    region: {
+      pageIndex: anchor.pageIndex,
+      ...fractionBoxToPoints(box, scanSize),
+      expandMaxX1Pt: capFractions.x1 * scanSize.widthPt,
+      expandMaxY1Pt: capFractions.y1 * scanSize.heightPt,
+    },
+  };
+}
+
+/** The crop for one bounded model box (see boundModelBoxes / boundStoredModelBoxes). */
+export function modelCropPlan(
+  bounded: { box: EvidenceBox; ceiling: number | null },
+  scanSize: PageSizePt
+): CropPlan {
+  return {
+    box: bounded.box,
+    region: {
+      pageIndex: bounded.box.page - 1,
+      ...fractionBoxToPoints(bounded.box, scanSize),
+      ...modelExpansionCaps(bounded.ceiling, scanSize),
+    },
   };
 }

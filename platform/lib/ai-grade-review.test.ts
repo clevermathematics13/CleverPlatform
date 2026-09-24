@@ -13,6 +13,7 @@ import {
   selfMarkDiffers,
   latestRunsByStudent,
   acceptanceByRunFrom,
+  latestRunPerSubject,
   deriveOverviewState,
   buildRosterOptions,
 } from "./ai-grade-review";
@@ -640,5 +641,33 @@ describe("selfMarkDiffers", () => {
   it("never flags a part with nothing on file", () => {
     expect(selfMarkDiffers({ kind: "none" }, 0)).toBe(false);
     expect(selfMarkDiffers({ kind: "none" }, 3)).toBe(false);
+  });
+});
+
+describe("latestRunPerSubject", () => {
+  const INVITED = "0dde000f-e7fa-40e0-be66-d9edfaeb6f58";
+
+  it("keeps each student's newest run, for registered and invited students alike", () => {
+    const runs = latestRunPerSubject([
+      { id: "l-old", student_id: LUCIANA, invited_student_id: null, created_at: "2026-09-21T18:25:05Z" },
+      { id: "i-new", student_id: null, invited_student_id: INVITED, created_at: "2026-09-22T18:46:19Z" },
+      { id: "l-new", student_id: LUCIANA, invited_student_id: null, created_at: "2026-09-21T19:00:55Z" },
+      { id: "i-old", student_id: null, invited_student_id: INVITED, created_at: "2026-09-17T10:00:00Z" },
+    ]);
+    expect(runs.map((r) => r.id)).toEqual(["i-new", "l-new"]);
+  });
+
+  it("breaks a tie on created_at by id, the order the API lists runs in", () => {
+    const runs = latestRunPerSubject([
+      { id: "b", student_id: SALIM, invited_student_id: null, created_at: "2026-09-21T18:25:05Z" },
+      { id: "a", student_id: SALIM, invited_student_id: null, created_at: "2026-09-21T18:25:05Z" },
+    ]);
+    expect(runs.map((r) => r.id)).toEqual(["a"]);
+  });
+
+  it("drops a run with no student on it", () => {
+    expect(
+      latestRunPerSubject([{ id: "orphan", student_id: null, invited_student_id: null, created_at: "2026-09-21T18:25:05Z" }])
+    ).toEqual([]);
   });
 });
