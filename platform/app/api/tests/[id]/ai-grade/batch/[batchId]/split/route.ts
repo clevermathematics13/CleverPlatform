@@ -2,7 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { PDFDocument } from "pdf-lib";
 import { getApiTeacher } from "@/lib/auth";
 import { SCAN_BUCKET } from "@/lib/ai-grading";
-import { canCopySourceWhole } from "@/lib/batch-split";
+import {
+  canCopySourceWhole,
+  parseConfirmedSegments,
+  withSplitOutcomes,
+  type ConfirmedSegment,
+} from "@/lib/batch-split";
 
 // Hobby-plan serverless functions cap at 300s. Grading a full class
 // sequentially in one request (as an earlier version of this route did)
@@ -25,24 +30,30 @@ import { canCopySourceWhole } from "@/lib/batch-split";
 // budget is raised to the platform cap for the rebuild path that remains.
 export const maxDuration = 300;
 
-interface ConfirmedSegment {
-  label: string;
-  pages: number[];
-  matchedStudentId: string | null;
-}
-
 /**
  * POST /api/tests/[id]/ai-grade/batch/[batchId]/split
- * Body: { segments: { label: string, pages: number[], studentId: string }[] }
+ * Body, one of:
+ *   { segments: { label: string, pages: number[], studentId: string }[] }
+ *   { retryStudentIds: string[] }
  *
- * Applies the teacher's CONFIRMED page-to-student mapping (which may differ
- * from the model's proposal — every segment here needs an explicit studentId,
- * there is no roster auto-match fallback at this step) and splits the batch
- * PDF into one PDF per student via pdf-lib, uploading each to the same
- * exam-scans bucket single-student scans already use. Returns the storage
+ * The first applies the teacher's CONFIRMED page-to-student mapping (which may
+ * differ from the model's proposal -- every segment here needs an explicit
+ * studentId, there is no roster auto-match fallback at this step) and splits
+ * the batch PDF into one PDF per student via pdf-lib, uploading each to the
+ * same exam-scans bucket single-student scans already use. Returns the storage
  * path per student; the caller then triggers grading for each one via the
  * existing single-student route. This route never calls the model and never
  * writes to ai_grade_runs or ai_grade_results itself.
+ *
+ * The second splits again only the named students of a batch that was already
+ * split, from the mapping stored when it was confirmed: the recovery for a
+ * student whose scan could not be stored the first time. Nobody else's scan or
+ * outcome is touched, and the batch keeps its status and split time.
+ *
+ * Either way each student's outcome -- where their scan was stored, or why it
+ * could not be -- is written onto their confirmed segment (ConfirmedSegment in
+ * lib/batch-split.ts), not only returned here: a failure that lived only in
+ * this response was lost with the tab that received it.
  */
 export async function POST(
   request: NextRequest,
@@ -53,46 +64,64 @@ export async function POST(
   const { supabase } = auth;
   const { id: testId, batchId } = await params;
 
-  let body: { segments?: unknown };
+  let body: { segments?: unknown; retryStudentIds?: unknown };
   try {
     body = await request.json();
   } catch {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  if (!Array.isArray(body.segments) || body.segments.length === 0) {
-    return NextResponse.json({ error: "segments must be a non-empty array" }, { status: 400 });
+  const retryStudentIds =
+    body.retryStudentIds === undefined
+      ? null
+      : Array.isArray(body.retryStudentIds)
+        ? [
+            ...new Set(
+              body.retryStudentIds
+                .filter((x): x is string => typeof x === "string" && x.trim() !== "")
+                .map((x) => x.trim())
+            ),
+          ]
+        : [];
+  if (retryStudentIds !== null && retryStudentIds.length === 0) {
+    return NextResponse.json({ error: "retryStudentIds must name at least one student" }, { status: 400 });
   }
 
-  const segments: { label: string; pages: number[]; studentId: string }[] = [];
-  for (const raw of body.segments as Record<string, unknown>[]) {
-    const label = typeof raw.label === "string" ? raw.label.trim() : "";
-    const studentId = typeof raw.studentId === "string" ? raw.studentId.trim() : "";
-    const pages = Array.isArray(raw.pages)
-      ? raw.pages.filter((p): p is number => typeof p === "number" && Number.isInteger(p) && p >= 1)
-      : [];
-    if (!label || !studentId || pages.length === 0) {
+  let segments: { label: string; pages: number[]; studentId: string }[] = [];
+  if (retryStudentIds === null) {
+    if (!Array.isArray(body.segments) || body.segments.length === 0) {
+      return NextResponse.json({ error: "segments must be a non-empty array" }, { status: 400 });
+    }
+
+    for (const raw of body.segments as Record<string, unknown>[]) {
+      const label = typeof raw.label === "string" ? raw.label.trim() : "";
+      const studentId = typeof raw.studentId === "string" ? raw.studentId.trim() : "";
+      const pages = Array.isArray(raw.pages)
+        ? raw.pages.filter((p): p is number => typeof p === "number" && Number.isInteger(p) && p >= 1)
+        : [];
+      if (!label || !studentId || pages.length === 0) {
+        return NextResponse.json(
+          { error: "Every segment needs a label, a studentId, and at least one page" },
+          { status: 400 }
+        );
+      }
+      segments.push({ label, pages: [...new Set(pages)].sort((a, b) => a - b), studentId });
+    }
+
+    const studentIds = segments.map((s) => s.studentId);
+    const duplicateStudent = studentIds.find((id, i) => studentIds.indexOf(id) !== i);
+    if (duplicateStudent) {
       return NextResponse.json(
-        { error: "Every segment needs a label, a studentId, and at least one page" },
+        { error: "The same student is assigned to more than one segment — merge their pages into one segment" },
         { status: 400 }
       );
     }
-    segments.push({ label, pages: [...new Set(pages)].sort((a, b) => a - b), studentId });
-  }
-
-  const studentIds = segments.map((s) => s.studentId);
-  const duplicateStudent = studentIds.find((id, i) => studentIds.indexOf(id) !== i);
-  if (duplicateStudent) {
-    return NextResponse.json(
-      { error: "The same student is assigned to more than one segment — merge their pages into one segment" },
-      { status: 400 }
-    );
   }
 
   // -- Load the batch and the source PDF -------------------------------------
   const { data: batch, error: batchErr } = await supabase
     .from("ai_grade_batches")
-    .select("id, test_id, status, source_storage_path, page_count, blank_pages")
+    .select("id, test_id, status, source_storage_path, page_count, blank_pages, confirmed_segments")
     .eq("id", batchId)
     .maybeSingle();
 
@@ -101,6 +130,35 @@ export async function POST(
   if (batch.test_id !== testId) {
     return NextResponse.json({ error: "This batch does not belong to the specified assessment" }, { status: 400 });
   }
+
+  // What the outcomes are recorded onto: the stored mapping on a retry, the
+  // mapping just confirmed otherwise.
+  let confirmed: ConfirmedSegment[];
+  if (retryStudentIds !== null) {
+    if (batch.status !== "split") {
+      return NextResponse.json(
+        { error: "Only a batch that has already been split can have students split again" },
+        { status: 409 }
+      );
+    }
+    confirmed = parseConfirmedSegments(batch.confirmed_segments);
+    const missing = retryStudentIds.filter((id) => !confirmed.some((s) => s.matchedStudentId === id));
+    if (missing.length > 0) {
+      return NextResponse.json(
+        { error: `${missing.length} of those students are not in this batch's confirmed page mapping` },
+        { status: 400 }
+      );
+    }
+    segments = confirmed
+      .filter((s) => retryStudentIds.includes(s.matchedStudentId))
+      .map((s) => ({ label: s.label, pages: s.pages, studentId: s.matchedStudentId }));
+    if (segments.some((s) => s.pages.length === 0)) {
+      return NextResponse.json({ error: "A student to split again has no pages on record" }, { status: 400 });
+    }
+  } else {
+    confirmed = segments.map((s) => ({ label: s.label, pages: s.pages, matchedStudentId: s.studentId }));
+  }
+
   // A batch that is already "split" is NOT rejected: this route used to
   // 409 in that case, which meant a split whose response was lost to a
   // gateway timeout (the row had been updated, the client never heard)
@@ -197,20 +255,25 @@ export async function POST(
     }
   }
 
-  const confirmedSegments: ConfirmedSegment[] = segments.map((s) => ({
-    label: s.label,
-    pages: s.pages,
-    matchedStudentId: s.studentId,
-  }));
-
-  await supabase
+  // Every student's outcome goes onto their own confirmed segment, so a
+  // student whose scan could not be stored stays findable after this
+  // response is gone (the marking page flags them -- lib/batch-unmarked.ts).
+  const recorded = withSplitOutcomes(
+    confirmed,
+    results.map((r) => ({ studentId: r.studentId, status: r.status, storagePath: r.storagePath, error: r.error }))
+  );
+  const { error: recordErr } = await supabase
     .from("ai_grade_batches")
-    .update({
-      status: "split",
-      confirmed_segments: confirmedSegments,
-      split_at: new Date().toISOString(),
-    })
+    .update(
+      retryStudentIds !== null
+        ? { confirmed_segments: recorded }
+        : { status: "split", confirmed_segments: recorded, split_at: new Date().toISOString() }
+    )
     .eq("id", batchId);
+  // Not fatal: the scans that were stored are stored, and failing here would
+  // stop the caller marking them. Logged, because the record is what lets a
+  // dropped student be found later.
+  if (recordErr) console.error(`[batch split] ${batchId}: could not record the split outcomes: ${recordErr.message}`);
 
   return NextResponse.json({
     batchId,

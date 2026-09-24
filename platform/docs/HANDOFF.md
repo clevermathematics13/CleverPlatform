@@ -257,7 +257,7 @@ must exercise Server Actions.
 
 ## 4. Database and migrations
 
-**The migration ledger and the repo agree on versions: 180 files, 180 rows**
+**The migration ledger and the repo agree on versions: 181 files, 181 rows**
 (verified 24 Sep 2026; it read 83/83 when this handoff was written, 95/95 after
 the second reconciliation, 116/116 after the third, 149/149 on 13 Sep and
 171/171 on 20 Sep). Two
@@ -3336,3 +3336,68 @@ triggers on `tests` or `test_items`.
   (`tests.mark_scheme_pdf_storage_path`), which is rendered when the draft is
   saved and still shows the earlier wording. Regenerating it goes through
   the save route, which is the re-save above.
+
+## 35. Batch scans: one class per pile, and a dropped student is flagged (24 Sep 2026)
+
+Two students of 9C's Key Assessment 1 (Extended) self-assessed on 23 Sep and
+saw no Clev's Marks. Both were in 9C's batch scan (`U1 Summ_C_1.pdf`, batch
+`7e849ed9`, 240 pages, split 15 Sep), and each was lost a different way:
+
+- **One student's pages were never stored.** The split route writes one PDF
+  per student; hers failed to upload (a one-off -- her pages split cleanly
+  from the same scan on 24 Sep). The route reported that only in its HTTP
+  response ("1 could not be sent"), still marked the batch `split` with every
+  segment confirmed, and the tab was closed. No run was ever created, and the
+  roster showed her exactly like someone who had not handed a script in.
+- **The other's script was matched to a student in another class.** His cover
+  said only "Santiago" and "Bloc C". The quick read's cover check was given
+  all 51 names of the track (9A, 9C, 9G), called 9A's Santiago "the only
+  Santiago enrolled" with both on its list, and that became the segment's
+  label and match; the teacher confirmed it. The 9A student then carried
+  49/50 from the 9C student's paper (one part changed by hand on 16 Sep, the
+  rest accepted 22 Sep). His own 9A paper had been marked on 16 Sep, but that
+  run no longer exists -- no app code deletes `ai_grade_runs`, so it was
+  removed directly in the database between 16 and 21 Sep, by someone unknown.
+
+**Data repair, 24 Sep (execute_sql, approved by the teacher; no schema change):**
+the 11 runs, 396 results and 36 `student_marks` rows moved from the 9A
+student to the 9C student, with 72 `mark_changes` rows recording the move
+(removal on one record, arrival on the other, `changed_by` the teacher). The
+scan and its 46 evidence crops were copied into the 9C student's own folder
+and repointed; the 47 originals are still in the 9A student's folder,
+unreferenced -- deleting them was blocked by the session's permissions and is
+the teacher's call. Segment 9 of the batch's `confirmed_segments` now names
+the right student, and the test's PowerSchool files were flagged stale. The
+missing student's 12 pages were cut from the class scan into her folder. The
+9A student's own 9A paper had its even pages stored upside down (the 9A scan
+was split on 16 Sep, before the orientation check existed; the other 13 papers
+from it were turned at 21:41 that day, his was missed): pages 2, 4, 6 and 8
+were turned with the same operation as `rotatePagesUpright` and saved as a new
+file. Both students got a placeholder `failed` run pointing at their scan,
+whose error begins "Not marked yet", so the roster shows **Mark now** and the
+orientation check is skipped (both files are already upright). Neither was
+marked from here -- marking only runs on production with a teacher session.
+
+**Code (this change):**
+
+- **The split records every student's outcome** on their confirmed segment
+  (`storagePath`, or `splitError`; `ConfirmedSegment` and `withSplitOutcomes`
+  in `lib/batch-split.ts`). `{ retryStudentIds }` on the same route splits
+  just those students again from the stored mapping. The overview loader adds
+  `unmarked` -- anyone in a split batch's confirmed segments with no run of any
+  status (`lib/batch-unmarked.ts`) -- and the Individual tab shows a banner and
+  flags their row with **Recover & mark overnight** / **Mark now** (re-saving
+  the pages first when the split never stored them). Nothing was flagged on
+  the day it shipped: every confirmed student had a run after the repair.
+- **A batch scan is matched against one class.** The Batch tab asks "Class in
+  this scan" whenever more than one class sits the paper (upload is held until
+  it is chosen; "Mixed classes" keeps the old whole-track pooling). The class
+  is stored on `ai_grade_batches.course_id` (migration `20260924125631`), and
+  the cover check, the roster match, the byte-identical-upload reuse (same
+  class only) and the batch list's re-match all use it.
+  `holdOtherClassNames` clears a match whose cover label is exactly the name
+  of a student in another class and says so in the row's note -- without it,
+  class-only matching turns a stray 9A script reading "Santiago <surname>"
+  into a confident match on 9C's only Santiago, the same mix-up in reverse.
+  Batches from before 24 Sep have `course_id` null and behave as before.
+

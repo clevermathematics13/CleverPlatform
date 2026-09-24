@@ -46,6 +46,13 @@ const probes = [
     column: "nuanced_analysis_id",
     migration: "20260910173204_assignment_templates_nuanced_analysis_link.sql",
   },
+  {
+    // The batch upload route writes it on every upload and the Batch upload
+    // tab's restore reads it: without it both fail outright.
+    table: "ai_grade_batches",
+    column: "course_id",
+    migration: "20260924125631_ai_grade_batches_course_id.sql",
+  },
 ];
 
 const missing = [];

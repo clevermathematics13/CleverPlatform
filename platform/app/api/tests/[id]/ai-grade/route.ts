@@ -53,9 +53,11 @@ interface ResultRow {
 /**
  * GET /api/tests/[id]/ai-grade?studentId=...
  * For the review UI, in two shapes:
- *   - without studentId (the roster): every run of the test, and `results`
+ *   - without studentId (the roster): every run of the test, `results`
  *     cut down to { run_id, accepted } for each student's newest complete
- *     run -- the acceptance counts the roster shows, and nothing else;
+ *     run -- the acceptance counts the roster shows, and nothing else --
+ *     and `unmarked`, anyone a batch scan was confirmed for who has no run
+ *     at all (lib/batch-unmarked.ts);
  *   - with studentId (one student's review panel): their last few runs with
  *     full result rows, signed evidence crops, PPQ images, what Clev's Marks
  *     holds for each part, and their self-assessment of the test as
@@ -80,7 +82,7 @@ export async function GET(
   if (!studentId) {
     const overview = await loadAiGradeOverview(supabase, testId);
     if (!overview.ok) return NextResponse.json({ error: overview.error }, { status: overview.status });
-    return NextResponse.json({ runs: overview.runs, results: overview.results });
+    return NextResponse.json({ runs: overview.runs, results: overview.results, unmarked: overview.unmarked });
   }
 
   // Started now and awaited at the end, so the Self column costs no extra

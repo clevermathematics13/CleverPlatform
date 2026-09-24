@@ -2004,6 +2004,58 @@ export function matchSegmentsToRoster(
   });
 }
 
+/** A roster row that also knows its class, for scans matched against one class only. */
+export interface ClassRosterEntry extends RosterEntry {
+  courseId: string;
+  className: string | null;
+}
+
+/**
+ * A scan uploaded as one class's pile is matched against that class only, and
+ * that makes a partial match look decisive: with a single Santiago left in the
+ * class, a cover reading "Santiago Ortega" -- a 9A student whose script was
+ * filed with 9C's -- scores 0.5 against 9C's Santiago Ruiz with no rival, which
+ * is enough to propose him. That is the 15 Sep 2026 mix-up in reverse.
+ *
+ * So a cover label that is exactly the name (or a recorded alias) of a student
+ * in ANOTHER class sitting the same paper is held back: its match is cleared
+ * and its note says whose name it is, for the teacher to decide. A match that
+ * is itself an exact name match in the scan's class stands -- two students
+ * with the same full name in different classes are told apart by the class
+ * the pile was uploaded for. Idempotent, so the batch list route can run it
+ * again after re-matching without stacking notes.
+ */
+export function holdOtherClassNames(
+  segments: readonly ProposedSegment[],
+  scanClassRoster: readonly RosterEntry[],
+  otherClassRoster: readonly ClassRosterEntry[],
+  scanClassName: string
+): ProposedSegment[] {
+  const namesOf = (r: RosterEntry) =>
+    [r.displayName, ...(r.aliases ?? [])].map(normaliseName).filter(Boolean);
+  const scanExact = new Map<string, string>();
+  for (const r of scanClassRoster) for (const n of namesOf(r)) scanExact.set(n, r.profileId);
+  const otherExact = new Map<string, ClassRosterEntry>();
+  for (const r of otherClassRoster) for (const n of namesOf(r)) if (!otherExact.has(n)) otherExact.set(n, r);
+
+  return segments.map((s) => {
+    const label = normaliseName(s.label);
+    const other = label ? otherExact.get(label) : undefined;
+    if (!other) return s;
+    // The class the pile was uploaded for wins a genuine tie of full names.
+    if (scanExact.has(label) && scanExact.get(label) === s.matchedStudentId) return s;
+    const held = `The cover reads "${s.label}", the name of ${other.displayName}${
+      other.className ? ` in ${other.className}` : ""
+    }, not a student in ${scanClassName}. Check whose script this is and pick them below.`;
+    return {
+      ...s,
+      matchedStudentId: null,
+      matchedStudentName: null,
+      note: s.note.includes(held) ? s.note : s.note ? `${held} ${s.note}` : held,
+    };
+  });
+}
+
 /**
  * Re-runs roster matching for the segments of an already-read batch that
  * still have no match. A batch's proposals are frozen at the moment it was

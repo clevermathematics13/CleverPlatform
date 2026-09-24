@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { INVITED_SUBJECT_PREFIX, formatGradingSubject } from "@/lib/grading-subject";
 import { latestRunsByStudent, type AcceptanceRef } from "@/lib/ai-grade-review";
 import { fetchAllRows } from "@/lib/na-scanning";
+import { findUnmarkedBatchStudents, type SplitBatchRef, type UnmarkedBatchStudent } from "@/lib/batch-unmarked";
 
 /**
  * What the AI-grade roster loads for a whole test, from anywhere on the
@@ -41,7 +42,13 @@ export interface AiGradeRunRow {
 }
 
 export type AiGradeOverviewResult =
-  | { ok: true; runs: AiGradeRunRow[]; results: AcceptanceRef[] }
+  | {
+      ok: true;
+      runs: AiGradeRunRow[];
+      results: AcceptanceRef[];
+      /** Students a batch scan was confirmed for who have no run at all (lib/batch-unmarked.ts). */
+      unmarked: UnmarkedBatchStudent[];
+    }
   | { ok: false; status: 500; error: string };
 
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
@@ -91,10 +98,12 @@ export async function loadAiGradeOverview(
   // id every caller already keys its state by (see parseGradingSubject) --
   // the review UI never needs to know which column a run's identity lives in.
   const runs = rawRuns.map((r) => ({ ...r, student_id: formatGradingSubject(r) }));
-  if (runs.length === 0) return { ok: true, runs: [], results: [] };
+  // Started now so it runs alongside the acceptance read below.
+  const unmarkedLoad = loadUnmarkedBatchStudents(supabase, testId, runs);
+  if (runs.length === 0) return { ok: true, runs: [], results: [], unmarked: await unmarkedLoad };
 
   const latestIds = Object.values(latestRunsByStudent(runs).latestComplete).map((r) => r.id);
-  if (latestIds.length === 0) return { ok: true, runs, results: [] };
+  if (latestIds.length === 0) return { ok: true, runs, results: [], unmarked: await unmarkedLoad };
   try {
     // Still paged: the newest runs alone pass PostgREST's 1000-row cap on a
     // big class (49 runs x 36 parts on Key Assessment 1).
@@ -106,9 +115,51 @@ export async function loadAiGradeOverview(
         .order("id", { ascending: true })
         .range(from, to)
     );
-    return { ok: true, runs, results };
+    return { ok: true, runs, results, unmarked: await unmarkedLoad };
   } catch (e) {
     return { ok: false, status: 500, error: message(e) };
+  }
+}
+
+/**
+ * Students a batch scan was confirmed for who have no run of any kind on the
+ * test (see lib/batch-unmarked.ts for why that means the flow dropped them).
+ * `runs` carry the opaque subject id already.
+ *
+ * Best-effort: a failed read means nobody is flagged, never that the roster
+ * cannot load -- the same footing as the absences beside it.
+ */
+async function loadUnmarkedBatchStudents(
+  supabase: SupabaseClient,
+  testId: string,
+  runs: readonly { student_id: string | null }[]
+): Promise<UnmarkedBatchStudent[]> {
+  try {
+    const { data: batches, error } = await supabase
+      .from("ai_grade_batches")
+      .select("id, file_name, status, confirmed_segments, created_at")
+      .eq("test_id", testId)
+      .eq("status", "split");
+    if (error || !batches || batches.length === 0) return [];
+    const handled = new Set(runs.map((r) => r.student_id).filter((id): id is string => !!id));
+    const flagged = findUnmarkedBatchStudents(batches as SplitBatchRef[], handled);
+
+    // Someone confirmed before their first login is an invited subject on the
+    // batch; if they have signed in since, their runs sit under the profile.
+    const invitedIds = flagged
+      .map((u) => u.studentId)
+      .filter((id) => id.startsWith(INVITED_SUBJECT_PREFIX))
+      .map((id) => id.slice(INVITED_SUBJECT_PREFIX.length));
+    if (invitedIds.length === 0) return flagged;
+    const { data: invited } = await supabase.from("invited_students").select("id, profile_id").in("id", invitedIds);
+    const sameAs = new Map(
+      (invited ?? [])
+        .filter((r) => !!r.profile_id)
+        .map((r) => [`${INVITED_SUBJECT_PREFIX}${r.id as string}`, r.profile_id as string] as const)
+    );
+    return findUnmarkedBatchStudents(batches as SplitBatchRef[], handled, sameAs);
+  } catch {
+    return [];
   }
 }
 
