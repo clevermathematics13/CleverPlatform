@@ -14,6 +14,10 @@ import {
   selfMarkDiffers,
   latestRunsByStudent,
   acceptanceByRunFrom,
+  sumClevMarks,
+  clevMarksBySubjectFrom,
+  rosterMarkSegments,
+  reviewMarkTotals,
   latestRunPerSubject,
   deriveOverviewState,
   buildRosterOptions,
@@ -226,6 +230,131 @@ describe("acceptanceByRunFrom", () => {
   // run it has no rows for, and a red "none accepted" dot for one it does.
   it("gives a run with no rows no entry", () => {
     expect(acceptanceByRunFrom([])).toEqual({});
+  });
+});
+
+describe("sumClevMarks", () => {
+  it("adds up the marks and counts the parts that have one, a 0 included", () => {
+    expect(
+      sumClevMarks([{ marks_awarded: 1 }, { marks_awarded: 4 }, { marks_awarded: 0 }, { marks_awarded: null }])
+    ).toEqual({ total: 5, marked: 3 });
+  });
+
+  it("is zero for no marks", () => {
+    expect(sumClevMarks([])).toEqual({ total: 0, marked: 0 });
+  });
+});
+
+describe("clevMarksBySubjectFrom", () => {
+  const INVITED_ID = "5b0c8a52-7b0e-4d8e-9a53-7d8f1f0c2e11";
+  const mark = (test_item_id: string, marks_awarded: number | null, student_id: string | null, invited_student_id: string | null = null) => ({
+    test_item_id,
+    student_id,
+    invited_student_id,
+    marks_awarded,
+  });
+
+  it("totals each student's marks on the test, keyed the way the roster keys them", () => {
+    expect(
+      clevMarksBySubjectFrom([
+        mark("q1", 1, SALIM),
+        mark("q2", 4, SALIM),
+        mark("q1", 0, LUCIANA),
+        mark("q1", 2, null, INVITED_ID),
+      ])
+    ).toEqual({
+      [SALIM]: { total: 5, marked: 2 },
+      [LUCIANA]: { total: 0, marked: 1 },
+      [`invited-${INVITED_ID}`]: { total: 2, marked: 1 },
+    });
+  });
+
+  // A signed-in student's mark can still carry the invitation it came from.
+  it("keys a mark by the signed-in student when it has both identities", () => {
+    expect(clevMarksBySubjectFrom([mark("q1", 3, SALIM, INVITED_ID)])).toEqual({ [SALIM]: { total: 3, marked: 1 } });
+  });
+
+  it("gives a student with no marks, or a mark with no student, no entry", () => {
+    expect(clevMarksBySubjectFrom([mark("q1", null, SALIM), mark("q2", 1, null)])).toEqual({});
+  });
+});
+
+describe("rosterMarkSegments", () => {
+  const coverage = { suggestedTotal: 37, maxTotal: 50, testTotalMarks: 50 };
+  const test = { parts: 36, maxMarks: 50 };
+
+  // Key Assessment 1, 25 Sep 2026: the roster said "37/50 suggested" while the
+  // review panel said 41, because three parts had been marked up.
+  it("labels the AI's total as the AI's and prints what ClevMarks holds beside it", () => {
+    expect(rosterMarkSegments(coverage, { total: 41, marked: 36 }, test)).toEqual([
+      "AI suggested 37/50",
+      "ClevMarks 41/50",
+    ]);
+  });
+
+  it("prints both even when they agree, so a fully accepted student reads as done", () => {
+    expect(rosterMarkSegments(coverage, { total: 37, marked: 36 }, test)).toEqual([
+      "AI suggested 37/50",
+      "ClevMarks 37/50",
+    ]);
+  });
+
+  // The same test: 12 students had no grade back for 14(b), and nothing in
+  // ClevMarks for it either -- which "so far" is there to show.
+  it("says 'so far' while ClevMarks has no mark for some of the test's parts", () => {
+    expect(rosterMarkSegments({ suggestedTotal: 29, maxTotal: 50 }, { total: 29, marked: 35 }, test)).toEqual([
+      "AI suggested 29/50",
+      "ClevMarks 29/50 so far (35 of 36 parts)",
+    ]);
+  });
+
+  it("leaves ClevMarks off until it holds a mark, or when it could not be read", () => {
+    expect(rosterMarkSegments(coverage, { total: 0, marked: 0 }, test)).toEqual(["AI suggested 37/50"]);
+    expect(rosterMarkSegments(coverage, undefined, test)).toEqual(["AI suggested 37/50"]);
+  });
+
+  // Parts with no mark scheme are never marked by the AI, but are marked by
+  // hand into ClevMarks -- so ClevMarks is out of the whole paper.
+  it("keeps 'of N total' on the AI's figure and gives ClevMarks the whole paper", () => {
+    expect(
+      rosterMarkSegments(
+        { suggestedTotal: 17, maxTotal: 20, testTotalMarks: 33 },
+        { total: 28, marked: 12 },
+        { parts: 12, maxMarks: 33 }
+      )
+    ).toEqual(["AI suggested 17/20 of 33 total", "ClevMarks 28/33"]);
+  });
+
+  it("prints ClevMarks alone when the run recorded no totals", () => {
+    expect(rosterMarkSegments(null, { total: 41, marked: 36 }, test)).toEqual(["ClevMarks 41/50"]);
+    expect(rosterMarkSegments({}, undefined, test)).toEqual([]);
+  });
+});
+
+describe("reviewMarkTotals", () => {
+  const rows = [
+    { id: "r1", suggested_marks: 0 },
+    { id: "r2", suggested_marks: 0 },
+    { id: "r3", suggested_marks: 2 },
+    { id: "r4", suggested_marks: 1 },
+  ];
+
+  it("totals the boxes beside the AI's own total and counts the parts that differ", () => {
+    expect(reviewMarkTotals(rows, { r1: 1, r2: 1, r3: 4, r4: 1 })).toEqual({ total: 7, aiTotal: 3, changed: 3 });
+  });
+
+  it("changes nothing while every box holds the suggestion", () => {
+    expect(reviewMarkTotals(rows, { r1: 0, r2: 0, r3: 2, r4: 1 })).toEqual({ total: 3, aiTotal: 3, changed: 0 });
+  });
+
+  // Up on one part and down on another: the totals agree, but two parts
+  // were still changed, and the heading must say so.
+  it("counts changed parts even when the totals come out the same", () => {
+    expect(reviewMarkTotals(rows, { r1: 1, r2: 0, r3: 1, r4: 1 })).toEqual({ total: 3, aiTotal: 3, changed: 2 });
+  });
+
+  it("reads a part with no draft as 0, as its box shows it", () => {
+    expect(reviewMarkTotals(rows, { r1: 0, r2: 0, r3: 2 })).toEqual({ total: 2, aiTotal: 3, changed: 1 });
   });
 });
 

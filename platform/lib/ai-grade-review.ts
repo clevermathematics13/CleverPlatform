@@ -149,6 +149,121 @@ export function acceptanceByRunFrom(
   return counts;
 }
 
+// ---- What ClevMarks holds, beside what the AI suggested ---------------------
+//
+// A run's coverage.suggestedTotal is the model's own total, written when the
+// run finished. It never moves when a teacher accepts or changes a mark --
+// suggested_marks is the audit trail's record of what the model said -- so a
+// roster that showed it alone read "37/50 suggested" for a student whose
+// review panel, which shows what ClevMarks holds, said 41 (Key Assessment 1,
+// 25 Sep 2026: three parts the teacher had marked up). The roster now prints
+// both, and these are what it prints them from.
+//
+// The ClevMarks figure is the student's whole test, not the parts in the
+// run: a part the AI returned no grade for is "left ungraded for manual
+// marking", so the mark a teacher enters for it by hand is in ClevMarks and
+// in the gradebook but in no run. Counting only the run's parts would print
+// a "ClevMarks" total below the gradebook's -- the same confusion again.
+
+/** One student_marks row, as far as the roster reads it. */
+export interface ClevMarkRow {
+  test_item_id: string;
+  student_id: string | null;
+  invited_student_id: string | null;
+  marks_awarded: number | null;
+}
+
+/** What ClevMarks holds on a test for one student -- the roster's "ClevMarks 41/50". */
+export interface ClevMarksSummary {
+  /** The marks ClevMarks holds on the test, added up. */
+  total: number;
+  /** How many of the test's parts ClevMarks holds a mark for. */
+  marked: number;
+}
+
+/** What ClevMarks holds over one student's marks on one test. */
+export function sumClevMarks(marks: readonly { marks_awarded: number | null }[]): ClevMarksSummary {
+  let total = 0;
+  let marked = 0;
+  for (const m of marks) {
+    if (typeof m.marks_awarded !== "number") continue;
+    total += m.marks_awarded;
+    marked += 1;
+  }
+  return { total, marked };
+}
+
+/**
+ * What ClevMarks holds for each student, keyed by the opaque subject id the
+ * roster keys everything by (formatGradingSubject). `marks` must be one
+ * test's rows. A student with no marks gets no entry.
+ */
+export function clevMarksBySubjectFrom(marks: readonly ClevMarkRow[]): Record<string, ClevMarksSummary> {
+  const bySubject = new Map<string, ClevMarkRow[]>();
+  for (const m of marks) {
+    const subject = formatGradingSubject(m);
+    if (!subject || typeof m.marks_awarded !== "number") continue;
+    const list = bySubject.get(subject) ?? [];
+    list.push(m);
+    bySubject.set(subject, list);
+  }
+  return Object.fromEntries([...bySubject].map(([subject, list]) => [subject, sumClevMarks(list)]));
+}
+
+/**
+ * The marks on a student's roster line, after "Last run: complete": what the
+ * AI suggested, then what ClevMarks holds on the whole test (`test`: its
+ * part count and total marks, as the page has them). ClevMarks is left off
+ * until it holds a mark, and says "so far" until it holds one for every
+ * part -- a part the AI could not mark stays empty until someone marks it.
+ */
+export function rosterMarkSegments(
+  coverage: { suggestedTotal?: number; maxTotal?: number; testTotalMarks?: number } | null | undefined,
+  clevMarks: ClevMarksSummary | undefined,
+  test: { parts: number; maxMarks: number }
+): string[] {
+  const segments: string[] = [];
+  const max = coverage?.maxTotal;
+  if (coverage?.suggestedTotal !== undefined && max !== undefined) {
+    // "of 33 total" when parts without a mark scheme were never marked, so
+    // 20 is not mistaken for the whole paper.
+    const ofTotal =
+      typeof coverage.testTotalMarks === "number" && coverage.testTotalMarks !== max
+        ? ` of ${coverage.testTotalMarks} total`
+        : "";
+    segments.push(`AI suggested ${coverage.suggestedTotal}/${max}${ofTotal}`);
+  }
+  if (clevMarks && clevMarks.marked > 0) {
+    const figure = `ClevMarks ${clevMarks.total}/${test.maxMarks}`;
+    segments.push(
+      clevMarks.marked >= test.parts ? figure : `${figure} so far (${clevMarks.marked} of ${test.parts} parts)`
+    );
+  }
+  return segments;
+}
+
+/**
+ * The review panel's total: the marks in the boxes -- ClevMarks for an
+ * accepted part, the suggestion or the teacher's edit for the rest -- beside
+ * the AI's own total, and how many parts the two disagree on.
+ */
+export function reviewMarkTotals(
+  rows: readonly { id: string; suggested_marks: number }[],
+  drafts: Readonly<Record<string, number>>
+): { total: number; aiTotal: number; changed: number } {
+  let total = 0;
+  let aiTotal = 0;
+  let changed = 0;
+  for (const r of rows) {
+    // ?? 0, as the box itself shows it.
+    const mark = drafts[r.id] ?? 0;
+    total += mark;
+    aiTotal += r.suggested_marks;
+    if (mark !== r.suggested_marks) changed += 1;
+  }
+  return { total, aiTotal, changed };
+}
+
 /** Minimal shape of ai_grade_runs needed for the roster's overnight counts. */
 export interface OverviewStateRunRef extends OverviewRunRef {
   /** The Anthropic message batch a run is still tied to, or null once it is settled. */
