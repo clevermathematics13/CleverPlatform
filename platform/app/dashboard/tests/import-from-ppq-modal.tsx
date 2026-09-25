@@ -15,12 +15,28 @@ interface SavedExamSummary {
   total_marks: number;
 }
 
+/** A finished import whose warnings the teacher has not dismissed yet. */
+interface ImportDone {
+  testId: string;
+  name: string;
+  itemCount: number;
+  totalMarks: number;
+  warnings: string[];
+}
+
 export function ImportFromPpqModal({
   onClose,
   onImported,
 }: {
   onClose: () => void;
-  onImported: (testId: string) => void;
+  /**
+   * Called with the new test's id once it exists, and awaited, so the list
+   * has its copy before the modal closes. The modal decides when to close:
+   * straight away if the import raised no warnings, otherwise once the
+   * teacher has read them. (The parent used to close it here, which
+   * unmounted the warnings the moment they were set, so none was ever seen.)
+   */
+  onImported: (testId: string) => Promise<void> | void;
 }) {
   const [savedExams, setSavedExams] = useState<SavedExamSummary[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -30,7 +46,7 @@ export function ImportFromPpqModal({
   const [importing, setImporting] = useState(false);
   const [importError, setImportError] = useState<string | null>(null);
   const [conflict, setConflict] = useState<{ name: string; existingTestId: string } | null>(null);
-  const [warnings, setWarnings] = useState<string[] | null>(null);
+  const [done, setDone] = useState<ImportDone | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -77,10 +93,26 @@ export function ImportFromPpqModal({
         }
         throw new Error(data.error ?? "Import failed.");
       }
-      if (Array.isArray(data.warnings) && data.warnings.length > 0) {
-        setWarnings(data.warnings);
+      const notes: string[] = Array.isArray(data.warnings)
+        ? data.warnings.filter((w: unknown): w is string => typeof w === "string")
+        : [];
+      try {
+        await onImported(data.id);
+      } catch {
+        // Only the list's copy of the new test failed; the test itself
+        // exists and shows on the next load.
       }
-      onImported(data.id);
+      if (notes.length === 0) {
+        onClose();
+        return;
+      }
+      setDone({
+        testId: data.id,
+        name: nameOverride.trim() || selected.name,
+        itemCount: data.itemCount,
+        totalMarks: data.totalMarks,
+        warnings: notes,
+      });
     } catch (e) {
       setImportError(e instanceof Error ? e.message : "Import failed.");
     } finally {
@@ -100,8 +132,9 @@ export function ImportFromPpqModal({
           <div>
             <h2 className="text-lg font-bold text-da-text">Import from PPQ Bank</h2>
             <p className="mt-0.5 text-xs text-da-muted">
-              Create a test from a saved ExamBuilder paper. Questions keep their IB code, so the
-              new test can be AI-graded straight away.
+              Create a test from a saved ExamBuilder paper. Questions keep their IB code, so AI
+              marking reads each part&apos;s mark scheme from the PPQ bank; any part without one is
+              listed when the import finishes.
             </p>
           </div>
           <button
@@ -114,117 +147,137 @@ export function ImportFromPpqModal({
         </div>
 
         <div className="flex-1 overflow-y-auto px-5 py-4">
-          {loadError && (
-            <p className="rounded-lg border border-red-400/40 bg-red-500/15 px-3 py-2 text-sm text-red-300">
-              {loadError}
-            </p>
-          )}
-
-          {!loadError && savedExams === null && (
-            <p className="text-sm text-da-muted">Loading saved exams…</p>
-          )}
-
-          {savedExams?.length === 0 && (
-            <p className="text-sm text-da-muted">
-              No saved exams yet. Build one in the Question Bank&apos;s ExamBuilder first.
-            </p>
-          )}
-
-          {savedExams && savedExams.length > 0 && (
-            <ul className="space-y-2">
-              {savedExams.map((e) => {
-                const isSelected = selectedId === e.id;
-                return (
-                  <li key={e.id}>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSelectedId(e.id);
-                        setNameOverride(e.name);
-                        setConflict(null);
-                        setImportError(null);
-                      }}
-                      className={`w-full rounded-lg border px-4 py-3 text-left transition-colors ${
-                        isSelected
-                          ? "border-blue-400 bg-blue-500/15"
-                          : "border-da-border bg-da-surface hover:bg-da-hover"
-                      }`}
-                    >
-                      <p className="font-semibold text-da-text">{e.name}</p>
-                      <p className="mt-0.5 text-xs text-da-muted">
-                        {e.curriculum} {e.level} Paper {e.paper}
-                        {e.course_name && ` · ${e.course_name}`}
-                        {e.exam_date && ` · ${e.exam_date}`}
-                        {` · ${e.question_count} question${e.question_count === 1 ? "" : "s"} · ${e.total_marks} marks`}
-                      </p>
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-
-          {selected && (
-            <div className="mt-4 space-y-3 rounded-lg border border-blue-400/40 bg-blue-500/15 p-4">
-              <label className="flex flex-col gap-1">
-                <span className="text-xs font-semibold uppercase text-da-muted">Test name</span>
-                <input
-                  value={nameOverride}
-                  onChange={(e) => setNameOverride(e.target.value)}
-                  className="rounded border border-da-border px-3 py-1.5 text-sm focus:ring-2 focus:ring-blue-400"
-                />
-              </label>
-
-              {conflict && (
-                <div className="rounded-lg border border-amber-400/40 bg-amber-500/15 px-3 py-2 text-sm text-amber-300">
-                  <p>
-                    A test named &quot;{conflict.name}&quot; already exists for this class.
-                  </p>
-                  <div className="mt-2 flex gap-2">
-                    <button
-                      type="button"
-                      onClick={() => runImport(true)}
-                      disabled={importing}
-                      className="rounded border border-amber-400 bg-da-surface px-3 py-1 text-xs font-medium text-amber-300 hover:bg-amber-500/25 disabled:opacity-50"
-                    >
-                      Import anyway (creates a second test)
-                    </button>
-                    <a
-                      href={`/dashboard/tests/${conflict.existingTestId}/ai-grade`}
-                      className="rounded border border-da-border px-3 py-1 text-xs text-da-muted hover:bg-da-hover"
-                    >
-                      Go to existing test →
-                    </a>
-                  </div>
-                </div>
-              )}
-
-              {importError && <p className="text-sm text-red-300">{importError}</p>}
-
-              {!conflict && (
-                <button
-                  type="button"
-                  onClick={() => runImport(false)}
-                  disabled={importing || !nameOverride.trim()}
-                  className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
-                >
-                  {importing ? "Importing…" : `Import "${selected.name}"`}
-                </button>
-              )}
-            </div>
-          )}
-
-          {warnings && warnings.length > 0 && (
-            <div className="mt-4 rounded-lg border border-amber-400/40 bg-amber-500/15 px-3 py-2">
-              <p className="text-xs font-semibold uppercase text-amber-300">
-                Imported with {warnings.length} note{warnings.length === 1 ? "" : "s"}
+          {done ? (
+            <div className="space-y-3">
+              <p className="text-sm text-da-text">
+                Imported &quot;{done.name}&quot; ({done.itemCount} part{done.itemCount === 1 ? "" : "s"},{" "}
+                {done.totalMarks} marks). Read {done.warnings.length === 1 ? "this" : "these"} before marking it:
               </p>
-              <ul className="mt-1 space-y-0.5 text-xs text-amber-300">
-                {warnings.map((w, i) => (
-                  <li key={i}>⚠ {w}</li>
+              <ul className="space-y-2 rounded-lg border border-amber-400/40 bg-amber-500/15 px-3 py-2 text-xs text-amber-300">
+                {done.warnings.map((w, i) => (
+                  <li key={i} className="whitespace-pre-line">
+                    ⚠ {w}
+                  </li>
                 ))}
               </ul>
+              <div className="flex gap-2">
+                <a
+                  href={`/dashboard/tests/${done.testId}/ai-grade`}
+                  className="rounded border border-purple-400/40 bg-purple-500/15 px-3 py-1 text-xs text-purple-300 hover:bg-purple-500/25"
+                >
+                  Mark Scans →
+                </a>
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="rounded border border-da-border px-3 py-1 text-xs text-da-muted hover:bg-da-hover"
+                >
+                  Close
+                </button>
+              </div>
             </div>
+          ) : (
+            <>
+              {loadError && (
+                <p className="rounded-lg border border-red-400/40 bg-red-500/15 px-3 py-2 text-sm text-red-300">
+                  {loadError}
+                </p>
+              )}
+
+              {!loadError && savedExams === null && (
+                <p className="text-sm text-da-muted">Loading saved exams…</p>
+              )}
+
+              {savedExams?.length === 0 && (
+                <p className="text-sm text-da-muted">
+                  No saved exams yet. Build one in the Question Bank&apos;s ExamBuilder first.
+                </p>
+              )}
+
+              {savedExams && savedExams.length > 0 && (
+                <ul className="space-y-2">
+                  {savedExams.map((e) => {
+                    const isSelected = selectedId === e.id;
+                    return (
+                      <li key={e.id}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedId(e.id);
+                            setNameOverride(e.name);
+                            setConflict(null);
+                            setImportError(null);
+                          }}
+                          className={`w-full rounded-lg border px-4 py-3 text-left transition-colors ${
+                            isSelected
+                              ? "border-blue-400 bg-blue-500/15"
+                              : "border-da-border bg-da-surface hover:bg-da-hover"
+                          }`}
+                        >
+                          <p className="font-semibold text-da-text">{e.name}</p>
+                          <p className="mt-0.5 text-xs text-da-muted">
+                            {e.curriculum} {e.level} Paper {e.paper}
+                            {e.course_name && ` · ${e.course_name}`}
+                            {e.exam_date && ` · ${e.exam_date}`}
+                            {` · ${e.question_count} question${e.question_count === 1 ? "" : "s"} · ${e.total_marks} marks`}
+                          </p>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+
+              {selected && (
+                <div className="mt-4 space-y-3 rounded-lg border border-blue-400/40 bg-blue-500/15 p-4">
+                  <label className="flex flex-col gap-1">
+                    <span className="text-xs font-semibold uppercase text-da-muted">Test name</span>
+                    <input
+                      value={nameOverride}
+                      onChange={(e) => setNameOverride(e.target.value)}
+                      className="rounded border border-da-border px-3 py-1.5 text-sm focus:ring-2 focus:ring-blue-400"
+                    />
+                  </label>
+
+                  {conflict && (
+                    <div className="rounded-lg border border-amber-400/40 bg-amber-500/15 px-3 py-2 text-sm text-amber-300">
+                      <p>
+                        A test named &quot;{conflict.name}&quot; already exists for this class.
+                      </p>
+                      <div className="mt-2 flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => runImport(true)}
+                          disabled={importing}
+                          className="rounded border border-amber-400 bg-da-surface px-3 py-1 text-xs font-medium text-amber-300 hover:bg-amber-500/25 disabled:opacity-50"
+                        >
+                          Import anyway (creates a second test)
+                        </button>
+                        <a
+                          href={`/dashboard/tests/${conflict.existingTestId}/ai-grade`}
+                          className="rounded border border-da-border px-3 py-1 text-xs text-da-muted hover:bg-da-hover"
+                        >
+                          Go to existing test →
+                        </a>
+                      </div>
+                    </div>
+                  )}
+
+                  {importError && <p className="text-sm text-red-300">{importError}</p>}
+
+                  {!conflict && (
+                    <button
+                      type="button"
+                      onClick={() => runImport(false)}
+                      disabled={importing || !nameOverride.trim()}
+                      className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+                    >
+                      {importing ? "Importing…" : `Import "${selected.name}"`}
+                    </button>
+                  )}
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>

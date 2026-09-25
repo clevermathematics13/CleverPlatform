@@ -8,6 +8,7 @@ import { AiGradeClient } from "./ai-grade-client";
 import type { TestDetail } from "./ai-grade-client";
 import { loadAiGradeInitial, startAiGradeInitialLoads } from "./load-initial";
 import type { AiGradeInitialLoads } from "./load-initial";
+import { MarkSchemeGapsBanner, startMarkSchemeGapsLoad } from "./mark-scheme-gaps";
 import { parseAssessmentKind } from "@/lib/assessment-kind";
 import type { AssessmentKind } from "@/lib/assessment-kind";
 import { parseStandardsRubric } from "@/lib/standards-rubric";
@@ -27,6 +28,10 @@ export default async function AiGradePage({
   // Started before the test row is read, so the roster's own loads run
   // alongside it rather than after it (see load-initial.ts).
   const loads = startAiGradeInitialLoads(supabase, id, profile.id);
+  // The parts AI marking will skip for want of a mark scheme
+  // (mark-scheme-gaps.tsx). It needs only the id too, so it starts here beside
+  // the roster's loads; the banner awaits it in its own boundary below.
+  const markSchemeGaps = startMarkSchemeGapsLoad(supabase, id);
   // The whole test, with its parts -- the row GET /api/tests/[id] serves --
   // since the roster below needs all of it and the header only a little.
   const { data: test } = await supabase
@@ -73,6 +78,13 @@ export default async function AiGradePage({
           </span>
         </p>
       </div>
+
+      {/* Its own boundary with no fallback: it streams in beside the roster,
+          never holds up the header or the roster, and renders nothing when no
+          part is missing a mark scheme or its load failed. */}
+      <Suspense fallback={null}>
+        <MarkSchemeGapsBanner gaps={markSchemeGaps} test={test as unknown as TestDetail} />
+      </Suspense>
 
       {/* The header above goes out at once; the roster follows the moment
           its loads finish, in place of the line the page used to show while

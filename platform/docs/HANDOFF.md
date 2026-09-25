@@ -3811,3 +3811,96 @@ next plain word is ("A1 -- the whole" reads "The whole").
   no longer needed, so a teacher can write "earns M1A0" again.
 - A part whose note was only a label and which has no answer now shows no
   box at all, rather than an empty one.
+
+## 40. Parts with no mark scheme are listed before marking (25 Sep 2026)
+
+The teacher asked whether 27AH [L67] P1 (AA HL Paper 1, sat 23 Sep 2026)
+was ready for scans. It was not, twice over, and nothing on screen said so:
+
+- It existed only as an ExamBuilder draft (`saved_exams`
+  `7bc430fd-8db5-4814-9707-9513038b11a6`); no `tests` row, so no Mark Scans
+  page to upload to.
+- Six of its eight bank questions (Q2, Q3, Q4, Q5, Q7, Q8 -- 12 of the 14
+  parts it would import as, 59 of 70 marks) have no mark scheme text in the
+  PPQ bank: no `markscheme_latex`, `markscheme_text`, `stem_markscheme_latex`
+  or `parts_draft_markscheme_latex`. They do have mark-scheme IMAGES, which
+  the grader never reads. Q1 and Q6 have only old Tesseract
+  `markscheme_text`.
+
+Because two parts were gradeable, marking would NOT have been refused -- the
+422 fires only when zero parts are (`ai-grade/route.ts`, `queue/route.ts`,
+`collect/route.ts`). The paper would have been marked out of 11 and said so
+only afterwards ("graded X/11 of 70 total"). The Import dialog also promised
+the new test "can be AI-graded straight away", and its warnings were never
+seen: the parent closed the modal the moment the import succeeded.
+
+### What was built
+
+- `lib/mark-scheme-readiness.ts` (pure, `import type` only): summarises the
+  units `assembleMarkScheme` builds -- total parts/marks, and the parts whose
+  `markschemeSource` is `"none"` grouped by question -- plus the headline,
+  the import note and the banner rows. Only `"none"` counts: it is exactly
+  what `loadGradeableMarkScheme` drops, so "will be skipped" is literal.
+  Whole-question and draft schemes are still marked and already warned about
+  per part.
+- `POST /api/tests/import-from-saved-exam` appends one note listing the gaps
+  (headline, "use LaTeX Review's Extract & apply", a line per question). The
+  grader is imported lazily in a try/catch: the test exists by then, so a
+  failure can only add a softer note, never fail the import.
+- The Import dialog now awaits `onImported` and closes itself: at once after
+  a clean import (as before), otherwise it stays open on its warnings with a
+  "Mark Scans ->" link. The subtitle no longer promises instant grading.
+- Mark Scans (`/dashboard/tests/[id]/ai-grade`) shows a banner above the
+  roster (`mark-scheme-gaps.tsx`, server-only): amber when some parts are
+  missing, red when all are (marking is refused then). Each question links to
+  LaTeX Review (`?focus=<ib_questions.id>`), or to the PPQ Bank search when
+  its code is not in the bank. Its load starts beside the roster's loads, it
+  renders in its own `<Suspense fallback={null}>`, and it never throws (no
+  `error.tsx` exists under `app/`): a failed load shows no banner. LaTeX
+  Review is the link because the PPQ Bank's per-question "Extract" writes the
+  whole question's LaTeX onto every part (`ocr-latex/route.ts`), and on a
+  question-side extract it also re-runs Auto-classify, which can rewrite
+  hand-set subtopic tags.
+
+### Verified
+
+- `lib/mark-scheme-readiness.test.ts` (16 tests, L67 as the fixture),
+  `npm run build`, `npm test` (132 files, 2251 tests), eslint on the changed
+  files (the one error left, the `<a>` "Back to tests" link in the ai-grade
+  `page.tsx`, predates this change).
+- The build traces the four policy files the grader reads at load into both
+  the import route and the ai-grade page, as for the existing grading route.
+- Read-only against production with the real `assembleMarkScheme`: the
+  banner shows on 27AH [K06] P1 (2 of 19 parts, 7 of 70 marks -- Q6 (a), (b)),
+  [L00] P2 UniStats (4 of 5), [K05] P2 (13 of 14) and, red, [P01] P1 (none of
+  14; three of its codes are not in the bank). No banner on FA1, FA2, both
+  KA1s or [L00] P2 BiStats.
+- Not checked in a browser: minting a teacher session was declined by the
+  agent's permission check, so the banner and dialog were verified through
+  the helper's tests, the type check and the build only.
+
+### L67 itself -- NOT done yet
+
+No production data was changed. To make it ready: extract question and mark
+scheme LaTeX for all eight questions (LaTeX Review "Extract & apply"; for the
+single-part ones the PPQ Bank's "Extract" is fine but mind Auto-classify),
+check each against its image, then Tests -> "Import from PPQ Bank" -> "27AH
+[L67] P1" (14 parts, 70 marks) and set its date to 23 Sep 2026. The
+`ib_questions` ids are 17N.1.AHL.TZ0.H_4 `4114c3f4`, 18M.1.SL.TZ2.S_3
+`ecf0811f`, 19M.1.AHL.TZ2.H_4 `156fa7c4`, 13M.1.AHL.TZ2.H_5 `4fb6865b`,
+13M.1.AHL.TZ1.H_7 `4bdddd86`, 19N.1.AHL.TZ0.H_6 `25d224d6`,
+18N.1.AHL.TZ0.H_9 `73bc0cba`, 18N.1.AHL.TZ0.H_10 `dbf4a4cc`. Section B is
+answered in a separate booklet, so each student's scan is the 9 printed
+pages plus a variable number of booklet pages; Quick read handles that, but
+a booklet cover can read as a second row for the same student ("Merge into
+one row").
+
+### Not done (follow-ups)
+
+- ExamBuilder "Save to Gradebook" (`app/api/gradebook/tests/route.ts`) could
+  run the same check; the Mark Scans banner covers tests made that way.
+- The three 422 messages still say "Extract the mark scheme LaTeX in the PPQ
+  Bank" rather than pointing at LaTeX Review.
+- The run-app skill's `revoke-session.mjs` signs out with scope `"global"`,
+  which also ends the teacher's own browser sessions; `"local"` would revoke
+  only the minted one.
