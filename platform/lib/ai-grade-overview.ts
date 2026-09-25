@@ -3,6 +3,7 @@ import { INVITED_SUBJECT_PREFIX, formatGradingSubject, parseGradingSubject } fro
 import {
   clevMarksBySubjectFrom,
   latestRunsByStudent,
+  partsWithoutMarkBySubject,
   sumClevMarks,
   type AcceptanceRef,
   type ClevMarkRow,
@@ -61,6 +62,14 @@ export type AiGradeOverviewResult =
        * nobody has a completed run, or when ClevMarks could not be read.
        */
       clevMarks: Record<string, ClevMarksSummary>;
+      /**
+       * The parts each student has no mark for at all -- none from the marker,
+       * none in ClevMarks -- in paper order, keyed by subject id
+       * (partsWithoutMarkBySubject). The roster offers to re-mark just those.
+       * Empty when ClevMarks could not be read: without it nothing can be
+       * said to have no mark.
+       */
+      partsWithoutMark: Record<string, string[]>;
     }
   | { ok: false; status: 500; error: string };
 
@@ -70,7 +79,8 @@ const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
  * Every run of the test, newest first, with student_id collapsed to the
  * opaque subject id (see formatGradingSubject), { run_id, accepted } for
  * each subject's newest complete run -- the acceptance counts the roster
- * shows, and nothing else -- and each subject's ClevMarks total on the test.
+ * shows, and nothing else -- and each subject's ClevMarks total on the test
+ * and the parts they have no mark for at all.
  *
  * The runs are not capped. Overnight marking creates one run per student on
  * every click, so a class that has been re-marked a few times passes 100 runs
@@ -113,57 +123,80 @@ export async function loadAiGradeOverview(
   const runs = rawRuns.map((r) => ({ ...r, student_id: formatGradingSubject(r) }));
   // Started now so it runs alongside the acceptance read below.
   const unmarkedLoad = loadUnmarkedBatchStudents(supabase, testId, runs);
-  if (runs.length === 0) return { ok: true, runs: [], results: [], unmarked: await unmarkedLoad, clevMarks: {} };
+  if (runs.length === 0) {
+    return { ok: true, runs: [], results: [], unmarked: await unmarkedLoad, clevMarks: {}, partsWithoutMark: {} };
+  }
 
-  const latestIds = Object.values(latestRunsByStudent(runs).latestComplete).map((r) => r.id);
-  if (latestIds.length === 0) return { ok: true, runs, results: [], unmarked: await unmarkedLoad, clevMarks: {} };
+  const latestRuns = Object.values(latestRunsByStudent(runs).latestComplete);
+  const latestIds = latestRuns.map((r) => r.id);
+  if (latestIds.length === 0) {
+    return { ok: true, runs, results: [], unmarked: await unmarkedLoad, clevMarks: {}, partsWithoutMark: {} };
+  }
   // Started now so it runs alongside the acceptance read below.
   const clevMarksLoad = loadClevMarks(supabase, testId);
   try {
     // Still paged: the newest runs alone pass PostgREST's 1000-row cap on a
-    // big class (49 runs x 36 parts on Key Assessment 1).
-    const results = await fetchAllRows<AcceptanceRef>((from, to) =>
+    // big class (49 runs x 36 parts on Key Assessment 1). test_item_id is
+    // read to find the parts a run has no grade for, and not sent on.
+    const rows = await fetchAllRows<AcceptanceRef & { test_item_id: string }>((from, to) =>
       supabase
         .from("ai_grade_results")
-        .select("run_id, accepted")
+        .select("run_id, accepted, test_item_id")
         .in("run_id", latestIds)
         .order("id", { ascending: true })
         .range(from, to)
     );
-    return { ok: true, runs, results, unmarked: await unmarkedLoad, clevMarks: await clevMarksLoad };
+    const clevMarks = await clevMarksLoad;
+    return {
+      ok: true,
+      runs,
+      results: rows.map((r) => ({ run_id: r.run_id, accepted: r.accepted })),
+      unmarked: await unmarkedLoad,
+      clevMarks: clevMarks ? clevMarksBySubjectFrom(clevMarks.marks) : {},
+      partsWithoutMark: clevMarks ? partsWithoutMarkBySubject(latestRuns, rows, clevMarks.marks, clevMarks.itemOrder) : {},
+    };
   } catch (e) {
     return { ok: false, status: 500, error: message(e) };
   }
 }
 
 /**
- * What ClevMarks holds on the test for each student, over every part of the
- * test -- not only the parts in a run: see clevMarksBySubjectFrom.
+ * Every mark ClevMarks holds on the test, over every part of the test -- not
+ * only the parts in a run: see clevMarksBySubjectFrom -- with the test's
+ * item ids in paper order, which partsWithoutMarkBySubject lists parts in.
  *
  * Paged like the gradebook's read of the same table: one assessment for a
  * 50-student track is ~1,800 marks, past PostgREST's silent 1000-row cap.
  *
- * Best-effort: empty when either read fails, which leaves the figure off the
- * roster rather than stopping it loading -- the same footing as the absences
- * and the unmarked-batch flags. Never rejects.
+ * Best-effort: null when either read fails, which leaves the ClevMarks figure
+ * and the missing-mark notice off the roster rather than stopping it loading
+ * -- the same footing as the absences and the unmarked-batch flags. Never
+ * rejects.
  */
-async function loadClevMarks(supabase: SupabaseClient, testId: string): Promise<Record<string, ClevMarksSummary>> {
+async function loadClevMarks(
+  supabase: SupabaseClient,
+  testId: string
+): Promise<{ marks: ClevMarkRow[]; itemOrder: string[] } | null> {
   try {
-    const { data: items, error } = await supabase.from("test_items").select("id").eq("test_id", testId);
-    if (error) return {};
-    const itemIds = (items ?? []).map((i) => i.id as string);
-    if (itemIds.length === 0) return {};
+    const { data: items, error } = await supabase
+      .from("test_items")
+      .select("id")
+      .eq("test_id", testId)
+      .order("sort_order", { ascending: true });
+    if (error) return null;
+    const itemOrder = (items ?? []).map((i) => i.id as string);
+    if (itemOrder.length === 0) return { marks: [], itemOrder };
     const marks = await fetchAllRows<ClevMarkRow>((from, to) =>
       supabase
         .from("student_marks")
         .select("test_item_id, student_id, invited_student_id, marks_awarded")
-        .in("test_item_id", itemIds)
+        .in("test_item_id", itemOrder)
         .order("id", { ascending: true })
         .range(from, to)
     );
-    return clevMarksBySubjectFrom(marks);
+    return { marks, itemOrder };
   } catch {
-    return {};
+    return null;
   }
 }
 

@@ -31,12 +31,14 @@ import {
   selfMarkDiffers,
   deriveOverviewState,
   buildRosterOptions,
+  remarkGroups,
   rosterMarkSegments,
   reviewMarkTotals,
 } from "@/lib/ai-grade-review";
 import type {
   AcceptanceRef,
   ClevMarksSummary,
+  RemarkGroup,
   RosterOption,
   RosterSourceRef,
   SelfScoreRef,
@@ -293,6 +295,8 @@ export interface AiGradeInitial {
   acceptanceByRun: Record<string, { accepted: number; total: number }>;
   /** What ClevMarks holds on the test per student, keyed by subject id. */
   clevMarksBySubject: Record<string, ClevMarksSummary>;
+  /** The parts each student has no mark for at all, keyed by subject id (partsWithoutMarkBySubject). */
+  partsWithoutMark: Record<string, string[]>;
   submittedStudentCount: number;
   outstandingCollectCount: number;
   absentStudentIds: string[];
@@ -494,6 +498,10 @@ export function AiGradeClient({
   const [clevMarksBySubject, setClevMarksBySubject] = useState<Record<string, ClevMarksSummary>>(
     initial?.clevMarksBySubject ?? {}
   );
+  /** Parts each student has no mark for at all -- what the roster's "no mark for" notice re-marks. */
+  const [partsWithoutMark, setPartsWithoutMark] = useState<Record<string, string[]>>(
+    initial?.partsWithoutMark ?? {}
+  );
 
   // -- Manually correcting a misread transcription (evidence) and re-grading it --
   const [editingEvidenceId, setEditingEvidenceId] = useState<string | null>(null);
@@ -629,6 +637,7 @@ export function AiGradeClient({
 
       setAcceptanceByRun(overview.acceptanceByRun);
       setClevMarksBySubject((runs1.data.clev_marks as Record<string, ClevMarksSummary> | undefined) ?? {});
+      setPartsWithoutMark((runs1.data.parts_without_mark as Record<string, string[]> | undefined) ?? {});
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not load this assessment.");
     }
@@ -1165,11 +1174,43 @@ export function AiGradeClient({
     }
   };
 
-  // -- Re-mark ONE part for every student with a stored scan, overnight. The
+  // -- Queue a re-mark of some parts, for some students, overnight. Each
+  // request sends the scan and just those parts; the collect step carries
+  // every other part forward from the student's previous run. ---------------
+  const queuePartRemark = async (
+    testItemIds: string[],
+    targets: { studentId: string; storagePath: string }[]
+  ): Promise<{ sent: number; failedCount: number }> => {
+    // The queue route takes at most 20 students a call and may hand some
+    // back as `remaining` when their scans overflow its byte ceiling, so
+    // this loops until every target has been submitted or reported failed.
+    let sent = 0;
+    let failedCount = 0;
+    const pending = [...targets];
+    let guard = 0;
+    while (pending.length > 0 && guard++ < 50) {
+      const chunk = pending.splice(0, 20);
+      const { ok: okChunk, data } = await fetchJson(`/api/tests/${testId}/ai-grade/queue`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ students: chunk, testItemIds }),
+      });
+      if (!okChunk) throw new Error((data.error as string) ?? "Could not queue the re-mark.");
+      sent += Array.isArray(data.submitted) ? data.submitted.length : 0;
+      failedCount += Array.isArray(data.failed) ? data.failed.length : 0;
+      const remaining = Array.isArray(data.remaining) ? (data.remaining as { studentId: string; storagePath: string }[]) : [];
+      if (remaining.length === chunk.length) throw new Error("The queue accepted none of the remaining students.");
+      pending.unshift(...remaining);
+    }
+    return { sent, failedCount };
+  };
+
+  const queuedStatus = (label: string, sent: number, failedCount: number) =>
+    `Sent ${label} for ${sent} student(s) for overnight re-marking${failedCount > 0 ? ` (${failedCount} could not be sent)` : ""}. Results appear as they arrive, usually within the hour; this page checks every 30 seconds.`;
+
+  // -- Re-mark ONE part for every student with a stored scan. The
   // follow-through to a marking note: the ruling was written once, and the
   // class is marked to it without paying for the rest of the paper again.
-  // Each request sends the scan and the one part; the collect step carries
-  // every other part forward from the student's previous run. ---------------
   const remarkPartForClass = async (itemId: string, label: string) => {
     const targets = students
       .map((st) => ({ studentId: st.profile_id, storagePath: runsByStudent[st.profile_id]?.source_storage_path ?? null }))
@@ -1186,30 +1227,36 @@ export function AiGradeClient({
     setRemarkingPartFor(itemId);
     setError(null);
     try {
-      // The queue route takes at most 20 students a call and may hand some
-      // back as `remaining` when their scans overflow its byte ceiling, so
-      // this loops until every target has been submitted or reported failed.
-      let sent = 0;
-      let failedCount = 0;
-      const pending = [...targets];
-      let guard = 0;
-      while (pending.length > 0 && guard++ < 50) {
-        const chunk = pending.splice(0, 20);
-        const { ok: okChunk, data } = await fetchJson(`/api/tests/${testId}/ai-grade/queue`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ students: chunk, testItemIds: [itemId] }),
-        });
-        if (!okChunk) throw new Error((data.error as string) ?? "Could not queue the re-mark.");
-        sent += Array.isArray(data.submitted) ? data.submitted.length : 0;
-        failedCount += Array.isArray(data.failed) ? data.failed.length : 0;
-        const remaining = Array.isArray(data.remaining) ? (data.remaining as { studentId: string; storagePath: string }[]) : [];
-        if (remaining.length === chunk.length) throw new Error("The queue accepted none of the remaining students.");
-        pending.unshift(...remaining);
-      }
-      setStatusLine(
-        `Sent ${label} for ${sent} student(s) for overnight re-marking${failedCount > 0 ? ` (${failedCount} could not be sent)` : ""}. Results appear as they arrive, usually within the hour; this page checks every 30 seconds.`
-      );
+      const { sent, failedCount } = await queuePartRemark([itemId], targets);
+      setStatusLine(queuedStatus(label, sent, failedCount));
+      await loadOverview();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not queue the re-mark.");
+    } finally {
+      setRemarkingPartFor(null);
+    }
+  };
+
+  // -- Re-mark only the parts nobody has marked, for only the students
+  // missing them (the roster's "no mark for" notice). A part with no grade
+  // from the marker and nothing in ClevMarks used to be visible only as a
+  // warning in one student's review, which a later part re-mark could erase;
+  // 12 students on Key Assessment 1 had no mark for 14(b) that way. Nothing
+  // they already have is re-marked, so nobody can lose a mark from it. -------
+  const remarkMissingParts = async (group: RemarkGroup, label: string) => {
+    const count = group.ready.length;
+    const ok = window.confirm(
+      `Re-mark ${label} overnight, at half price, for the ${count} student(s) with no mark for ${
+        group.testItemIds.length === 1 ? "it" : "them"
+      }, using the marking notes as they are saved now?\n\n` +
+        "Nobody else is re-marked, and every other part keeps its current mark and acceptance. The new marks arrive as suggestions to accept into ClevMarks."
+    );
+    if (!ok) return;
+    setRemarkingPartFor(group.testItemIds.join(","));
+    setError(null);
+    try {
+      const { sent, failedCount } = await queuePartRemark(group.testItemIds, group.ready);
+      setStatusLine(queuedStatus(label, sent, failedCount));
       await loadOverview();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not queue the re-mark.");
@@ -1575,6 +1622,18 @@ export function AiGradeClient({
   // longer the suggestion -- it used to be labelled one ("Suggested total
   // 41") while the roster above it said "37/50 suggested", the AI's figure.
   const markTotals = reviewMarkTotals(results, drafts);
+  // Students with parts nobody has marked, grouped by which parts, for the
+  // notice above the roster.
+  const missingMarkGroups = remarkGroups(
+    partsWithoutMark,
+    students.map((s) => s.profile_id),
+    runsByStudent,
+    newerAttemptByStudent
+  );
+  const partsLabel = (testItemIds: string[]) =>
+    testItemIds.length <= 3
+      ? testItemIds.map((id) => itemLabel(itemById.get(id), paperPrefixes)).join(", ")
+      : `${testItemIds.length} parts`;
   // What the student under review gave themselves, part by part, compared
   // against the mark in each row's box -- so an edit re-colours the Self cell
   // as it is typed, the same way it re-totals the marks.
@@ -2706,6 +2765,45 @@ export function AiGradeClient({
                 </button>
               )}
             </div>
+
+            {/* Parts nobody has marked for these students: no grade from the
+                marker, nothing in ClevMarks. The roster's "so far (35 of 36
+                parts)" says a student is missing something; this says what,
+                and re-marks just that, for just them. */}
+            {missingMarkGroups.map((group) => {
+              const key = group.testItemIds.join(",");
+              const label = partsLabel(group.testItemIds);
+              const who = [...group.ready.map((t) => t.studentId), ...group.inFlight, ...group.noScan];
+              const names = who.map((id) => students.find((st) => st.profile_id === id)?.display_name ?? "Unknown");
+              return (
+                <div
+                  key={key}
+                  className="flex flex-wrap items-center justify-between gap-3 border-b border-da-border bg-amber-500/10 px-5 py-2 text-xs text-amber-200"
+                >
+                  <p
+                    title={`${group.testItemIds.map((id) => itemLabel(itemById.get(id), paperPrefixes)).join(", ")}\n\n${names.join("\n")}`}
+                  >
+                    ⚠ {who.length} student{who.length === 1 ? " has" : "s have"} no mark for {label}: no grade
+                    from the marker and nothing in ClevMarks.
+                    {group.inFlight.length > 0 && ` ${group.inFlight.length} already being marked.`}
+                    {group.noScan.length > 0 && ` ${group.noScan.length} with no stored scan to re-mark.`}
+                  </p>
+                  {group.ready.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => remarkMissingParts(group, label)}
+                      disabled={remarkingPartFor === key}
+                      title="Sends only these parts, for only these students, to Anthropic's batch tier. Nothing they already have a mark for is re-marked."
+                      className="rounded border border-amber-400/40 px-2 py-0.5 text-[11px] font-medium text-amber-200 hover:bg-amber-500/20 disabled:opacity-50"
+                    >
+                      {remarkingPartFor === key
+                        ? "Queuing…"
+                        : `Re-mark ${label} for ${group.ready.length} student${group.ready.length === 1 ? "" : "s"} (overnight)`}
+                    </button>
+                  )}
+                </div>
+              );
+            })}
 
             {students.length === 0 && (
               <p className="px-5 py-4 text-sm text-da-muted">

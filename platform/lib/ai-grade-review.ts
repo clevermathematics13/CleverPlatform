@@ -211,6 +211,95 @@ export function clevMarksBySubjectFrom(marks: readonly ClevMarkRow[]): Record<st
 }
 
 /**
+ * The parts each student has no mark for at all, in paper order (`itemOrder`,
+ * the test's item ids by sort_order), keyed by subject id. A part counts only
+ * when the student's newest complete run has no row for it -- so the marker
+ * never gave it a grade -- and ClevMarks holds nothing for it either. A part
+ * with a suggestion waiting to be accepted is not missing; it is unaccepted.
+ *
+ * Only parts the marker has graded for SOMEONE are considered: a part with
+ * no mark scheme is never graded for anyone, and a re-mark could not change
+ * that, so offering one would only spend money. Found on Key Assessment 1
+ * (25 Sep 2026): 12 students with no mark anywhere for 14(b), and nothing on
+ * the page that said so.
+ */
+export function partsWithoutMarkBySubject(
+  latestRuns: readonly { id: string; student_id: string | null }[],
+  rows: readonly { run_id: string; test_item_id: string }[],
+  marks: readonly ClevMarkRow[],
+  itemOrder: readonly string[]
+): Record<string, string[]> {
+  const gradedByRun = new Map<string, Set<string>>();
+  const gradedForSomeone = new Set<string>();
+  for (const r of rows) {
+    gradedForSomeone.add(r.test_item_id);
+    const graded = gradedByRun.get(r.run_id) ?? new Set<string>();
+    graded.add(r.test_item_id);
+    gradedByRun.set(r.run_id, graded);
+  }
+  const marked = new Set<string>();
+  for (const m of marks) {
+    const subject = formatGradingSubject(m);
+    if (subject && typeof m.marks_awarded === "number") marked.add(`${subject}:${m.test_item_id}`);
+  }
+  const bySubject: Record<string, string[]> = {};
+  for (const run of latestRuns) {
+    const subject = run.student_id;
+    if (!subject) continue;
+    const graded = gradedByRun.get(run.id) ?? new Set<string>();
+    const missing = itemOrder.filter(
+      (id) => gradedForSomeone.has(id) && !graded.has(id) && !marked.has(`${subject}:${id}`)
+    );
+    if (missing.length > 0) bySubject[subject] = missing;
+  }
+  return bySubject;
+}
+
+/** Students missing the same parts, sorted into who can be re-marked for them now. */
+export interface RemarkGroup {
+  /** The parts, in paper order. */
+  testItemIds: string[];
+  /** On the roster, with a stored scan and nothing in flight: these can be sent now. */
+  ready: { studentId: string; storagePath: string }[];
+  /** Already being marked (queued overnight or running): sending them again would pay twice. */
+  inFlight: string[];
+  /** No stored scan to send, so a re-mark cannot reach them. */
+  noScan: string[];
+}
+
+/**
+ * The roster's students with parts missing a mark (partsWithoutMarkBySubject),
+ * grouped by exactly which parts, in roster order -- one queue call covers a
+ * group, since the queue route marks the same parts for every student it is
+ * sent. A student off the roster is left out, as the whole-class re-mark
+ * leaves them out.
+ */
+export function remarkGroups(
+  partsWithoutMark: Readonly<Record<string, readonly string[]>>,
+  roster: readonly string[],
+  latestComplete: Readonly<Record<string, { source_storage_path: string | null }>>,
+  newerAttempt: Readonly<Record<string, { status: string }>>
+): RemarkGroup[] {
+  const groups = new Map<string, RemarkGroup>();
+  for (const studentId of roster) {
+    const parts = partsWithoutMark[studentId];
+    if (!parts || parts.length === 0) continue;
+    const key = parts.join(",");
+    let group = groups.get(key);
+    if (!group) {
+      group = { testItemIds: [...parts], ready: [], inFlight: [], noScan: [] };
+      groups.set(key, group);
+    }
+    const attempt = newerAttempt[studentId]?.status;
+    const storagePath = latestComplete[studentId]?.source_storage_path;
+    if (attempt === "submitted" || attempt === "running") group.inFlight.push(studentId);
+    else if (storagePath) group.ready.push({ studentId, storagePath });
+    else group.noScan.push(studentId);
+  }
+  return [...groups.values()];
+}
+
+/**
  * The marks on a student's roster line, after "Last run: complete": what the
  * AI suggested, then what ClevMarks holds on the whole test (`test`: its
  * part count and total marks, as the page has them). ClevMarks is left off
