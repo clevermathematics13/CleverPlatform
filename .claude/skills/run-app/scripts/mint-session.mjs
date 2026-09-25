@@ -10,30 +10,43 @@
  * Writes the cookie array as JSON to --out. Hand that file to
  * drive-marking.cjs, and revoke it with revoke-session.mjs when finished.
  *
- * Minting a login for a real account is gated by the permission classifier.
- * Ask the user before running this, and revoke afterwards.
+ * Minting a login for a real account is a real person's credentials: ask the
+ * user in the conversation before running this, and revoke afterwards. The
+ * allow rule in .claude/settings.json only removes the permission prompt.
  *
- * Must be run from platform/ so node_modules resolves -- see SKILL.md section 4.
+ * Run it in place, from the repo root, exactly as below -- that is the form
+ * the allow rule matches. The anon key goes in as an argument, not an env
+ * prefix: Claude Code strips only a fixed list of harmless variables before
+ * matching a rule, so `ANON_KEY=... node ...` would not match it.
  *
- *   ANON_KEY=<legacy anon JWT> node .tmp-mint.mjs --out session.json
+ *   node .claude/skills/run-app/scripts/mint-session.mjs --anon-key <legacy anon JWT> --out <session.json>
  */
 import fs from "node:fs";
-import { createClient } from "@supabase/supabase-js";
+import { createRequire } from "node:module";
+
+// supabase-js is installed under platform/, not beside this script, and an
+// ESM import resolves from the script's own folder. Resolving from
+// platform/package.json lets the script run where it lives, so the allow rule
+// can name this file rather than a copy anyone could rewrite.
+const require = createRequire(new URL("../../../../platform/package.json", import.meta.url));
+const { createClient } = require("@supabase/supabase-js");
+
+const args = process.argv.slice(2);
+const argValue = (flag) => (args.includes(flag) ? args[args.indexOf(flag) + 1] : null);
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "https://qnawglgnoojrlaivylou.supabase.co";
 const PROJECT_REF = new URL(SUPABASE_URL).hostname.split(".")[0];
-const ANON = process.env.ANON_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+const ANON = argValue("--anon-key") ?? process.env.ANON_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 const SRK = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const EMAIL = process.env.TEACHER_EMAIL ?? "clevermathematics@gmail.com";
 
-const args = process.argv.slice(2);
-const out = args.includes("--out") ? args[args.indexOf("--out") + 1] : null;
+const out = argValue("--out");
 if (!out) {
   console.error("--out <path> is required");
   process.exit(1);
 }
 if (!ANON || !SRK) {
-  console.error("need ANON_KEY (legacy anon JWT) and SUPABASE_SERVICE_ROLE_KEY in the env");
+  console.error("need --anon-key <legacy anon JWT> and SUPABASE_SERVICE_ROLE_KEY in the env");
   process.exit(1);
 }
 

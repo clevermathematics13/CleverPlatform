@@ -1,7 +1,10 @@
 {
   "permissions": {
     "allow": [
-      "mcp__Supabase__execute_sql"
+      "mcp__Supabase__execute_sql",
+      "mcp__CleverPlatform_Supabase_Read_Only__execute_sql",
+      "Bash(node .claude/skills/run-app/scripts/mint-session.mjs *)",
+      "Bash(node .claude/skills/run-app/scripts/revoke-session.mjs *)"
     ]
   }
 }

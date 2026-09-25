@@ -77,6 +77,13 @@ emailing it) → `verifyOtp` → serialise the session into
 into `.0` / `.1` chunks at 3180 characters (`@supabase/ssr` 0.10's
 `MAX_CHUNK_SIZE`).
 
+Run it in place from the repo root, passing the anon key as an argument
+(an env prefix would stop the allow rule in `.claude/settings.json` from
+matching):
+`node .claude/skills/run-app/scripts/mint-session.mjs --anon-key <legacy anon JWT> --out <file>`.
+The allow rule only removes the permission prompt; the user's OK below is
+still needed every time.
+
 Two things to respect:
 
 - **Ask first.** Minting a login for a real person's account is gated by the
@@ -112,6 +119,10 @@ git status --porcelain   # confirm you left nothing behind
 
 Use `.mts`/`npx tsx` when the script imports repo TypeScript (importing the
 real module is much better than restating its logic - see §7).
+
+The two session scripts are the exception: they find supabase-js under
+`platform/` themselves, so run them in place as in section 3. A copy of
+either one breaks.
 
 ## 5. Chromium and the agent proxy — gotcha
 
