@@ -14,6 +14,10 @@ import {
   selfMarkDiffers,
   latestRunsByStudent,
   acceptanceByRunFrom,
+  attachClevMarks,
+  clevMarksByRunFrom,
+  rosterMarkSegments,
+  reviewMarkTotals,
   latestRunPerSubject,
   deriveOverviewState,
   buildRosterOptions,
@@ -229,6 +233,166 @@ describe("acceptanceByRunFrom", () => {
   });
 });
 
+describe("attachClevMarks", () => {
+  const INVITED = "invited-5b0c8a52-7b0e-4d8e-9a53-7d8f1f0c2e11";
+  const runs = [
+    { id: "salim-run", student_id: SALIM },
+    { id: "luciana-run", student_id: LUCIANA },
+    { id: "invited-run", student_id: INVITED },
+  ];
+  const mark = (test_item_id: string, marks_awarded: number | null, student_id: string | null, invited_student_id: string | null = null) => ({
+    test_item_id,
+    student_id,
+    invited_student_id,
+    marks_awarded,
+  });
+
+  it("gives each part the mark ClevMarks holds for that run's student, and only the fields the page reads", () => {
+    const rows = attachClevMarks(
+      [
+        { run_id: "salim-run", accepted: true, test_item_id: "q1" },
+        { run_id: "salim-run", accepted: true, test_item_id: "q2" },
+        { run_id: "luciana-run", accepted: false, test_item_id: "q1" },
+      ],
+      runs,
+      [mark("q1", 1, SALIM), mark("q2", 4, SALIM), mark("q1", 0, LUCIANA)]
+    );
+    expect(rows).toEqual([
+      { run_id: "salim-run", accepted: true, marks_awarded: 1 },
+      { run_id: "salim-run", accepted: true, marks_awarded: 4 },
+      { run_id: "luciana-run", accepted: false, marks_awarded: 0 },
+    ]);
+  });
+
+  // Another student's mark for the same part must never be read as this one's.
+  it("reads a part with no mark for this student as null", () => {
+    const rows = attachClevMarks(
+      [{ run_id: "luciana-run", accepted: false, test_item_id: "q2" }],
+      runs,
+      [mark("q2", 4, SALIM)]
+    );
+    expect(rows).toEqual([{ run_id: "luciana-run", accepted: false, marks_awarded: null }]);
+  });
+
+  it("matches a student who has never signed in on their invited id", () => {
+    const rows = attachClevMarks(
+      [{ run_id: "invited-run", accepted: true, test_item_id: "q1" }],
+      runs,
+      [mark("q1", 2, null, INVITED.slice("invited-".length))]
+    );
+    expect(rows[0].marks_awarded).toBe(2);
+  });
+
+  it("gives a run it cannot place null rather than someone else's mark", () => {
+    const rows = attachClevMarks([{ run_id: "unknown-run", accepted: false, test_item_id: "q1" }], runs, [
+      mark("q1", 1, SALIM),
+    ]);
+    expect(rows).toEqual([{ run_id: "unknown-run", accepted: false, marks_awarded: null }]);
+  });
+
+  // A failed read says nothing about the student: the field is left off, so
+  // the roster leaves the figure off instead of reporting no marks.
+  it("leaves marks_awarded off every row when ClevMarks could not be read", () => {
+    const rows = attachClevMarks([{ run_id: "salim-run", accepted: true, test_item_id: "q1" }], runs, null);
+    expect(rows).toEqual([{ run_id: "salim-run", accepted: true }]);
+    expect("marks_awarded" in rows[0]).toBe(false);
+  });
+});
+
+describe("clevMarksByRunFrom", () => {
+  it("adds up each run's marks and counts the parts ClevMarks has one for", () => {
+    expect(
+      clevMarksByRunFrom([
+        { run_id: "runA", marks_awarded: 1 },
+        { run_id: "runA", marks_awarded: 4 },
+        { run_id: "runA", marks_awarded: null },
+        { run_id: "runB", marks_awarded: 0 },
+      ])
+    ).toEqual({ runA: { total: 5, marked: 2, parts: 3 }, runB: { total: 0, marked: 1, parts: 1 } });
+  });
+
+  it("counts a mark of 0 as a mark", () => {
+    expect(clevMarksByRunFrom([{ run_id: "runA", marks_awarded: 0 }])).toEqual({
+      runA: { total: 0, marked: 1, parts: 1 },
+    });
+  });
+
+  // An older route, or a failed read, sends no marks_awarded at all.
+  it("gives a run whose marks could not be read no entry", () => {
+    expect(clevMarksByRunFrom([{ run_id: "runA" }, { run_id: "runA" }])).toEqual({});
+  });
+});
+
+describe("rosterMarkSegments", () => {
+  const coverage = { suggestedTotal: 37, maxTotal: 50, testTotalMarks: 50 };
+
+  // Key Assessment 1, 25 Sep 2026: the roster said "37/50 suggested" while the
+  // review panel said 41, because three parts had been marked up.
+  it("labels the AI's total as the AI's and prints what ClevMarks holds beside it", () => {
+    expect(rosterMarkSegments(coverage, { total: 41, marked: 36, parts: 36 })).toEqual([
+      "AI suggested 37/50",
+      "ClevMarks 41/50",
+    ]);
+  });
+
+  it("prints both even when they agree, so a fully accepted student reads as done", () => {
+    expect(rosterMarkSegments(coverage, { total: 37, marked: 36, parts: 36 })).toEqual([
+      "AI suggested 37/50",
+      "ClevMarks 37/50",
+    ]);
+  });
+
+  it("says 'so far' while ClevMarks holds a mark for only some of the parts", () => {
+    expect(rosterMarkSegments(coverage, { total: 25, marked: 24, parts: 36 })).toEqual([
+      "AI suggested 37/50",
+      "ClevMarks 25/50 so far (24 of 36 parts)",
+    ]);
+  });
+
+  it("leaves ClevMarks off until it holds a mark, or when it could not be read", () => {
+    expect(rosterMarkSegments(coverage, { total: 0, marked: 0, parts: 36 })).toEqual(["AI suggested 37/50"]);
+    expect(rosterMarkSegments(coverage, undefined)).toEqual(["AI suggested 37/50"]);
+  });
+
+  it("keeps 'of N total' on the AI's figure when parts had no mark scheme to mark from", () => {
+    expect(
+      rosterMarkSegments({ suggestedTotal: 17, maxTotal: 20, testTotalMarks: 33 }, { total: 19, marked: 8, parts: 8 })
+    ).toEqual(["AI suggested 17/20 of 33 total", "ClevMarks 19/20"]);
+  });
+
+  it("prints ClevMarks without a maximum when the run recorded none", () => {
+    expect(rosterMarkSegments(null, { total: 41, marked: 36, parts: 36 })).toEqual(["ClevMarks 41"]);
+    expect(rosterMarkSegments({}, undefined)).toEqual([]);
+  });
+});
+
+describe("reviewMarkTotals", () => {
+  const rows = [
+    { id: "r1", suggested_marks: 0 },
+    { id: "r2", suggested_marks: 0 },
+    { id: "r3", suggested_marks: 2 },
+    { id: "r4", suggested_marks: 1 },
+  ];
+
+  it("totals the boxes beside the AI's own total and counts the parts that differ", () => {
+    expect(reviewMarkTotals(rows, { r1: 1, r2: 1, r3: 4, r4: 1 })).toEqual({ total: 7, aiTotal: 3, changed: 3 });
+  });
+
+  it("changes nothing while every box holds the suggestion", () => {
+    expect(reviewMarkTotals(rows, { r1: 0, r2: 0, r3: 2, r4: 1 })).toEqual({ total: 3, aiTotal: 3, changed: 0 });
+  });
+
+  // Up on one part and down on another: the totals agree, but two parts
+  // were still changed, and the heading must say so.
+  it("counts changed parts even when the totals come out the same", () => {
+    expect(reviewMarkTotals(rows, { r1: 1, r2: 0, r3: 1, r4: 1 })).toEqual({ total: 3, aiTotal: 3, changed: 2 });
+  });
+
+  it("reads a part with no draft as 0, as its box shows it", () => {
+    expect(reviewMarkTotals(rows, { r1: 0, r2: 0, r3: 2 })).toEqual({ total: 2, aiTotal: 3, changed: 1 });
+  });
+});
+
 describe("deriveOverviewState", () => {
   type Run = { id: string; student_id: string | null; status: string; pending_message_batch_id: string | null };
   const run = (id: string, student_id: string | null, status: string, batch: string | null = null): Run => ({
@@ -245,8 +409,8 @@ describe("deriveOverviewState", () => {
       run("luciana-graded", LUCIANA, "complete"),
     ];
     const state = deriveOverviewState(runs, [
-      { run_id: "salim-graded", accepted: true },
-      { run_id: "luciana-graded", accepted: false },
+      { run_id: "salim-graded", accepted: true, marks_awarded: 3 },
+      { run_id: "luciana-graded", accepted: false, marks_awarded: null },
     ]);
     const { latestComplete, newerAttempt } = latestRunsByStudent(runs);
     expect(state.runsByStudent).toEqual(latestComplete);
@@ -255,8 +419,22 @@ describe("deriveOverviewState", () => {
       "salim-graded": { accepted: 1, total: 1 },
       "luciana-graded": { accepted: 0, total: 1 },
     });
+    expect(state.clevMarksByRun).toEqual({
+      "salim-graded": { total: 3, marked: 1, parts: 1 },
+      "luciana-graded": { total: 0, marked: 0, parts: 1 },
+    });
     expect(state.submittedStudentCount).toBe(0);
     expect(state.outstandingCollectCount).toBe(0);
+  });
+
+  // A tab served by a route older than marks_awarded still gets its
+  // acceptance dots, just no ClevMarks figure.
+  it("counts acceptance from rows that carry no ClevMarks mark", () => {
+    const state = deriveOverviewState([run("salim-graded", SALIM, "complete")], [
+      { run_id: "salim-graded", accepted: true },
+    ]);
+    expect(state.acceptanceByRun).toEqual({ "salim-graded": { accepted: 1, total: 1 } });
+    expect(state.clevMarksByRun).toEqual({});
   });
 
   // A student queued overnight and then marked in the browser has a newer
@@ -302,6 +480,7 @@ describe("deriveOverviewState", () => {
       runsByStudent: {},
       newerAttemptByStudent: {},
       acceptanceByRun: {},
+      clevMarksByRun: {},
       submittedStudentCount: 0,
       outstandingCollectCount: 0,
     });

@@ -149,6 +149,151 @@ export function acceptanceByRunFrom(
   return counts;
 }
 
+// ---- What ClevMarks holds, beside what the AI suggested ---------------------
+//
+// A run's coverage.suggestedTotal is the model's own total, written when the
+// run finished. It never moves when a teacher accepts or changes a mark --
+// suggested_marks is the audit trail's record of what the model said -- so a
+// roster that showed it alone read "37/50 suggested" for a student whose
+// review panel, which shows what ClevMarks holds, said 41 (Key Assessment 1,
+// 25 Sep 2026: three parts the teacher had marked up). The roster now prints
+// both, and these are what it prints them from.
+
+/**
+ * One result row as the roster reads it: whether it is accepted, and what
+ * ClevMarks holds for its part. `marks_awarded` is null when ClevMarks has no
+ * mark for the part, and absent when ClevMarks could not be read -- which
+ * says nothing about the student, so it never counts as "no mark".
+ */
+export interface OverviewResultRef extends AcceptanceRef {
+  marks_awarded?: number | null;
+}
+
+/** One student_marks row, as far as the roster reads it. */
+export interface ClevMarkRow {
+  test_item_id: string;
+  student_id: string | null;
+  invited_student_id: string | null;
+  marks_awarded: number | null;
+}
+
+/**
+ * The roster's result rows with what ClevMarks holds for each part attached,
+ * matched on the run's student (an opaque subject id, as the roster's runs
+ * carry it) and the part. test_item_id is dropped again: the page needs only
+ * the mark, and this goes out for every part of every student's run.
+ *
+ * `marks` is null when ClevMarks could not be read; the rows then go out
+ * without marks_awarded at all, so the roster leaves the figure off rather
+ * than reporting nothing in ClevMarks.
+ */
+export function attachClevMarks(
+  rows: readonly (AcceptanceRef & { test_item_id: string })[],
+  runs: readonly { id: string; student_id: string | null }[],
+  marks: readonly ClevMarkRow[] | null
+): OverviewResultRef[] {
+  if (!marks) return rows.map((r) => ({ run_id: r.run_id, accepted: r.accepted }));
+  const subjectByRun = new Map(runs.map((r) => [r.id, r.student_id]));
+  const markByPart = new Map<string, number>();
+  for (const m of marks) {
+    const subject = formatGradingSubject(m);
+    if (subject && typeof m.marks_awarded === "number") markByPart.set(`${subject}:${m.test_item_id}`, m.marks_awarded);
+  }
+  return rows.map((r) => {
+    const subject = subjectByRun.get(r.run_id);
+    return {
+      run_id: r.run_id,
+      accepted: r.accepted,
+      marks_awarded: subject ? markByPart.get(`${subject}:${r.test_item_id}`) ?? null : null,
+    };
+  });
+}
+
+/** What ClevMarks holds over one run's parts -- the roster's "ClevMarks 41/50". */
+export interface ClevMarksSummary {
+  /** The marks ClevMarks holds for the run's parts, added up. */
+  total: number;
+  /** How many of the run's parts ClevMarks has a mark for. */
+  marked: number;
+  /** How many parts the run has. */
+  parts: number;
+}
+
+/**
+ * What ClevMarks holds over each run's parts, keyed by run id. A row whose
+ * mark could not be read (marks_awarded absent) is skipped, so a run none of
+ * whose rows could be read gets no entry -- the same as a run with no rows.
+ */
+export function clevMarksByRunFrom(
+  rows: readonly { run_id: string; marks_awarded?: number | null }[]
+): Record<string, ClevMarksSummary> {
+  const byRun: Record<string, ClevMarksSummary> = {};
+  for (const r of rows) {
+    if (r.marks_awarded === undefined) continue;
+    const s = (byRun[r.run_id] ??= { total: 0, marked: 0, parts: 0 });
+    s.parts += 1;
+    if (typeof r.marks_awarded === "number") {
+      s.total += r.marks_awarded;
+      s.marked += 1;
+    }
+  }
+  return byRun;
+}
+
+/**
+ * The marks on a student's roster line, after "Last run: complete": what the
+ * AI suggested, then what ClevMarks holds for the same parts, out of the same
+ * maximum so the two compare directly. ClevMarks is left off until it holds a
+ * mark for at least one part, and says "so far" until it holds one for all.
+ */
+export function rosterMarkSegments(
+  coverage: { suggestedTotal?: number; maxTotal?: number; testTotalMarks?: number } | null | undefined,
+  clevMarks: ClevMarksSummary | undefined
+): string[] {
+  const segments: string[] = [];
+  const max = coverage?.maxTotal;
+  if (coverage?.suggestedTotal !== undefined && max !== undefined) {
+    // "of 33 total" when parts without a mark scheme were never marked, so
+    // 20 is not mistaken for the whole paper.
+    const ofTotal =
+      typeof coverage.testTotalMarks === "number" && coverage.testTotalMarks !== max
+        ? ` of ${coverage.testTotalMarks} total`
+        : "";
+    segments.push(`AI suggested ${coverage.suggestedTotal}/${max}${ofTotal}`);
+  }
+  if (clevMarks && clevMarks.marked > 0) {
+    const figure = `ClevMarks ${clevMarks.total}${max !== undefined ? `/${max}` : ""}`;
+    segments.push(
+      clevMarks.marked === clevMarks.parts
+        ? figure
+        : `${figure} so far (${clevMarks.marked} of ${clevMarks.parts} parts)`
+    );
+  }
+  return segments;
+}
+
+/**
+ * The review panel's total: the marks in the boxes -- ClevMarks for an
+ * accepted part, the suggestion or the teacher's edit for the rest -- beside
+ * the AI's own total, and how many parts the two disagree on.
+ */
+export function reviewMarkTotals(
+  rows: readonly { id: string; suggested_marks: number }[],
+  drafts: Readonly<Record<string, number>>
+): { total: number; aiTotal: number; changed: number } {
+  let total = 0;
+  let aiTotal = 0;
+  let changed = 0;
+  for (const r of rows) {
+    // ?? 0, as the box itself shows it.
+    const mark = drafts[r.id] ?? 0;
+    total += mark;
+    aiTotal += r.suggested_marks;
+    if (mark !== r.suggested_marks) changed += 1;
+  }
+  return { total, aiTotal, changed };
+}
+
 /** Minimal shape of ai_grade_runs needed for the roster's overnight counts. */
 export interface OverviewStateRunRef extends OverviewRunRef {
   /** The Anthropic message batch a run is still tied to, or null once it is settled. */
@@ -163,6 +308,8 @@ export interface OverviewState<R> {
   newerAttemptByStudent: Record<string, R>;
   /** Accepted and total parts of each student's newest complete run, keyed by run id. */
   acceptanceByRun: Record<string, { accepted: number; total: number }>;
+  /** What ClevMarks holds over each student's newest complete run, keyed by run id. */
+  clevMarksByRun: Record<string, ClevMarksSummary>;
   /** Distinct students with a run still at Anthropic -- the overnight banner. */
   submittedStudentCount: number;
   /** Runs the page still owes a collect call for -- what keeps the poll going. */
@@ -171,21 +318,22 @@ export interface OverviewState<R> {
 
 /**
  * The roster's view of GET /api/tests/[id]/ai-grade's whole-class answer
- * (`runs` newest first, `results` the { run_id, accepted } rows it sends).
- * The page works this out on the server for its first render and in the
- * browser on every refresh after that, so both go through here.
+ * (`runs` newest first, `results` the { run_id, accepted, marks_awarded }
+ * rows it sends). The page works this out on the server for its first render
+ * and in the browser on every refresh after that, so both go through here.
  */
 export function deriveOverviewState<R extends OverviewStateRunRef>(
   runs: readonly R[],
-  results: readonly AcceptanceRef[]
+  results: readonly OverviewResultRef[]
 ): OverviewState<R> {
   const { latestComplete, newerAttempt } = latestRunsByStudent(runs);
   return {
     runsByStudent: latestComplete,
     newerAttemptByStudent: newerAttempt,
-    // The route sends { run_id, accepted } for each student's newest
-    // complete run only -- exactly what this counts.
+    // The route sends a row for each part of each student's newest complete
+    // run only -- exactly what these count.
     acceptanceByRun: acceptanceByRunFrom(results),
+    clevMarksByRun: clevMarksByRunFrom(results),
     // Counted off the raw run list, not the newest-run-per-student map: a
     // student marked in the browser after being queued overnight has a
     // newer complete run, which would hide their still-pending one and stop

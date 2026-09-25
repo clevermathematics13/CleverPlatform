@@ -31,8 +31,17 @@ import {
   selfMarkDiffers,
   deriveOverviewState,
   buildRosterOptions,
+  clevMarksByRunFrom,
+  rosterMarkSegments,
+  reviewMarkTotals,
 } from "@/lib/ai-grade-review";
-import type { AcceptanceRef, RosterOption, RosterSourceRef, SelfScoreRef } from "@/lib/ai-grade-review";
+import type {
+  ClevMarksSummary,
+  OverviewResultRef,
+  RosterOption,
+  RosterSourceRef,
+  SelfScoreRef,
+} from "@/lib/ai-grade-review";
 import { formatPageRanges, type UnmarkedBatchStudent } from "@/lib/batch-unmarked";
 import { writeCollapsedClassesCookie } from "@/lib/ai-grade-collapsed-classes";
 import type { AssessmentKind } from "@/lib/assessment-kind";
@@ -283,6 +292,7 @@ export interface AiGradeInitial {
   runsByStudent: Record<string, RunRow>;
   newerAttemptByStudent: Record<string, RunRow>;
   acceptanceByRun: Record<string, { accepted: number; total: number }>;
+  clevMarksByRun: Record<string, ClevMarksSummary>;
   submittedStudentCount: number;
   outstandingCollectCount: number;
   absentStudentIds: string[];
@@ -480,6 +490,10 @@ export function AiGradeClient({
   const [acceptanceByRun, setAcceptanceByRun] = useState<Record<string, { accepted: number; total: number }>>(
     initial?.acceptanceByRun ?? {}
   );
+  /** What ClevMarks holds over a run's parts, keyed by run id -- the roster's "ClevMarks 41/50". */
+  const [clevMarksByRun, setClevMarksByRun] = useState<Record<string, ClevMarksSummary>>(
+    initial?.clevMarksByRun ?? {}
+  );
 
   // -- Manually correcting a misread transcription (evidence) and re-grading it --
   const [editingEvidenceId, setEditingEvidenceId] = useState<string | null>(null);
@@ -596,7 +610,7 @@ export function AiGradeClient({
       // it counts, so the counts are always for the run shown.
       const overview = deriveOverviewState(
         (runs1.data.runs as RunRow[]) ?? [],
-        (runs1.data.results as AcceptanceRef[]) ?? []
+        (runs1.data.results as OverviewResultRef[]) ?? []
       );
       setRunsByStudent(overview.runsByStudent);
       setNewerAttemptByStudent(overview.newerAttemptByStudent);
@@ -614,6 +628,7 @@ export function AiGradeClient({
       }
 
       setAcceptanceByRun(overview.acceptanceByRun);
+      setClevMarksByRun(overview.clevMarksByRun);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not load this assessment.");
     }
@@ -824,6 +839,15 @@ export function AiGradeClient({
               total: rowsForLatest.length,
             },
           }));
+          // The same rows carry what ClevMarks holds for each part, so an
+          // accept made in this panel moves the roster's ClevMarks figure too.
+          const clevMarks = clevMarksByRunFrom(rowsForLatest)[latestRun.id];
+          setClevMarksByRun((prev) => {
+            const next = { ...prev };
+            if (clevMarks) next[latestRun.id] = clevMarks;
+            else delete next[latestRun.id];
+            return next;
+          });
         }
       } catch (e) {
         if (superseded()) return;
@@ -1550,18 +1574,22 @@ export function AiGradeClient({
 
   const totalItems = test.test_items.length;
   const maxTotal = test.test_items.reduce((s, i) => s + i.max_marks, 0);
-  const suggestedTotal = results.reduce((s, r) => s + (drafts[r.id] ?? 0), 0);
+  // The marks in the boxes, beside the AI's own total. An accepted box holds
+  // what ClevMarks holds, so once a teacher has changed a mark this is no
+  // longer the suggestion -- it used to be labelled one ("Suggested total
+  // 41") while the roster above it said "37/50 suggested", the AI's figure.
+  const markTotals = reviewMarkTotals(results, drafts);
   // What the student under review gave themselves, part by part, compared
   // against the mark in each row's box -- so an edit re-colours the Self cell
-  // as it is typed, the same way it re-totals the suggestion.
+  // as it is typed, the same way it re-totals the marks.
   const selfAssessment = summariseSelfAssessment(selfScores);
   const selfDiffersFrom = (r: ResultRow) =>
     selfMarkDiffers(selfMarkFor(selfAssessment, r.test_item_id), drafts[r.id] ?? 0);
   const focusRun = focusStudent ? runsByStudent[focusStudent] : null;
   // The strand levels the marks on screen would give, recomputed as the
   // teacher edits them -- so a change to one part shows what it does to the
-  // strand before it is accepted. Suggestions, not Clev's Marks: the
-  // standards report page is the one that reads accepted marks.
+  // strand before it is accepted. The boxes, not ClevMarks: the standards
+  // report page is the one that reads accepted marks.
   const liveStandardsReport =
     standardsRubric && results.length > 0
       ? buildStandardsReport(
@@ -1716,6 +1744,18 @@ export function AiGradeClient({
               }
               className="w-16 rounded border border-da-border px-2 py-1 text-sm focus:ring-2 focus:ring-blue-400"
             />
+            {/* The AI's own mark, wherever the box says something else --
+                an accepted change or one still being typed. Without it a
+                changed part is indistinguishable from an untouched one, and
+                the "you changed N parts" in the heading cannot be found. */}
+            {(drafts[r.id] ?? 0) !== r.suggested_marks && (
+              <span
+                className="ml-2 whitespace-nowrap text-xs text-da-muted"
+                title={`The AI suggested ${r.suggested_marks} for this part. The mark in the box is yours.`}
+              >
+                AI: {r.suggested_marks}
+              </span>
+            )}
             {(drafts[r.id] ?? r.suggested_marks) !== r.suggested_marks && (!r.accepted || draftDiffersFromAccepted) && (
               <input
                 type="text"
@@ -2241,7 +2281,7 @@ export function AiGradeClient({
     // parts, what they add up to, and whether any of them is the kind of
     // "confident" a teacher would still want to see -- no working found, or a
     // mark that moved since the previous run.
-    const highSuggested = high.reduce((sum, r) => sum + (drafts[r.id] ?? 0), 0);
+    const highMarks = high.reduce((sum, r) => sum + (drafts[r.id] ?? 0), 0);
     const highMax = high.reduce((sum, r) => sum + r.max_marks, 0);
     const highNoWork = high.filter((r) => !r.work_found).length;
     const highChanged = high.filter(
@@ -2267,7 +2307,12 @@ export function AiGradeClient({
               Review — {students.find((s) => s.profile_id === focusStudent)?.display_name}
             </h3>
             <p className="text-xs text-da-muted">
-              Suggested total {suggestedTotal} / {maxTotal}. Edit any value before accepting.
+              {markTotals.changed > 0
+                ? `Total ${markTotals.total} / ${maxTotal} (AI suggested ${markTotals.aiTotal}, you changed ${
+                    markTotals.changed
+                  } part${markTotals.changed === 1 ? "" : "s"}).`
+                : `Total ${markTotals.total} / ${maxTotal}, as the AI suggested.`}{" "}
+              Edit any value before accepting.
               {needsLook.length === 0 &&
                 high.length > 0 &&
                 " Every part came back high confidence — nothing is flagged for a look."}
@@ -2326,7 +2371,7 @@ export function AiGradeClient({
             {liveStandardsReport && (
               <div className="mt-3 rounded-lg border border-da-border bg-da-bg/60 p-2">
                 <p className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-wide text-da-muted">
-                  Strand levels from the marks above (suggested, not yet ClevMarks)
+                  Strand levels from the marks above (a preview: the standards report reads ClevMarks)
                 </p>
                 <StandardsReportTable report={liveStandardsReport} compact />
               </div>
@@ -2365,7 +2410,12 @@ export function AiGradeClient({
                   <span className="sr-only">Accept</span>
                 </th>
                 <th className="px-2 py-2 font-semibold">Question</th>
-                <th className="px-2 py-2 font-semibold">Suggested</th>
+                <th
+                  className="px-2 py-2 font-semibold"
+                  title="The AI's suggestion until a part is accepted, then what ClevMarks holds. Where you changed it, the AI's own mark is shown beside the box."
+                >
+                  Mark
+                </th>
                 <th
                   className="px-2 py-2 font-semibold"
                   title="What the student gave themselves on the self-assessment"
@@ -2426,7 +2476,7 @@ export function AiGradeClient({
                           high
                         </span>
                         <span className="text-xs text-da-muted">
-                          {highSuggested}/{highMax} suggested
+                          {highMarks}/{highMax} marks
                           {highAccepted > 0 && ` · ${highAccepted} accepted`}
                         </span>
                         {highNoWork > 0 && (
@@ -2754,14 +2804,13 @@ export function AiGradeClient({
                           ) : run ? (
                             <>
                               Last run: {run.status}
-                              {run.coverage?.suggestedTotal !== undefined &&
-                                run.coverage?.maxTotal !== undefined &&
-                                ` · ${run.coverage.suggestedTotal}/${run.coverage.maxTotal}${
-                                  typeof run.coverage.testTotalMarks === "number" &&
-                                  run.coverage.testTotalMarks !== run.coverage.maxTotal
-                                    ? ` of ${run.coverage.testTotalMarks} total`
-                                    : ""
-                                } suggested`}
+                              {/* The AI's total, then what ClevMarks holds. The
+                                  AI's never moves once it has marked, so it
+                                  is labelled as the AI's and what ClevMarks
+                                  actually holds is printed beside it. */}
+                              {rosterMarkSegments(run.coverage, clevMarksByRun[run.id])
+                                .map((segment) => ` · ${segment}`)
+                                .join("")}
                               {run.error && ` — ${run.error}`}
                             </>
                           ) : newerAttempt ? (

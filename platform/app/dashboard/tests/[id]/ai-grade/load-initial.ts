@@ -108,6 +108,7 @@ async function buildInitial(
     runsByStudent: state.runsByStudent,
     newerAttemptByStudent: state.newerAttemptByStudent,
     acceptanceByRun: state.acceptanceByRun,
+    clevMarksByRun: state.clevMarksByRun,
     submittedStudentCount: state.submittedStudentCount,
     outstandingCollectCount: state.outstandingCollectCount,
     // Best-effort, as in the client: a failed read means nobody shows as

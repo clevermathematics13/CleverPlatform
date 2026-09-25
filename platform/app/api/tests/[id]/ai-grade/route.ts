@@ -54,10 +54,10 @@ interface ResultRow {
  * GET /api/tests/[id]/ai-grade?studentId=...
  * For the review UI, in two shapes:
  *   - without studentId (the roster): every run of the test, `results`
- *     cut down to { run_id, accepted } for each student's newest complete
- *     run -- the acceptance counts the roster shows, and nothing else --
- *     and `unmarked`, anyone a batch scan was confirmed for who has no run
- *     at all (lib/batch-unmarked.ts);
+ *     cut down to { run_id, accepted, marks_awarded } for each student's
+ *     newest complete run -- the acceptance counts and ClevMarks totals the
+ *     roster shows, and nothing else -- and `unmarked`, anyone a batch scan
+ *     was confirmed for who has no run at all (lib/batch-unmarked.ts);
  *   - with studentId (one student's review panel): their last few runs with
  *     full result rows, signed evidence crops, PPQ images, what Clev's Marks
  *     holds for each part, and their self-assessment of the test as
@@ -74,7 +74,7 @@ export async function GET(
   const { id: testId } = await params;
   const studentId = request.nextUrl.searchParams.get("studentId");
 
-  // -- The whole-class load: acceptance counts and nothing else --------------
+  // -- The whole-class load: acceptance and ClevMarks, nothing else ----------
   // Built in lib/ai-grade-overview.ts (see there for why it is shaped this
   // way), which the AI-grade page also calls to render its roster on the
   // server. Same keys as ever, so a tab still running an older page reads

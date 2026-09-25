@@ -1,6 +1,12 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { INVITED_SUBJECT_PREFIX, formatGradingSubject } from "@/lib/grading-subject";
-import { latestRunsByStudent, type AcceptanceRef } from "@/lib/ai-grade-review";
+import {
+  attachClevMarks,
+  latestRunsByStudent,
+  type AcceptanceRef,
+  type ClevMarkRow,
+  type OverviewResultRef,
+} from "@/lib/ai-grade-review";
 import { fetchAllRows } from "@/lib/na-scanning";
 import { findUnmarkedBatchStudents, type SplitBatchRef, type UnmarkedBatchStudent } from "@/lib/batch-unmarked";
 
@@ -45,7 +51,7 @@ export type AiGradeOverviewResult =
   | {
       ok: true;
       runs: AiGradeRunRow[];
-      results: AcceptanceRef[];
+      results: OverviewResultRef[];
       /** Students a batch scan was confirmed for who have no run at all (lib/batch-unmarked.ts). */
       unmarked: UnmarkedBatchStudent[];
     }
@@ -55,9 +61,10 @@ const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 /**
  * Every run of the test, newest first, with student_id collapsed to the
- * opaque subject id (see formatGradingSubject), and { run_id, accepted } for
- * each subject's newest complete run -- the acceptance counts the roster
- * shows, and nothing else.
+ * opaque subject id (see formatGradingSubject), and { run_id, accepted,
+ * marks_awarded } for each part of each subject's newest complete run -- the
+ * acceptance counts and the ClevMarks totals the roster shows, and nothing
+ * else.
  *
  * The runs are not capped. Overnight marking creates one run per student on
  * every click, so a class that has been re-marked a few times passes 100 runs
@@ -71,7 +78,7 @@ const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
  * 2026) that was 18,119 rows in a 20 MB response to count 1,752, and the
  * page sat on "Loading this assessment..." for over half a minute. So only
  * the runs the page will show are counted -- chosen by latestRunsByStudent,
- * the same function the page uses -- and only these two columns are sent.
+ * the same function the page uses -- and only these three fields are sent.
  */
 export async function loadAiGradeOverview(
   supabase: SupabaseClient,
@@ -104,20 +111,54 @@ export async function loadAiGradeOverview(
 
   const latestIds = Object.values(latestRunsByStudent(runs).latestComplete).map((r) => r.id);
   if (latestIds.length === 0) return { ok: true, runs, results: [], unmarked: await unmarkedLoad };
+  // Started now so it runs alongside the acceptance read below; neither
+  // needs the other until they are joined.
+  const clevMarksLoad = loadClevMarks(supabase, testId);
   try {
     // Still paged: the newest runs alone pass PostgREST's 1000-row cap on a
     // big class (49 runs x 36 parts on Key Assessment 1).
-    const results = await fetchAllRows<AcceptanceRef>((from, to) =>
+    const rows = await fetchAllRows<AcceptanceRef & { test_item_id: string }>((from, to) =>
       supabase
         .from("ai_grade_results")
-        .select("run_id, accepted")
+        .select("run_id, accepted, test_item_id")
         .in("run_id", latestIds)
         .order("id", { ascending: true })
         .range(from, to)
     );
+    const results = attachClevMarks(rows, runs, await clevMarksLoad);
     return { ok: true, runs, results, unmarked: await unmarkedLoad };
   } catch (e) {
     return { ok: false, status: 500, error: message(e) };
+  }
+}
+
+/**
+ * Every mark ClevMarks holds on the test, for the roster's "ClevMarks 41/50"
+ * beside the AI's own total (see attachClevMarks).
+ *
+ * Paged like the gradebook's read of the same table: one assessment for a
+ * 50-student track is ~1,800 marks, past PostgREST's silent 1000-row cap.
+ *
+ * Best-effort: null when either read fails, which leaves the figure off the
+ * roster rather than stopping it loading -- the same footing as the absences
+ * and the unmarked-batch flags. Never rejects.
+ */
+async function loadClevMarks(supabase: SupabaseClient, testId: string): Promise<ClevMarkRow[] | null> {
+  try {
+    const { data: items, error } = await supabase.from("test_items").select("id").eq("test_id", testId);
+    if (error) return null;
+    const itemIds = (items ?? []).map((i) => i.id as string);
+    if (itemIds.length === 0) return [];
+    return await fetchAllRows<ClevMarkRow>((from, to) =>
+      supabase
+        .from("student_marks")
+        .select("test_item_id, student_id, invited_student_id, marks_awarded")
+        .in("test_item_id", itemIds)
+        .order("id", { ascending: true })
+        .range(from, to)
+    );
+  } catch {
+    return null;
   }
 }
 
