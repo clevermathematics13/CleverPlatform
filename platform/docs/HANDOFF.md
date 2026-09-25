@@ -3284,14 +3284,31 @@ source.
   (`latestRunPerSubject`) instead of the newest 60 runs, which on KA1 was a few
   students' repeats.
 
-**KA1 procedure, for the teacher.** Paper layout page -> pick a clean scan as the
-reference -> "Propose regions from the class's marker boxes" -> expect one
-warning: Q4(c) and Q5 are out of reading order on page 4 (the marker puts Q5's
-top at 0.43 and 4(c)'s at 0.49; 4(c) is given its own median bottom) -> open
-those two and drag them right; open Q2(a) and Q2(b) too, since the marker boxed
-the sequence table for (a) on at least one student -> Lock -> "Re-cut every
-student's crops". Until then, "Re-cut crops" on a student bounds that student's
-marker crops at the next part.
+**Done for KA1 the same day, through the routes on a local dev server against
+production** (the paper-layout page's own API, with a minted teacher session,
+revoked afterwards). Layout `1a27dd4c-abd4-44cc-9f14-05dd0bcc5e32`, reference
+scan run `9c239ed6` (every one of the 18 scans is 10 A4 pages). The proposal
+wrote 26 regions and the expected single warning (Q4(c)/Q5), and then turned
+out to be a poor draft on this paper: **the marker's boxes sit about one part
+too HIGH on most of KA1**, and a median of biased boxes is biased. Q2(a)'s
+proposed region held the Q2 stem and nothing of (a)'s box, Q7(a)'s held the
+diagram, Q6(a)'s and Q9(a)'s cut their boxes in half. So every region was
+measured off the reference pages instead (each part from its printed prompt,
+or its question's stem for the first part, to the foot of its printed answer
+box; full content width) and written through the anchors endpoint -- all 26
+now read `source = 'manual_draw'`, and the layout is locked. Then every
+student's newest run was re-cut: 467 crops from the layout (`anchor`), the
+one teacher-drawn row left alone, a second pass on one student reported 26
+"already right". Verified by eye on eight crops across three students. The
+468 rows' previous crop columns are in this session's scratchpad
+(`ka1-recut-snapshot.json`); the previous PNGs are still in Storage.
+
+**Lesson for the next paper.** Propose, but LOOK before locking, page by page
+with every region outlined: on a paper where the marker reads a part high, the
+proposal reproduces the error for the whole class, and the warnings only catch
+the inversions. Rendering the reference pages with the regions drawn on them
+(CV service `renderPageImage` plus a sharp SVG overlay, ~20 lines) is the
+quickest check and is worth making a button on the paper-layout page.
 
 **Deliberately not done.** No change to the grading prompt or model (§24). No
 upward padding of the marker's box: the printed prompt above the handwriting
