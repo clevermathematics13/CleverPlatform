@@ -4048,8 +4048,10 @@ that, but a booklet cover can read as a second row for the same student
   per-question query; at ~600 questions it passes the 1000-row cap.
 - The run-app skill's `revoke-session.mjs` now runs in place and defaults to
   scope `"local"` (it used to sign out `"global"`, which also ended the
-  teacher's own browser sessions). `mint-session.mjs` is unchanged: an agent
-  editing it, or `.claude/settings.json`, so that minting no longer prompts
-  was refused by the auto-mode check as a permission bypass. Whether agents
-  may mint a teacher session without a prompt is the teacher's setting to
-  add, not an agent's.
+  teacher's own browser sessions). `mint-session.mjs` now runs in place too,
+  taking the anon key as `--anon-key`, and `.claude/settings.json` allows
+  both scripts and the read-only Supabase `execute_sql` without a prompt.
+  The auto-mode check refused an agent making these edits, twice; the
+  teacher then asked for them and approved them outside auto mode. The rule
+  only removes the prompt: minting still needs the teacher's OK in the
+  conversation every time.
