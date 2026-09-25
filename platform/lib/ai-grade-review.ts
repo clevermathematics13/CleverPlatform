@@ -158,16 +158,12 @@ export function acceptanceByRunFrom(
 // review panel, which shows what ClevMarks holds, said 41 (Key Assessment 1,
 // 25 Sep 2026: three parts the teacher had marked up). The roster now prints
 // both, and these are what it prints them from.
-
-/**
- * One result row as the roster reads it: whether it is accepted, and what
- * ClevMarks holds for its part. `marks_awarded` is null when ClevMarks has no
- * mark for the part, and absent when ClevMarks could not be read -- which
- * says nothing about the student, so it never counts as "no mark".
- */
-export interface OverviewResultRef extends AcceptanceRef {
-  marks_awarded?: number | null;
-}
+//
+// The ClevMarks figure is the student's whole test, not the parts in the
+// run: a part the AI returned no grade for is "left ungraded for manual
+// marking", so the mark a teacher enters for it by hand is in ClevMarks and
+// in the gradebook but in no run. Counting only the run's parts would print
+// a "ClevMarks" total below the gradebook's -- the same confusion again.
 
 /** One student_marks row, as far as the roster reads it. */
 export interface ClevMarkRow {
@@ -177,78 +173,54 @@ export interface ClevMarkRow {
   marks_awarded: number | null;
 }
 
+/** What ClevMarks holds on a test for one student -- the roster's "ClevMarks 41/50". */
+export interface ClevMarksSummary {
+  /** The marks ClevMarks holds on the test, added up. */
+  total: number;
+  /** How many of the test's parts ClevMarks holds a mark for. */
+  marked: number;
+}
+
+/** What ClevMarks holds over one student's marks on one test. */
+export function sumClevMarks(marks: readonly { marks_awarded: number | null }[]): ClevMarksSummary {
+  let total = 0;
+  let marked = 0;
+  for (const m of marks) {
+    if (typeof m.marks_awarded !== "number") continue;
+    total += m.marks_awarded;
+    marked += 1;
+  }
+  return { total, marked };
+}
+
 /**
- * The roster's result rows with what ClevMarks holds for each part attached,
- * matched on the run's student (an opaque subject id, as the roster's runs
- * carry it) and the part. test_item_id is dropped again: the page needs only
- * the mark, and this goes out for every part of every student's run.
- *
- * `marks` is null when ClevMarks could not be read; the rows then go out
- * without marks_awarded at all, so the roster leaves the figure off rather
- * than reporting nothing in ClevMarks.
+ * What ClevMarks holds for each student, keyed by the opaque subject id the
+ * roster keys everything by (formatGradingSubject). `marks` must be one
+ * test's rows. A student with no marks gets no entry.
  */
-export function attachClevMarks(
-  rows: readonly (AcceptanceRef & { test_item_id: string })[],
-  runs: readonly { id: string; student_id: string | null }[],
-  marks: readonly ClevMarkRow[] | null
-): OverviewResultRef[] {
-  if (!marks) return rows.map((r) => ({ run_id: r.run_id, accepted: r.accepted }));
-  const subjectByRun = new Map(runs.map((r) => [r.id, r.student_id]));
-  const markByPart = new Map<string, number>();
+export function clevMarksBySubjectFrom(marks: readonly ClevMarkRow[]): Record<string, ClevMarksSummary> {
+  const bySubject = new Map<string, ClevMarkRow[]>();
   for (const m of marks) {
     const subject = formatGradingSubject(m);
-    if (subject && typeof m.marks_awarded === "number") markByPart.set(`${subject}:${m.test_item_id}`, m.marks_awarded);
+    if (!subject || typeof m.marks_awarded !== "number") continue;
+    const list = bySubject.get(subject) ?? [];
+    list.push(m);
+    bySubject.set(subject, list);
   }
-  return rows.map((r) => {
-    const subject = subjectByRun.get(r.run_id);
-    return {
-      run_id: r.run_id,
-      accepted: r.accepted,
-      marks_awarded: subject ? markByPart.get(`${subject}:${r.test_item_id}`) ?? null : null,
-    };
-  });
-}
-
-/** What ClevMarks holds over one run's parts -- the roster's "ClevMarks 41/50". */
-export interface ClevMarksSummary {
-  /** The marks ClevMarks holds for the run's parts, added up. */
-  total: number;
-  /** How many of the run's parts ClevMarks has a mark for. */
-  marked: number;
-  /** How many parts the run has. */
-  parts: number;
-}
-
-/**
- * What ClevMarks holds over each run's parts, keyed by run id. A row whose
- * mark could not be read (marks_awarded absent) is skipped, so a run none of
- * whose rows could be read gets no entry -- the same as a run with no rows.
- */
-export function clevMarksByRunFrom(
-  rows: readonly { run_id: string; marks_awarded?: number | null }[]
-): Record<string, ClevMarksSummary> {
-  const byRun: Record<string, ClevMarksSummary> = {};
-  for (const r of rows) {
-    if (r.marks_awarded === undefined) continue;
-    const s = (byRun[r.run_id] ??= { total: 0, marked: 0, parts: 0 });
-    s.parts += 1;
-    if (typeof r.marks_awarded === "number") {
-      s.total += r.marks_awarded;
-      s.marked += 1;
-    }
-  }
-  return byRun;
+  return Object.fromEntries([...bySubject].map(([subject, list]) => [subject, sumClevMarks(list)]));
 }
 
 /**
  * The marks on a student's roster line, after "Last run: complete": what the
- * AI suggested, then what ClevMarks holds for the same parts, out of the same
- * maximum so the two compare directly. ClevMarks is left off until it holds a
- * mark for at least one part, and says "so far" until it holds one for all.
+ * AI suggested, then what ClevMarks holds on the whole test (`test`: its
+ * part count and total marks, as the page has them). ClevMarks is left off
+ * until it holds a mark, and says "so far" until it holds one for every
+ * part -- a part the AI could not mark stays empty until someone marks it.
  */
 export function rosterMarkSegments(
   coverage: { suggestedTotal?: number; maxTotal?: number; testTotalMarks?: number } | null | undefined,
-  clevMarks: ClevMarksSummary | undefined
+  clevMarks: ClevMarksSummary | undefined,
+  test: { parts: number; maxMarks: number }
 ): string[] {
   const segments: string[] = [];
   const max = coverage?.maxTotal;
@@ -262,11 +234,9 @@ export function rosterMarkSegments(
     segments.push(`AI suggested ${coverage.suggestedTotal}/${max}${ofTotal}`);
   }
   if (clevMarks && clevMarks.marked > 0) {
-    const figure = `ClevMarks ${clevMarks.total}${max !== undefined ? `/${max}` : ""}`;
+    const figure = `ClevMarks ${clevMarks.total}/${test.maxMarks}`;
     segments.push(
-      clevMarks.marked === clevMarks.parts
-        ? figure
-        : `${figure} so far (${clevMarks.marked} of ${clevMarks.parts} parts)`
+      clevMarks.marked >= test.parts ? figure : `${figure} so far (${clevMarks.marked} of ${test.parts} parts)`
     );
   }
   return segments;
@@ -308,8 +278,6 @@ export interface OverviewState<R> {
   newerAttemptByStudent: Record<string, R>;
   /** Accepted and total parts of each student's newest complete run, keyed by run id. */
   acceptanceByRun: Record<string, { accepted: number; total: number }>;
-  /** What ClevMarks holds over each student's newest complete run, keyed by run id. */
-  clevMarksByRun: Record<string, ClevMarksSummary>;
   /** Distinct students with a run still at Anthropic -- the overnight banner. */
   submittedStudentCount: number;
   /** Runs the page still owes a collect call for -- what keeps the poll going. */
@@ -318,22 +286,21 @@ export interface OverviewState<R> {
 
 /**
  * The roster's view of GET /api/tests/[id]/ai-grade's whole-class answer
- * (`runs` newest first, `results` the { run_id, accepted, marks_awarded }
- * rows it sends). The page works this out on the server for its first render
- * and in the browser on every refresh after that, so both go through here.
+ * (`runs` newest first, `results` the { run_id, accepted } rows it sends).
+ * The page works this out on the server for its first render and in the
+ * browser on every refresh after that, so both go through here.
  */
 export function deriveOverviewState<R extends OverviewStateRunRef>(
   runs: readonly R[],
-  results: readonly OverviewResultRef[]
+  results: readonly AcceptanceRef[]
 ): OverviewState<R> {
   const { latestComplete, newerAttempt } = latestRunsByStudent(runs);
   return {
     runsByStudent: latestComplete,
     newerAttemptByStudent: newerAttempt,
-    // The route sends a row for each part of each student's newest complete
-    // run only -- exactly what these count.
+    // The route sends { run_id, accepted } for each student's newest
+    // complete run only -- exactly what this counts.
     acceptanceByRun: acceptanceByRunFrom(results),
-    clevMarksByRun: clevMarksByRunFrom(results),
     // Counted off the raw run list, not the newest-run-per-student map: a
     // student marked in the browser after being queued overnight has a
     // newer complete run, which would hide their still-pending one and stop

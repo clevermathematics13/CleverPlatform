@@ -1,11 +1,12 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { INVITED_SUBJECT_PREFIX, formatGradingSubject } from "@/lib/grading-subject";
+import { INVITED_SUBJECT_PREFIX, formatGradingSubject, parseGradingSubject } from "@/lib/grading-subject";
 import {
-  attachClevMarks,
+  clevMarksBySubjectFrom,
   latestRunsByStudent,
+  sumClevMarks,
   type AcceptanceRef,
   type ClevMarkRow,
-  type OverviewResultRef,
+  type ClevMarksSummary,
 } from "@/lib/ai-grade-review";
 import { fetchAllRows } from "@/lib/na-scanning";
 import { findUnmarkedBatchStudents, type SplitBatchRef, type UnmarkedBatchStudent } from "@/lib/batch-unmarked";
@@ -51,9 +52,15 @@ export type AiGradeOverviewResult =
   | {
       ok: true;
       runs: AiGradeRunRow[];
-      results: OverviewResultRef[];
+      results: AcceptanceRef[];
       /** Students a batch scan was confirmed for who have no run at all (lib/batch-unmarked.ts). */
       unmarked: UnmarkedBatchStudent[];
+      /**
+       * What ClevMarks holds on the test per student, keyed by subject id --
+       * the roster's "ClevMarks 41/50" beside the AI's total. Empty when
+       * nobody has a completed run, or when ClevMarks could not be read.
+       */
+      clevMarks: Record<string, ClevMarksSummary>;
     }
   | { ok: false; status: 500; error: string };
 
@@ -61,10 +68,9 @@ const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 /**
  * Every run of the test, newest first, with student_id collapsed to the
- * opaque subject id (see formatGradingSubject), and { run_id, accepted,
- * marks_awarded } for each part of each subject's newest complete run -- the
- * acceptance counts and the ClevMarks totals the roster shows, and nothing
- * else.
+ * opaque subject id (see formatGradingSubject), { run_id, accepted } for
+ * each subject's newest complete run -- the acceptance counts the roster
+ * shows, and nothing else -- and each subject's ClevMarks total on the test.
  *
  * The runs are not capped. Overnight marking creates one run per student on
  * every click, so a class that has been re-marked a few times passes 100 runs
@@ -78,7 +84,7 @@ const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
  * 2026) that was 18,119 rows in a 20 MB response to count 1,752, and the
  * page sat on "Loading this assessment..." for over half a minute. So only
  * the runs the page will show are counted -- chosen by latestRunsByStudent,
- * the same function the page uses -- and only these three fields are sent.
+ * the same function the page uses -- and only these two columns are sent.
  */
 export async function loadAiGradeOverview(
   supabase: SupabaseClient,
@@ -107,49 +113,47 @@ export async function loadAiGradeOverview(
   const runs = rawRuns.map((r) => ({ ...r, student_id: formatGradingSubject(r) }));
   // Started now so it runs alongside the acceptance read below.
   const unmarkedLoad = loadUnmarkedBatchStudents(supabase, testId, runs);
-  if (runs.length === 0) return { ok: true, runs: [], results: [], unmarked: await unmarkedLoad };
+  if (runs.length === 0) return { ok: true, runs: [], results: [], unmarked: await unmarkedLoad, clevMarks: {} };
 
   const latestIds = Object.values(latestRunsByStudent(runs).latestComplete).map((r) => r.id);
-  if (latestIds.length === 0) return { ok: true, runs, results: [], unmarked: await unmarkedLoad };
-  // Started now so it runs alongside the acceptance read below; neither
-  // needs the other until they are joined.
+  if (latestIds.length === 0) return { ok: true, runs, results: [], unmarked: await unmarkedLoad, clevMarks: {} };
+  // Started now so it runs alongside the acceptance read below.
   const clevMarksLoad = loadClevMarks(supabase, testId);
   try {
     // Still paged: the newest runs alone pass PostgREST's 1000-row cap on a
     // big class (49 runs x 36 parts on Key Assessment 1).
-    const rows = await fetchAllRows<AcceptanceRef & { test_item_id: string }>((from, to) =>
+    const results = await fetchAllRows<AcceptanceRef>((from, to) =>
       supabase
         .from("ai_grade_results")
-        .select("run_id, accepted, test_item_id")
+        .select("run_id, accepted")
         .in("run_id", latestIds)
         .order("id", { ascending: true })
         .range(from, to)
     );
-    const results = attachClevMarks(rows, runs, await clevMarksLoad);
-    return { ok: true, runs, results, unmarked: await unmarkedLoad };
+    return { ok: true, runs, results, unmarked: await unmarkedLoad, clevMarks: await clevMarksLoad };
   } catch (e) {
     return { ok: false, status: 500, error: message(e) };
   }
 }
 
 /**
- * Every mark ClevMarks holds on the test, for the roster's "ClevMarks 41/50"
- * beside the AI's own total (see attachClevMarks).
+ * What ClevMarks holds on the test for each student, over every part of the
+ * test -- not only the parts in a run: see clevMarksBySubjectFrom.
  *
  * Paged like the gradebook's read of the same table: one assessment for a
  * 50-student track is ~1,800 marks, past PostgREST's silent 1000-row cap.
  *
- * Best-effort: null when either read fails, which leaves the figure off the
+ * Best-effort: empty when either read fails, which leaves the figure off the
  * roster rather than stopping it loading -- the same footing as the absences
  * and the unmarked-batch flags. Never rejects.
  */
-async function loadClevMarks(supabase: SupabaseClient, testId: string): Promise<ClevMarkRow[] | null> {
+async function loadClevMarks(supabase: SupabaseClient, testId: string): Promise<Record<string, ClevMarksSummary>> {
   try {
     const { data: items, error } = await supabase.from("test_items").select("id").eq("test_id", testId);
-    if (error) return null;
+    if (error) return {};
     const itemIds = (items ?? []).map((i) => i.id as string);
-    if (itemIds.length === 0) return [];
-    return await fetchAllRows<ClevMarkRow>((from, to) =>
+    if (itemIds.length === 0) return {};
+    const marks = await fetchAllRows<ClevMarkRow>((from, to) =>
       supabase
         .from("student_marks")
         .select("test_item_id, student_id, invited_student_id, marks_awarded")
@@ -157,6 +161,46 @@ async function loadClevMarks(supabase: SupabaseClient, testId: string): Promise<
         .order("id", { ascending: true })
         .range(from, to)
     );
+    return clevMarksBySubjectFrom(marks);
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * What ClevMarks holds on the test for one student (`studentId` the opaque
+ * subject id): each part's mark, which the review panel's boxes start from,
+ * and the whole test's total, which is their roster line's ClevMarks figure
+ * -- the same figure loadClevMarks gives the roster for everyone, so an
+ * accept made in the panel can move it without reloading the class. Read
+ * over every part of the test, like loadClevMarks, not only the parts in
+ * the student's runs.
+ *
+ * Null when a read fails; the panel then starts its boxes from the
+ * suggestions, as it always did when this read came back empty. Never
+ * rejects.
+ */
+export async function loadStudentClevMarks(
+  supabase: SupabaseClient,
+  testId: string,
+  studentId: string
+): Promise<{ byItem: Map<string, number>; summary: ClevMarksSummary } | null> {
+  try {
+    const { data: items, error: itemsErr } = await supabase.from("test_items").select("id").eq("test_id", testId);
+    if (itemsErr) return null;
+    const itemIds = (items ?? []).map((i) => i.id as string);
+    if (itemIds.length === 0) return { byItem: new Map(), summary: { total: 0, marked: 0 } };
+    const subject = parseGradingSubject(studentId);
+    const marksQuery = supabase.from("student_marks").select("test_item_id, marks_awarded").in("test_item_id", itemIds);
+    const { data: marks, error } = await (subject.kind === "invited"
+      ? marksQuery.eq("invited_student_id", subject.id)
+      : marksQuery.eq("student_id", subject.id));
+    if (error) return null;
+    const byItem = new Map<string, number>();
+    for (const m of marks ?? []) {
+      if (typeof m.marks_awarded === "number") byItem.set(m.test_item_id as string, m.marks_awarded);
+    }
+    return { byItem, summary: sumClevMarks(marks ?? []) };
   } catch {
     return null;
   }

@@ -31,13 +31,12 @@ import {
   selfMarkDiffers,
   deriveOverviewState,
   buildRosterOptions,
-  clevMarksByRunFrom,
   rosterMarkSegments,
   reviewMarkTotals,
 } from "@/lib/ai-grade-review";
 import type {
+  AcceptanceRef,
   ClevMarksSummary,
-  OverviewResultRef,
   RosterOption,
   RosterSourceRef,
   SelfScoreRef,
@@ -292,7 +291,8 @@ export interface AiGradeInitial {
   runsByStudent: Record<string, RunRow>;
   newerAttemptByStudent: Record<string, RunRow>;
   acceptanceByRun: Record<string, { accepted: number; total: number }>;
-  clevMarksByRun: Record<string, ClevMarksSummary>;
+  /** What ClevMarks holds on the test per student, keyed by subject id. */
+  clevMarksBySubject: Record<string, ClevMarksSummary>;
   submittedStudentCount: number;
   outstandingCollectCount: number;
   absentStudentIds: string[];
@@ -490,9 +490,9 @@ export function AiGradeClient({
   const [acceptanceByRun, setAcceptanceByRun] = useState<Record<string, { accepted: number; total: number }>>(
     initial?.acceptanceByRun ?? {}
   );
-  /** What ClevMarks holds over a run's parts, keyed by run id -- the roster's "ClevMarks 41/50". */
-  const [clevMarksByRun, setClevMarksByRun] = useState<Record<string, ClevMarksSummary>>(
-    initial?.clevMarksByRun ?? {}
+  /** What ClevMarks holds on the test per student, keyed by subject id -- the roster's "ClevMarks 41/50". */
+  const [clevMarksBySubject, setClevMarksBySubject] = useState<Record<string, ClevMarksSummary>>(
+    initial?.clevMarksBySubject ?? {}
   );
 
   // -- Manually correcting a misread transcription (evidence) and re-grading it --
@@ -610,7 +610,7 @@ export function AiGradeClient({
       // it counts, so the counts are always for the run shown.
       const overview = deriveOverviewState(
         (runs1.data.runs as RunRow[]) ?? [],
-        (runs1.data.results as OverviewResultRef[]) ?? []
+        (runs1.data.results as AcceptanceRef[]) ?? []
       );
       setRunsByStudent(overview.runsByStudent);
       setNewerAttemptByStudent(overview.newerAttemptByStudent);
@@ -628,7 +628,7 @@ export function AiGradeClient({
       }
 
       setAcceptanceByRun(overview.acceptanceByRun);
-      setClevMarksByRun(overview.clevMarksByRun);
+      setClevMarksBySubject((runs1.data.clev_marks as Record<string, ClevMarksSummary> | undefined) ?? {});
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not load this assessment.");
     }
@@ -839,15 +839,11 @@ export function AiGradeClient({
               total: rowsForLatest.length,
             },
           }));
-          // The same rows carry what ClevMarks holds for each part, so an
-          // accept made in this panel moves the roster's ClevMarks figure too.
-          const clevMarks = clevMarksByRunFrom(rowsForLatest)[latestRun.id];
-          setClevMarksByRun((prev) => {
-            const next = { ...prev };
-            if (clevMarks) next[latestRun.id] = clevMarks;
-            else delete next[latestRun.id];
-            return next;
-          });
+          // The same load reads what ClevMarks holds on the whole test, so an
+          // accept made in this panel moves the roster's ClevMarks figure
+          // too. Null (the read failed) keeps what the roster had.
+          const clevMarks = data.clev_marks as ClevMarksSummary | null | undefined;
+          if (clevMarks) setClevMarksBySubject((prev) => ({ ...prev, [studentId]: clevMarks }));
         }
       } catch (e) {
         if (superseded()) return;
@@ -2808,7 +2804,10 @@ export function AiGradeClient({
                                   AI's never moves once it has marked, so it
                                   is labelled as the AI's and what ClevMarks
                                   actually holds is printed beside it. */}
-                              {rosterMarkSegments(run.coverage, clevMarksByRun[run.id])
+                              {rosterMarkSegments(run.coverage, clevMarksBySubject[s.profile_id], {
+                                parts: totalItems,
+                                maxMarks: maxTotal,
+                              })
                                 .map((segment) => ` · ${segment}`)
                                 .join("")}
                               {run.error && ` — ${run.error}`}

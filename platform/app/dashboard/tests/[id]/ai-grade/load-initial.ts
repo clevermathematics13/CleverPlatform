@@ -108,7 +108,8 @@ async function buildInitial(
     runsByStudent: state.runsByStudent,
     newerAttemptByStudent: state.newerAttemptByStudent,
     acceptanceByRun: state.acceptanceByRun,
-    clevMarksByRun: state.clevMarksByRun,
+    // Best-effort like the absences: empty when ClevMarks could not be read.
+    clevMarksBySubject: overview.clevMarks,
     submittedStudentCount: state.submittedStudentCount,
     outstandingCollectCount: state.outstandingCollectCount,
     // Best-effort, as in the client: a failed read means nobody shows as
