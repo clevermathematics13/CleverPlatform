@@ -57,8 +57,9 @@ interface ResultRow {
  *     cut down to { run_id, accepted } for each student's newest complete
  *     run -- the acceptance counts the roster shows, and nothing else --
  *     `unmarked`, anyone a batch scan was confirmed for who has no run at
- *     all (lib/batch-unmarked.ts), and `clev_marks`, what ClevMarks holds
- *     on the test per student;
+ *     all (lib/batch-unmarked.ts), `clev_marks`, what ClevMarks holds on
+ *     the test per student, and `parts_without_mark`, the parts each student
+ *     has no mark for at all (partsWithoutMarkBySubject);
  *   - with studentId (one student's review panel): their last few runs with
  *     full result rows, signed evidence crops, PPQ images, what Clev's Marks
  *     holds for each part and on the whole test (`clev_marks`), and their
@@ -80,7 +81,7 @@ export async function GET(
   // Built in lib/ai-grade-overview.ts (see there for why it is shaped this
   // way), which the AI-grade page also calls to render its roster on the
   // server. The keys a tab still running an older page reads are unchanged;
-  // clev_marks is only added.
+  // clev_marks and parts_without_mark are only added.
   if (!studentId) {
     const overview = await loadAiGradeOverview(supabase, testId);
     if (!overview.ok) return NextResponse.json({ error: overview.error }, { status: overview.status });
@@ -89,6 +90,7 @@ export async function GET(
       results: overview.results,
       unmarked: overview.unmarked,
       clev_marks: overview.clevMarks,
+      parts_without_mark: overview.partsWithoutMark,
     });
   }
 
