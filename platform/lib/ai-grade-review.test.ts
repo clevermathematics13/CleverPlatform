@@ -16,6 +16,8 @@ import {
   acceptanceByRunFrom,
   sumClevMarks,
   clevMarksBySubjectFrom,
+  partsWithoutMarkBySubject,
+  remarkGroups,
   rosterMarkSegments,
   reviewMarkTotals,
   latestRunPerSubject,
@@ -276,6 +278,116 @@ describe("clevMarksBySubjectFrom", () => {
 
   it("gives a student with no marks, or a mark with no student, no entry", () => {
     expect(clevMarksBySubjectFrom([mark("q1", null, SALIM), mark("q2", 1, null)])).toEqual({});
+  });
+});
+
+describe("partsWithoutMarkBySubject", () => {
+  const mark = (test_item_id: string, marks_awarded: number | null, student_id: string) => ({
+    test_item_id,
+    student_id,
+    invited_student_id: null,
+    marks_awarded,
+  });
+  const order = ["q5a", "q14a", "q14b", "q14c", "q15"];
+  const runs = [
+    { id: "salim-run", student_id: SALIM },
+    { id: "luciana-run", student_id: LUCIANA },
+  ];
+
+  // Key Assessment 1, 25 Sep 2026: 14(b) graded for most of the class, but not
+  // in these students' runs, and nothing in ClevMarks for it.
+  it("lists a part the student's run has no grade for and ClevMarks has nothing for", () => {
+    const rows = [
+      { run_id: "salim-run", test_item_id: "q14a" },
+      { run_id: "salim-run", test_item_id: "q14b" },
+      { run_id: "luciana-run", test_item_id: "q14a" },
+    ];
+    expect(partsWithoutMarkBySubject(runs, rows, [], order)).toEqual({ [LUCIANA]: ["q14b"] });
+  });
+
+  it("leaves out a part with a mark entered by hand", () => {
+    const rows = [
+      { run_id: "salim-run", test_item_id: "q14b" },
+      { run_id: "luciana-run", test_item_id: "q14a" },
+    ];
+    expect(partsWithoutMarkBySubject(runs, rows, [mark("q14b", 0, LUCIANA)], order)).toEqual({ [SALIM]: ["q14a"] });
+  });
+
+  // A suggestion waiting to be accepted is unaccepted, not missing.
+  it("leaves out a part the run graded, accepted or not", () => {
+    const rows = [
+      { run_id: "salim-run", test_item_id: "q14b" },
+      { run_id: "luciana-run", test_item_id: "q14b" },
+    ];
+    expect(partsWithoutMarkBySubject(runs, rows, [], order)).toEqual({});
+  });
+
+  // No mark scheme: the marker grades it for nobody, and a re-mark cannot help.
+  it("never lists a part the marker has graded for nobody", () => {
+    const rows = [
+      { run_id: "salim-run", test_item_id: "q14a" },
+      { run_id: "luciana-run", test_item_id: "q14a" },
+    ];
+    expect(partsWithoutMarkBySubject(runs, rows, [], order)).toEqual({});
+  });
+
+  it("lists a student's missing parts in paper order", () => {
+    const rows = [
+      { run_id: "salim-run", test_item_id: "q15" },
+      { run_id: "salim-run", test_item_id: "q5a" },
+      { run_id: "salim-run", test_item_id: "q14c" },
+      { run_id: "luciana-run", test_item_id: "q14c" },
+    ];
+    expect(partsWithoutMarkBySubject(runs, rows, [], order)).toEqual({ [LUCIANA]: ["q5a", "q15"] });
+  });
+});
+
+describe("remarkGroups", () => {
+  const THIRD = "0e9d3c55-3a37-4f0a-9f0e-5f1c3c7a2b11";
+  const FOURTH = "7c1f2a9e-8d44-4b6e-a0a5-3f2e9b1d6c22";
+  const latest = {
+    [SALIM]: { source_storage_path: "t/salim/scan.pdf" },
+    [LUCIANA]: { source_storage_path: "t/luciana/scan.pdf" },
+    [THIRD]: { source_storage_path: null },
+    [FOURTH]: { source_storage_path: "t/fourth/scan.pdf" },
+  };
+
+  it("groups students missing the same parts, in roster order", () => {
+    const groups = remarkGroups(
+      { [SALIM]: ["q14b"], [LUCIANA]: ["q14b"], [FOURTH]: ["q5a", "q15"] },
+      [LUCIANA, FOURTH, SALIM],
+      latest,
+      {}
+    );
+    expect(groups).toEqual([
+      {
+        testItemIds: ["q14b"],
+        ready: [
+          { studentId: LUCIANA, storagePath: "t/luciana/scan.pdf" },
+          { studentId: SALIM, storagePath: "t/salim/scan.pdf" },
+        ],
+        inFlight: [],
+        noScan: [],
+      },
+      { testItemIds: ["q5a", "q15"], ready: [{ studentId: FOURTH, storagePath: "t/fourth/scan.pdf" }], inFlight: [], noScan: [] },
+    ]);
+  });
+
+  // Sending a student whose re-mark is already queued would pay for it twice.
+  it("holds back a student already being marked, and says who has no scan", () => {
+    const [group] = remarkGroups(
+      { [SALIM]: ["q14b"], [LUCIANA]: ["q14b"], [THIRD]: ["q14b"] },
+      [SALIM, LUCIANA, THIRD],
+      latest,
+      { [SALIM]: { status: "submitted" }, [LUCIANA]: { status: "failed" } }
+    );
+    expect(group.inFlight).toEqual([SALIM]);
+    expect(group.ready).toEqual([{ studentId: LUCIANA, storagePath: "t/luciana/scan.pdf" }]);
+    expect(group.noScan).toEqual([THIRD]);
+  });
+
+  it("leaves out a student who is not on the roster", () => {
+    expect(remarkGroups({ [SALIM]: ["q14b"] }, [LUCIANA], latest, {})).toEqual([]);
   });
 });
 
