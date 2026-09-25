@@ -4087,7 +4087,8 @@ What was done, with the teacher's go-ahead to rebuild in place:
   `\hfill \textbf{(M1)}`.** `LatexRenderer` prints the text after `\hfill`
   verbatim, after `preprocessLatex` has already turned `\textbf{..}` into its
   private-use bold markers, so a bold mark code shows as `◆(M1)◇`. The L67
-  schemes above use the bold form and display that way (follow-up below).
+  schemes above used the bold form; they were fixed the same day (next
+  subsection).
 
 Verified, read-only, through the real modules (`loadGradeableMarkScheme`,
 `summariseMarkSchemeReadiness`, `assembleMarkschemeImages`,
@@ -4111,6 +4112,32 @@ is `20260925040006_mark_scheme_explanations`, which lives on
 `claude/amazing-curie-om19bf`; the migrations workflow stays red on it until
 that branch merges. That is the documented fail-safe, not drift to repair.
 
+### L67's mark codes made plain (25 Sep 2026)
+
+At the teacher's request, the same fix for the eight L67 questions -- which
+were the only rows in the whole bank with a `\textbf{}`/`\textit{}` mark
+after `\hfill` (14 parts, plus the `parts_draft_markscheme_latex` of
+18M.1.SL.TZ2.S_3, 18N.1.AHL.TZ0.H_9 and H_10, so a later LaTeX Review
+"Apply to editors" cannot bring them back). 17 fields, written
+compare-and-set against a backup, read back by md5; no migration (IB text).
+
+- Mark column: `\hfill \textbf{(M1)}` -> `\hfill (M1)`, and the SL form
+  `\hfill \textit{A1} \quad \textit{N2}` -> `\hfill A1 N2`, as printed.
+- Three more things the teacher saw on screen in the same schemes, fixed
+  alongside: a `\quad` outside maths prints as the literal text "\quad"
+  (13M.1.AHL.TZ2.H_5, 17N.1.AHL.TZ0.H_4, 18M.1.SL.TZ2.S_3), so it became a
+  space; TeX quotes ``$u$'' print their backticks (13M.1.AHL.TZ2.H_5), so
+  they became curly quotes; and in 18N.1.AHL.TZ0.H_10 (a) the `\hfill A1A1`
+  line directly under `\end{tabular}` is merged onto it by
+  `mergeTrailingHfillLines`, so the table's `[[TABULAR_0]]` placeholder was
+  no longer alone on its line and printed literally -- a blank line between
+  them lets the table render.
+- Checked by rendering all 14 parts before and after through the real
+  `LatexRenderer`: 200 visible marker glyphs before, none after, and no
+  literal command, placeholder or TeX quote left. `loadGradeableMarkScheme`
+  on L67 still gives 14/14 parts, 70 marks, all `part_latex`, no warnings.
+  `\quad` inside maths was left alone (KaTeX sets it as a space).
+
 ### Not done (follow-ups)
 
 - ExamBuilder "Save to Gradebook" (`app/api/gradebook/tests/route.ts`) could
@@ -4121,11 +4148,16 @@ that branch merges. That is the documented fail-safe, not drift to repair.
   question content" for a mark scheme; it should ask for the mark scheme.
 - LaTeX Review's image-presence lookup (`review/page.tsx`) needs paging or a
   per-question query; at ~600 questions it passes the 1000-row cap.
-- `LatexRenderer` shows a bold mark code after `\hfill` as `◆(M1)◇` (the mark
-  column prints `splitHfillMark`'s text raw, after `preprocessLatex`). Either
-  render the markers there or rewrite the L67 schemes' marks as plain
-  `\hfill (M1)`. The extraction prompts' style guide (`IB_NORMALISE_SYSTEM`)
-  is worth checking for the same advice.
+- `LatexRenderer` still shows a bold mark code after `\hfill` as `◆(M1)◇`
+  (the mark column prints `splitHfillMark`'s text raw, after
+  `preprocessLatex`), a table with a mark on the line under `\end{tabular}`
+  as `[[TABULAR_n]]`, and a text-mode `\quad` literally. A scan of all 2101
+  parts on 25 Sep 2026 found no bold/italic mark and no table-then-mark left
+  (the L67 ones were rewritten), but a text-mode `\quad` still in three
+  questions outside L67: 15M.2.SL.TZ1.S_1, 18M.2.SL.TZ1.S_8 and
+  24M.1.AHL.TZ2.H_7. The extraction style guide (`IB_LATEX_STYLE_GUIDE`)
+  already asks for plain `\hfill (A1)`; hardening the renderer would stop a
+  hand-typed scheme bringing any of these back.
 - K05 P2: the four new parts' subtopics (H_7(b) 5.13, H_9(b) 1.10, H_12(d)
   5.8, H_12(f) `5.18 (sep)`) were chosen by hand, not by Auto-classify; the
   old whole-question Tesseract `markscheme_text` still sits on H_8, H_9(a)
