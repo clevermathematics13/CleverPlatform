@@ -3776,3 +3776,38 @@ reflection bundle, so it must never gain an `ai-grade` URL or AI copy; and
 the IB course "Applications & Interpretation" is abbreviated AI, so a test
 or packet NAME can still put the letters on a student's screen (none visible
 today).
+
+## 39. Student mark schemes put marking codes into words (24 Sep 2026)
+
+`stripMarkCodes` (`lib/student-mark-scheme.ts`) turns a teacher's
+"How it's marked" note into what a student reads, on the full mark-scheme
+page and beside each part of the self-grade form. It used to delete every
+M/A/R code and then recapitalise every sentence, which garbled 12 of the 103
+live notes and left "FT" in 7 more:
+
+- a code used as a noun left a hole: "three of four earns M1A0." read "three
+  of four earns", "(the R1 is for the conclusion ... earns M1R0)" read "(the
+  is for the conclusion ... earns )", and a sentence ran into the next;
+- recapitalising changed the maths: "A1 for x = ..." read "X = ...",
+  "A1. u^2 - v^2" read "U^2 - v^2", and "e.g. dividing" became "e.g.
+  Dividing";
+- "A1 -- the whole ..." kept its dash.
+
+Now each code becomes the words it stands for, in the vocabulary the
+Formative Assessment principles and the notes' own prose use: "M1 for X" is
+"Method mark for X", "earns M1A0" is "earns the method mark only", "M0A0"
+is "no marks", "M1M0A0" is "the first method mark only", "the R1" is "the
+reasoning mark", FT is "follow-through" ("FT through (b)" is "follow-through
+applies to (b)"), and "the second M" is "the second method mark". A code
+that only labels a part ("A1." opening a one-mark note) is still dropped. The
+teacher's own words are never recapitalised; only a dash-continued label's
+next plain word is ("A1 -- the whole" reads "The whole").
+
+- Checked against all 103 live notes (Extended KA1, Formative Assessment 1
+  and Standard Level KA1): 42 read differently, none keeps a code, none has
+  a hole, and no variable changes case. Standard Level KA1 has no codes and
+  is unchanged.
+- §34 rewrote Extended KA1's outcomes in words to dodge the holes; that is
+  no longer needed, so a teacher can write "earns M1A0" again.
+- A part whose note was only a label and which has no answer now shows no
+  box at all, rather than an empty one.
