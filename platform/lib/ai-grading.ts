@@ -188,6 +188,17 @@ export function unitLabel(u: Pick<GradingUnit, "questionNumber" | "partLabel">):
 }
 
 /**
+ * The warning for a part the marker returned no grade for. Written by the
+ * validator for a part missing from the model's answer, and by
+ * persistGradeOutcome (lib/ai-grading-run.ts) for a part a partial re-mark
+ * leaves with no row at all -- one wording, so the review panel reads the
+ * same either way.
+ */
+export function noGradeReturnedWarning(u: Pick<GradingUnit, "questionNumber" | "partLabel">): string {
+  return `No grade returned for ${unitLabel(u)} — left ungraded for manual marking`;
+}
+
+/**
  * Whether a mark scheme token is written in parentheses, e.g. "(M1)" or
  * "(A1)" -- IB notation for an IMPLIED mark (see rule 13): awardable from a
  * correct later result even without its own explicit line in the working.
@@ -675,9 +686,7 @@ export function validateGradeResponse(
   }
 
   for (const u of units) {
-    if (!seen.has(u.testItemId)) {
-      warnings.push(`No grade returned for ${unitLabel(u)} — left ungraded for manual marking`);
-    }
+    if (!seen.has(u.testItemId)) warnings.push(noGradeReturnedWarning(u));
   }
 
   if (grades.length === 0) {

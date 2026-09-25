@@ -20,7 +20,7 @@ import {
   loadStudentDisplayName,
   persistGradeOutcome,
 } from "@/lib/ai-grading-run";
-import { AI_GRADE_RUN_COLUMNS, loadAiGradeOverview } from "@/lib/ai-grade-overview";
+import { AI_GRADE_RUN_COLUMNS, loadAiGradeOverview, loadStudentClevMarks } from "@/lib/ai-grade-overview";
 import type { AiGradeRunRow } from "@/lib/ai-grade-overview";
 import { fetchAllRows } from "@/lib/na-scanning";
 import { findScansMarkedBefore, uprightScan } from "@/lib/scan-orientation";
@@ -56,12 +56,14 @@ interface ResultRow {
  *   - without studentId (the roster): every run of the test, `results`
  *     cut down to { run_id, accepted } for each student's newest complete
  *     run -- the acceptance counts the roster shows, and nothing else --
- *     and `unmarked`, anyone a batch scan was confirmed for who has no run
- *     at all (lib/batch-unmarked.ts);
+ *     `unmarked`, anyone a batch scan was confirmed for who has no run at
+ *     all (lib/batch-unmarked.ts), and `clev_marks`, what ClevMarks holds
+ *     on the test per student;
  *   - with studentId (one student's review panel): their last few runs with
  *     full result rows, signed evidence crops, PPQ images, what Clev's Marks
- *     holds for each part, and their self-assessment of the test as
- *     `self_scores` (see loadSelfScores below).
+ *     holds for each part and on the whole test (`clev_marks`), and their
+ *     self-assessment of the test as `self_scores` (see loadSelfScores
+ *     below).
  */
 export async function GET(
   request: NextRequest,
@@ -77,17 +79,23 @@ export async function GET(
   // -- The whole-class load: acceptance counts and nothing else --------------
   // Built in lib/ai-grade-overview.ts (see there for why it is shaped this
   // way), which the AI-grade page also calls to render its roster on the
-  // server. Same keys as ever, so a tab still running an older page reads
-  // the response unchanged.
+  // server. The keys a tab still running an older page reads are unchanged;
+  // clev_marks is only added.
   if (!studentId) {
     const overview = await loadAiGradeOverview(supabase, testId);
     if (!overview.ok) return NextResponse.json({ error: overview.error }, { status: overview.status });
-    return NextResponse.json({ runs: overview.runs, results: overview.results, unmarked: overview.unmarked });
+    return NextResponse.json({
+      runs: overview.runs,
+      results: overview.results,
+      unmarked: overview.unmarked,
+      clev_marks: overview.clevMarks,
+    });
   }
 
   // Started now and awaited at the end, so the Self column costs no extra
-  // round trip on a single student's review load.
+  // round trip on a single student's review load -- and ClevMarks likewise.
   const selfScoresPromise = loadSelfScores(supabase, testId, studentId);
+  const clevMarksPromise = loadStudentClevMarks(supabase, testId, studentId);
 
   // One student's own history: the review UI shows the last few attempts,
   // so this cap is the feature, not a limit to page around.
@@ -147,26 +155,12 @@ export async function GET(
   // was accepted" once a teacher overrides it. Without this, reopening an
   // already-accepted row's review showed the model's original number again
   // instead of the teacher's override, which read as the edit having
-  // reverted even though Clev's Marks itself was correct. Only worth the
-  // extra query for a single student's review pane, not the whole-class
-  // overview, which never shows individual mark inputs.
-  const marksAwardedByTestItem = new Map<string, number>();
-  if (studentId && rows.length > 0) {
-    const subject = parseGradingSubject(studentId);
-    const testItemIds = [...new Set(rows.map((r) => r.test_item_id))];
-    let marksQuery = supabase
-      .from("student_marks")
-      .select("test_item_id, marks_awarded")
-      .in("test_item_id", testItemIds);
-    marksQuery =
-      subject.kind === "invited"
-        ? marksQuery.eq("invited_student_id", subject.id)
-        : marksQuery.eq("student_id", subject.id);
-    const { data: marks } = await marksQuery;
-    for (const m of marks ?? []) {
-      if (typeof m.marks_awarded === "number") marksAwardedByTestItem.set(m.test_item_id, m.marks_awarded);
-    }
-  }
+  // reverted even though Clev's Marks itself was correct. Per part only for
+  // a single student's review pane, not the whole-class overview, which
+  // never shows individual mark inputs. The same read gives the whole test's
+  // total, so an accept made in the pane moves the roster's ClevMarks figure.
+  const clevMarks = await clevMarksPromise;
+  const marksAwardedByTestItem = clevMarks?.byItem ?? new Map<string, number>();
 
   // -- Evidence crop images (private "exam-scans" bucket) ---------------------
   const evidencePaths = [...new Set(rows.map((r) => r.evidence_image_path).filter((p): p is string => !!p))];
@@ -223,6 +217,8 @@ export async function GET(
     runs,
     results: resultsWithImages,
     self_scores: await selfScoresPromise,
+    // Null when ClevMarks could not be read: the roster keeps what it had.
+    clev_marks: clevMarks?.summary ?? null,
   });
 }
 

@@ -19,6 +19,7 @@ import {
   isCustomAssessment,
   isImpliedToken,
   matchSegmentsToRoster,
+  noGradeReturnedWarning,
   validateGradeResponse,
   type ClassRosterEntry,
   type GradingUnit,
@@ -317,6 +318,35 @@ describe("matchSegmentsToRoster", () => {
 });
 
 describe("validateGradeResponse", () => {
+  // persistGradeOutcome writes the same warning for a part a partial re-mark
+  // leaves with no row, so the wording is shared and pinned here.
+  it("warns, in noGradeReturnedWarning's words, for a part the model returned nothing for", () => {
+    const answered = unit({ testItemId: "item-14a", questionNumber: 14, partLabel: "a", maxMarks: 2, markscheme: "M1 A1" });
+    const skipped = unit({ testItemId: "item-14b", questionNumber: 14, partLabel: "b", maxMarks: 1, markscheme: "A1" });
+    const raw = JSON.stringify({
+      items: [
+        {
+          testItemId: "item-14a",
+          suggestedMarks: 2,
+          confidence: "high",
+          workFound: true,
+          markBreakdown: [
+            { token: "M1", awarded: true, note: "" },
+            { token: "A1", awarded: true, note: "" },
+          ],
+          reasoning: "",
+          evidence: "",
+        },
+      ],
+    });
+
+    const result = validateGradeResponse(raw, [answered, skipped]);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.outcome.warnings).toContain(noGradeReturnedWarning(skipped));
+    expect(noGradeReturnedWarning(skipped)).toBe("No grade returned for 14(b) — left ungraded for manual marking");
+  });
+
   // Regression: a real production result had suggestedMarks: 6 while its own
   // mark_breakdown awarded only 5 tokens (M1, A1, A1, R1, A1 -- the part (c)
   // M1/A1 pair was correctly marked not-awarded in the breakdown, but
