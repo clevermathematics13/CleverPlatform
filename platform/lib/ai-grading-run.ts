@@ -34,6 +34,7 @@ import {
   buildGradingSystemPrompt,
   buildGradingUserPrompt,
   gradeNeedsReview,
+  noGradeReturnedWarning,
   unitLabel,
   type GradingSubject,
   type GradingUnit,
@@ -450,6 +451,21 @@ export async function fetchEvidenceCrops(
 // Persistence
 // -----------------------------------------------------------------------------
 
+/**
+ * The gradeable parts a partial re-mark leaves with no row at all: not asked
+ * for, and not carried from the previous run because that run had no grade
+ * for them either. A requested part that came back without a grade is not
+ * one of them -- the validator, which checks the requested parts, has
+ * already said so.
+ */
+export function partsLeftWithoutRow(
+  gradeable: readonly GradingUnit[],
+  presentTestItemIds: ReadonlySet<string>,
+  requested: ReadonlySet<string>
+): GradingUnit[] {
+  return gradeable.filter((u) => !presentTestItemIds.has(u.testItemId) && !requested.has(u.testItemId));
+}
+
 /** ai_grade_runs.coverage, as the review UI and both senders' responses read it. */
 export type GradeCoverage = {
   partsInAssessment: number;
@@ -614,8 +630,9 @@ export async function persistGradeOutcome(args: {
   // The requested parts were just marked; every other gradeable part keeps
   // the previous run's row verbatim, acceptance included, under the new run
   // id. The crop path still points at the previous run's file, which stays
-  // in Storage. A part the previous run never marked is simply absent, the
-  // same as a part the model returned nothing for.
+  // in Storage. A part the previous run never marked is absent, the same as
+  // a part the model returned nothing for -- and warned about the same way
+  // (see partsLeftWithoutRow below).
   //
   // The previous run's warnings for those parts are copied too. The review
   // panel and scripts/confidence-calibration.ts read a row's warnings from
@@ -651,6 +668,20 @@ export async function persistGradeOutcome(args: {
   }
   const allRows = [...rows, ...carriedRows];
 
+  // -- ...and still names every part it has no grade for ---------------------
+  // A part the previous run had no grade for has no row to carry, and the
+  // validator's "No grade returned for 14(b)" never travelled with the rows:
+  // it names no part as a "14(b): " prefix, which is what warningsForParts
+  // copies by. So one partial re-mark of ANOTHER question erased it -- on Key
+  // Assessment 1, re-marking 5(a) on 24 Sep 2026 left 11 students with no
+  // 14(b) row and nothing on the page saying so. It is written again here for
+  // every such part. Not with no previous run at all, which the warning just
+  // above already covers for the whole paper.
+  const leftWithoutRow =
+    requested && priorFullRows.length > 0
+      ? partsLeftWithoutRow(gradeable, new Set(allRows.map((r) => r.test_item_id)), requested)
+      : [];
+
   const { error: insertErr } = await supabase.from("ai_grade_results").insert(allRows);
   if (insertErr) return { ok: false, error: `Could not save results: ${insertErr.message}` };
 
@@ -672,7 +703,12 @@ export async function persistGradeOutcome(args: {
     testTotalMarks,
     needsReview,
     acceptedCarriedForward,
-    warnings: [...assemblyWarnings, ...warnings, ...warningsForParts(carriedLabels, priorWarnings)],
+    warnings: [
+      ...assemblyWarnings,
+      ...warnings,
+      ...warningsForParts(carriedLabels, priorWarnings),
+      ...leftWithoutRow.map(noGradeReturnedWarning),
+    ],
   };
 
   // The result rows are already in, so a lost run update is not a lost mark

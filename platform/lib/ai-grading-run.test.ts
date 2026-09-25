@@ -9,7 +9,7 @@ import {
   buildGradingUserPrompt,
   type GradingUnit,
 } from "./ai-grading";
-import { buildGradingRequest } from "./ai-grading-run";
+import { buildGradingRequest, partsLeftWithoutRow } from "./ai-grading-run";
 
 /**
  * These are the pin on the extraction: the synchronous route used to build
@@ -149,5 +149,31 @@ describe("buildGradingRequest", () => {
     expect(perStudent.type).toBe("text");
     expect(perStudent.text.endsWith("Return the JSON object now.")).toBe(true);
     expect(perStudent.text).not.toContain("Student:");
+  });
+});
+
+describe("partsLeftWithoutRow", () => {
+  const part = (testItemId: string, questionNumber: number, partLabel: string): GradingUnit => ({
+    ...GRADEABLE[0],
+    testItemId,
+    questionNumber,
+    partLabel,
+  });
+  const paper = [part("5a", 5, "a"), part("14a", 14, "a"), part("14b", 14, "b"), part("14c", 14, "c")];
+
+  // Key Assessment 1, 24 Sep 2026: 5(a) was re-marked, and the run the rest
+  // was carried from had no grade for 14(b). Nothing then said so.
+  it("names a part that was neither marked now nor carried from the previous run", () => {
+    const left = partsLeftWithoutRow(paper, new Set(["5a", "14a", "14c"]), new Set(["5a"]));
+    expect(left.map((u) => u.testItemId)).toEqual(["14b"]);
+  });
+
+  // The validator checks the requested parts, so it has already warned.
+  it("leaves out a requested part that came back without a grade", () => {
+    expect(partsLeftWithoutRow(paper, new Set(["14a", "14b", "14c"]), new Set(["5a"]))).toEqual([]);
+  });
+
+  it("is empty when every part has a row", () => {
+    expect(partsLeftWithoutRow(paper, new Set(["5a", "14a", "14b", "14c"]), new Set(["5a"]))).toEqual([]);
   });
 });
