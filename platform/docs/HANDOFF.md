@@ -3901,6 +3901,10 @@ one row").
   run the same check; the Mark Scans banner covers tests made that way.
 - The three 422 messages still say "Extract the mark scheme LaTeX in the PPQ
   Bank" rather than pointing at LaTeX Review.
-- The run-app skill's `revoke-session.mjs` signs out with scope `"global"`,
-  which also ends the teacher's own browser sessions; `"local"` would revoke
-  only the minted one.
+- The run-app skill's `revoke-session.mjs` now runs in place and defaults to
+  scope `"local"` (it used to sign out `"global"`, which also ended the
+  teacher's own browser sessions). `mint-session.mjs` is unchanged: an agent
+  editing it, or `.claude/settings.json`, so that minting no longer prompts
+  was refused by the auto-mode check as a permission bypass. Whether agents
+  may mint a teacher session without a prompt is the teacher's setting to
+  add, not an agent's.

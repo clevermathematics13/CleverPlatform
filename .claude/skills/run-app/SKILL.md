@@ -83,8 +83,13 @@ Two things to respect:
   permission classifier, and rightly so. Explain what you are doing and why,
   and let them approve it. Do not look for a way around the refusal.
 - **Revoke afterwards.** `scripts/revoke-session.mjs` calls
-  `admin.auth.admin.signOut(access_token, "global")`. Run it and delete the
-  session file when you are done, so nothing outlives the task.
+  `admin.auth.admin.signOut(access_token, scope)`. Run it and delete the
+  session file when you are done, so nothing outlives the task. It runs in
+  place from the repo root (no copy into `platform/`):
+  `node .claude/skills/run-app/scripts/revoke-session.mjs --session <file>`.
+  `--scope` defaults to `local`, which ends only the minted session;
+  `--scope global` also signs the teacher out of every browser they are
+  logged in on, which is what it always did before 25 Sep 2026.
 
 The teacher account is `clevermathematics@gmail.com`; `app/auth/callback`
 hardcodes that address, and `getApiTeacher()` requires `profiles.role =
@@ -197,7 +202,7 @@ the `.mts` + `npx tsx` route in §4.
 
 ```bash
 pkill -f "next dev"           # returns 143; that is your own signal
-node <revoke-session script>  # then delete the session JSON
+node .claude/skills/run-app/scripts/revoke-session.mjs --session <file>  # from the repo root; then delete the file
 git status --porcelain        # must be clean
 ```
 
