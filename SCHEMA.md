@@ -610,7 +610,7 @@ Keyed on the natural key test_items is unique on, not `test_items.id`, so a Form
 Assessment re-save (which recreates its items) keeps the explanations of unchanged parts.
 Teachers of the test read and write it; students have no policy -- the server reads rows with
 the service role after the release gates (`lib/mark-scheme-explanation-store.ts`). Migration
-`20260925032046_mark_scheme_explanations.sql`.
+`20260925040006_mark_scheme_explanations.sql`.
 
 | column | type | default |
 |---|---|---|

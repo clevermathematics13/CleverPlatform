@@ -262,8 +262,9 @@ must exercise Server Actions.
 
 ## 4. Database and migrations
 
-**The migration ledger and the repo agree on versions: 184 files, 184 rows**
-(verified 24 Sep 2026 after §38's two migrations; it read 181/181 that morning, 83/83 when this handoff was written, 95/95 after
+**The migration ledger and the repo agree on versions: 185 files, 185 rows**
+(verified 25 Sep 2026 after §40's migration, by comparing the two version
+lists; it read 184/184 on 24 Sep after §38's two migrations, 181/181 that morning, 83/83 when this handoff was written, 95/95 after
 the second reconciliation, 116/116 after the third, 149/149 on 13 Sep and
 171/171 on 20 Sep). Two
 rows applied through MCP on 18 Sep (`20260918205816`, `20260918210444`) had no
@@ -3921,7 +3922,7 @@ Route: `app/api/tests/[id]/mark-scheme/explanations` (teacher only).
 ### Storage, and when a student sees an explanation
 
 Table `mark_scheme_explanations` (migration
-`20260925032046_mark_scheme_explanations.sql`, SCHEMA.md), keyed on `(test_id,
+`20260925040006_mark_scheme_explanations.sql`, SCHEMA.md), keyed on `(test_id,
 question_number, part_label)` so a creator re-save keeps unchanged parts'
 explanations, with `source_hash` = a hash of what the row was written from.
 A student is shown a row only while that hash matches the part as it stands:
@@ -3968,12 +3969,20 @@ already point at the platform's page.
 
 ### Not done, and what to do first
 
-- **Apply the migration before anything is written.** Without the table the
-  student pages are unchanged and the test page's section says the table is
-  missing. Apply through MCP `apply_migration` and rename the file to the
-  version the ledger assigns (supabase/migrations/README.md), or let the
-  migrations workflow apply it when this reaches `main` -- its version is
-  later than every ledger row at the time of writing.
+- **The migration is applied** (25 Sep 2026, with the teacher's go-ahead):
+  through MCP `apply_migration`, ledger version `20260925040006`, the file
+  renamed to it and byte-identical to the ledger row (md5 `49796c7d...`,
+  5586 bytes). The table is empty until the teacher writes explanations.
+  Checked straight after, in one transaction rolled back by a closing
+  `raise exception` so nothing persisted (0 rows afterwards): a real 9A
+  student read 0 rows with one present, and could not insert (42501),
+  update or delete; the teacher-role account `822c943e`, which owns no
+  tests, likewise; the owning teacher (`702750f6`) read, inserted, upserted
+  on the part key (the route's write), updated and deleted, while a
+  duplicate part and non-object content were refused; anon was refused
+  outright (42501). Four policies, the `set_updated_at` trigger, no anon
+  grant. Advisors: nothing new for security; for performance only an
+  unused-index INFO on `generated_by`, as any empty table has.
 - **No explanation exists yet.** Writing them needs `ANTHROPIC_API_KEY`,
   which production has and agent sessions do not: open each released test
   (Key Assessment 1 and Key Assessment 1 - Unit 1) and press "Write N

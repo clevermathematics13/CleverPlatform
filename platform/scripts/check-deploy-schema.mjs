@@ -96,7 +96,7 @@ const probes = [
     // teacher's "Write explanations" button fails on every part.
     table: "mark_scheme_explanations",
     column: "source_hash",
-    migration: "20260925032046_mark_scheme_explanations.sql",
+    migration: "20260925040006_mark_scheme_explanations.sql",
   },
 ];
 
