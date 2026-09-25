@@ -29,6 +29,9 @@ export function getNavigation(role: string, isGrade9 = false): NavigationItem[] 
       { href: "/dashboard/practice", label: "Practice (as a student)", icon: "\u{1F441}️" },
       { href: "/dashboard/assignments", label: "Assignments", icon: "\u{1F4CB}" },
       { href: "/dashboard/tests", label: "Tests", icon: "\u{1F4DD}" },
+      // Next to Tests, because it is a view OF the tests -- their dates, across
+      // every class at once. The dates themselves live on the test.
+      { href: "/dashboard/calendar", label: "Assessment Calendar", icon: "\u{1F4C5}" },
       { href: "/dashboard/placement", label: "Placement Tests", icon: "\u{1F9ED}" },
       { href: "/dashboard/reflection", label: "Exam Reflection", icon: "\u{1FA9E}" },
       { href: "/dashboard/remark-requests", label: "Re-mark Requests", icon: "\u{1F64B}" },
