@@ -3811,3 +3811,177 @@ next plain word is ("A1 -- the whole" reads "The whole").
   no longer needed, so a teacher can write "earns M1A0" again.
 - A part whose note was only a label and which has no answer now shows no
   box at all, rather than an empty one.
+
+## 40. Student mark schemes lead with the answer, and explain themselves (25 Sep 2026)
+
+The teacher asked for the mark schemes students read while self-assessing to
+be simpler: each part should start with the clear answer, then very brief
+notes, with an "Explain more" section, closed until opened, that explains
+the part in more detail with typeset maths and diagrams -- as a short
+slideshow with an "I understand, please continue" button, a button for
+further explanation, and a button to book office hours
+(https://calendar.app.google/ZV43sgr6EcWY5KkF8) -- easy to read for
+neurodivergent students, with the best maths rendering available.
+
+### What a student sees
+
+Every place a student reads a mark scheme -- under each part of the
+self-grade form (`NativeForm`), the Compare table (`ScoreTable`), the full
+mark-scheme page, and the teacher's Re-mark Requests page that shows it "as
+the student sees it" -- is one card, `components/reflection/MarkSchemePart.tsx`,
+in a fixed order:
+
+1. **Answer**, first, larger, in a green box.
+2. **How the marks work**: one line per mark, the count in a chip ("1 mark").
+3. **Watch out**: at most three short notes (the rules that decide marks).
+4. **Explain more** (closed): `ExplainMore.tsx`, one step at a time, "Step 2
+   of 4" and clickable dots, **I understand, please continue**, Back,
+   **Explain this further** (a slower version of the same step, opened in
+   place), **Book office hours** (new tab), "Show all steps at once", and a
+   last panel that sends the student back to their marks. Focus moves to
+   each step's heading, the step is announced, arrow keys move between
+   steps, and nothing moves on its own or animates.
+5. **Full mark scheme (exact wording)** (closed): the teacher's own answer
+   and note, marking codes in words, exactly as before.
+
+Parts 2-4 exist only when the part has a current written explanation. A
+part without one shows the teacher's answer and note, as it always has, so
+nothing changes for students until explanations are written. The
+self-grade form also offers "Book office hours" once, above the parts.
+
+Readability choices, deliberately: 16px+ body text with relaxed line height,
+short lines (the card is capped at 72ch), sentence-case labels (no
+uppercase tags), one idea per step, colour never the only signal (icons,
+words, hatching and dash patterns carry the same meaning), and the prompt's
+writing rules (short literal sentences, maths words explained in brackets,
+no "simply"/"obviously", no idioms).
+
+### Maths rendering
+
+KaTeX, HTML and MathML (screen readers read the MathML). Every formula an
+explanation carries is typeset by KaTeX with the SAME options when it is
+written (`texProblem`) as when it is shown (`renderTex`), both in
+`lib/tex-render.ts`, so an explanation that reaches a student renders. An
+inline formula containing a fraction is set `\displaystyle`: KaTeX's inline
+fractions are shrunk to the line height, and a numerator a few pixels tall
+is what a dyslexic or dyscalculic reader misreads. Explanations may
+highlight what changes between lines with `\blue{}`, `\orange{}`,
+`\green{}`, `\pink{}` (macros in `tex-render.ts`; a literal `#` in a KaTeX
+macro must be written `##`, or it reads as a macro argument and every use
+fails -- the unit tests caught exactly that). `lib/math-text.ts` splits
+prose from maths with the platform's existing rules (`\$` is a dollar sign,
+inline maths does not open or close on a space or cross a line break).
+
+The "Explain more" steps travel to the browser as LaTeX source and are
+typeset there only when opened: `ExplainMore` is loaded with `next/dynamic`,
+so KaTeX's script is not in the self-grade form's first download, and a
+36-part paper's page does not carry ~1 MB of typeset HTML nobody opened.
+The always-visible parts are typeset on the server, as before.
+
+### Diagrams
+
+Drawn by `components/reflection/ExplanationDiagram.tsx` from data, never
+accepted as a picture or markup: `working` (a chain of equivalent lines with
+the move made at each arrow), `area_model`, `number_line` (points, jumps,
+ranges), `bar_model`, `table`, `sequence`, `graph`, `tiles`. Labels are HTML
+laid over the SVG so they stay readable on a phone. A graph's curve is a
+formula PARSED by `lib/diagram-math.ts` (a small recursive-descent parser
+for arithmetic in x) -- `components/IbGraph.tsx` turns its formulas into a
+`new Function`, fine for text a teacher typed and not for text sent to a
+student's browser. `lib/fixtures/mark-scheme-explanations.ts` holds
+hand-written explanations of real KA1 parts that between them use every
+kind; the tests hold them to the checks.
+
+### Where explanations come from
+
+`lib/mark-scheme-explanation-prompt.ts`: Opus 5 at high effort, one call per
+part, written from the part's words, the question's stem, the teacher's
+answer and mark scheme, and the other parts of the question for context --
+**never `marking_notes`**. Structured output (`MarkSchemeExplanationSchema`),
+then `checkExplanation` (`lib/mark-scheme-explanation.ts`): "How the marks
+work" must add up to exactly the part's marks, every formula must typeset,
+no `$` may be stray, no marking codes (M1, A1R1, FT, AG) in prose, nothing
+about AI or a model, lengths and step counts bounded, and each diagram
+checked for its kind (grid shape, points on the line, a readable curve...).
+A failing draft goes back with its problems named, up to three attempts in
+all, within a time budget that keeps the route inside its 300 s limit. A
+part that still fails is reported, never stored. Usage is logged as
+`mark_scheme_explanation`. The prompt's worked example is exported and
+held to the same checks.
+
+The teacher drives it from a new **Student mark scheme** section on the
+test page (`app/dashboard/tests/[id]/student-mark-scheme-section.tsx`):
+parts ready / out of date / not written, "Write N explanations" (three
+parts at a time, with progress and Stop), "Rewrite all", and per part
+Write / Rewrite / Remove, with a failed part's reasons shown. It also says
+whether students can see the scheme, and offers "Use the platform's mark
+scheme" to fill the Mark scheme URL field when it is not released.
+Route: `app/api/tests/[id]/mark-scheme/explanations` (teacher only).
+
+### Storage, and when a student sees an explanation
+
+Table `mark_scheme_explanations` (migration
+`20260925032046_mark_scheme_explanations.sql`, SCHEMA.md), keyed on `(test_id,
+question_number, part_label)` so a creator re-save keeps unchanged parts'
+explanations, with `source_hash` = a hash of what the row was written from.
+A student is shown a row only while that hash matches the part as it stands:
+edit a scheme and the part falls back to the teacher's own text, and the
+test page lists it as out of date. Teachers read and write their own tests'
+rows; **students have no policy** -- the server reads rows with the service
+role after its release gates (`lib/mark-scheme-explanation-store.ts`). A
+failed read, including the table not existing, is an empty map: students
+see the teacher's text, exactly as before.
+
+### The full mark-scheme page moved, and its gate tightened
+
+`GET /api/tests/[id]/mark-scheme` used to write the whole page as a string of
+HTML. It now 307-redirects to `app/mark-scheme/[id]/page.tsx`, a real page
+(outside /dashboard, because the Mark Scheme button shows it inside the
+form's side panel) built from the same card, so the slideshow works there
+too. The stored `mark_scheme_url` values did not change: the release test
+still compares with the API path (`lib/student-mark-scheme-paths.ts`).
+`next.config.ts` gives the page the same `X-Frame-Options: SAMEORIGIN` the
+API path had. The gates moved with it (`lib/student-mark-scheme-access.ts`),
+with one tightening: anyone but the teacher needs the scheme released as
+the platform's page (`releasesStudentMarkScheme`), not just any
+`mark_scheme_url`, and a student in two classes with different sitting
+dates waits for the later one. Both tests that have released a scheme
+already point at the platform's page.
+
+### Verified
+
+- `npm test` (136 files), `npm run build` green; the one ESLint error in
+  `test-detail-client.tsx` (an `<a>` to `/dashboard/tests/...`) predates
+  this change.
+- Browser check, local only, no production session: a throwaway page under
+  `/login/` (a public route) rendered the real `MarkSchemePart` with the
+  fixture explanations through the real server renderer, at 1100px and
+  390px. Stepped through a slideshow by button and arrow key, opened
+  "Explain this further", finished and restarted, opened "Show all steps"
+  on the others: no console errors, no KaTeX errors, no sideways scroll on
+  the phone, office-hours link correct. The teacher section was driven the
+  same way with its API answered from fixtures (a mix of ready, out of
+  date, not written and one failing part). The throwaway page was deleted.
+- `curl`: the old API path 307s to the page with `SAMEORIGIN`; the page
+  sends a signed-out visitor to /login; the teacher route answers 401
+  signed out.
+
+### Not done, and what to do first
+
+- **Apply the migration before anything is written.** Without the table the
+  student pages are unchanged and the test page's section says the table is
+  missing. Apply through MCP `apply_migration` and rename the file to the
+  version the ledger assigns (supabase/migrations/README.md), or let the
+  migrations workflow apply it when this reaches `main` -- its version is
+  later than every ledger row at the time of writing.
+- **No explanation exists yet.** Writing them needs `ANTHROPIC_API_KEY`,
+  which production has and agent sessions do not: open each released test
+  (Key Assessment 1 and Key Assessment 1 - Unit 1) and press "Write N
+  explanations". About $0.10 a part at Opus 5 prices; both papers together
+  are 62 parts. Then read a few on "Open it as a student sees it" before
+  students do.
+- Explanations cannot be edited by hand, only rewritten or removed.
+- Refusal fallbacks are not enabled: `@anthropic-ai/sdk` 0.90 does not
+  expose the `fallbacks` parameter. Grade 9 algebra does not trip the
+  classifiers; a refusal is reported as a failed part.
+- The office-hours link is a constant (`lib/office-hours.ts`).

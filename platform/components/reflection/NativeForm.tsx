@@ -3,6 +3,7 @@
 import { Fragment, useState, useRef } from "react";
 import type { ReflectionItem, SelfScore } from "@/lib/reflection-types";
 import { MarkSchemePart } from "./MarkSchemePart";
+import { OfficeHoursLink } from "./OfficeHoursLink";
 
 interface NativeFormProps {
   items: ReflectionItem[];
@@ -96,9 +97,16 @@ export function NativeForm({ items, onSubmit, paperUrl, markSchemeUrl, onOpenDoc
 
       <p className="text-base text-da-text">
         {schemeInline
-          ? "The mark scheme for each question is shown under it. Check your work against it, then enter the marks you think you earned."
+          ? "The mark scheme for each question is shown under it, answer first. Check your work against it, then enter the marks you think you earned."
           : "For each question, enter the marks you think you earned based on the mark scheme."}
       </p>
+
+      {schemeInline && (
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-sm text-da-muted">
+          <span>Not sure why an answer is right? Press Explain more under the question. Still stuck?</span>
+          <OfficeHoursLink />
+        </div>
+      )}
 
       <p className="rounded-lg border border-da-border/40 bg-da-surface px-3 py-2 text-sm text-da-muted">
         Leave a box <span className="font-bold text-da-text">blank</span> if you made no attempt on that question (recorded as&nbsp;<span className="font-mono font-bold text-da-amber">&ndash;</span>).

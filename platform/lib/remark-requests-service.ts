@@ -12,7 +12,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { fetchAllRows } from "@/lib/na-scanning";
 import { paperQuestionPrefixes } from "@/lib/paper-labels";
-import { releasesStudentMarkScheme, studentMarkSchemeParts } from "@/lib/student-mark-scheme";
+import { releasesStudentMarkScheme, studentMarkSchemeParts, type StudentMarkSchemeItem } from "@/lib/student-mark-scheme";
+import { loadStoredExplanations } from "@/lib/mark-scheme-explanation-store";
 import type { ReflectionMarkScheme, RemarkStatus } from "@/lib/reflection-types";
 import type { RemarkQueueEntry } from "@/lib/remark-requests";
 
@@ -114,7 +115,7 @@ export async function loadTeacherRemarkQueue(supabase: SupabaseClient): Promise<
 
   const { data: items, error: itemsError } = await supabase
     .from("test_items")
-    .select("id, test_id, question_number, part_label, max_marks, sort_order, markscheme_text")
+    .select("id, test_id, question_number, part_label, max_marks, sort_order, stem_text, question_text, markscheme_text")
     .in("id", orNone(itemIds));
   if (itemsError) return { ...empty, error: itemsError.message };
 
@@ -173,23 +174,31 @@ export async function loadTeacherRemarkQueue(supabase: SupabaseClient): Promise<
 
   // Labels and mark schemes come from each test's draft when it has one,
   // exactly as the student's own page builds them.
+  // The written explanations are the teacher's own rows, read in their
+  // session like everything else here.
   const prefixesByTest = new Map<string, Map<number, string>>();
   const schemes: Record<string, ReflectionMarkScheme> = {};
-  for (const testId of testIds) {
+  const storedByTest = await Promise.all(testIds.map((testId) => loadStoredExplanations(supabase, testId)));
+  testIds.forEach((testId, index) => {
     const test = testById.get(testId);
     const customContent = test?.custom_content ?? null;
     prefixesByTest.set(testId, paperQuestionPrefixes(customContent));
-    const testItems = (items ?? [])
+    const testItems: StudentMarkSchemeItem[] = (items ?? [])
       .filter((i) => i.test_id === testId)
       .map((i) => ({
         id: i.id as string,
+        question_number: i.question_number as number,
+        part_label: (i.part_label as string | null) ?? null,
+        max_marks: i.max_marks as number,
         sort_order: i.sort_order as number,
+        stem_text: (i.stem_text as string | null) ?? null,
+        question_text: (i.question_text as string | null) ?? null,
         markscheme_text: (i.markscheme_text as string | null) ?? null,
       }));
-    for (const [itemId, scheme] of studentMarkSchemeParts(customContent, testItems)) {
+    for (const [itemId, scheme] of studentMarkSchemeParts(customContent, testItems, storedByTest[index])) {
       schemes[itemId] = scheme;
     }
-  }
+  });
 
   const toEntry = (r: RequestRow): TeacherRemarkEntry | null => {
     const item = itemById.get(r.test_item_id);

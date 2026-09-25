@@ -72,6 +72,12 @@ const nextConfig: NextConfig = {
         source: "/api/tests/:id/mark-scheme",
         headers: [{ key: "X-Frame-Options", value: "SAMEORIGIN" }],
       },
+      // ...which redirects to the page itself (app/mark-scheme/[id]); the
+      // panel frames that, so it needs the same exception.
+      {
+        source: "/mark-scheme/:id",
+        headers: [{ key: "X-Frame-Options", value: "SAMEORIGIN" }],
+      },
     ];
   },
 };

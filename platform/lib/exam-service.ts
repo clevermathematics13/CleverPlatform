@@ -7,7 +7,8 @@ import { INVITED_SUBJECT_PREFIX } from "@/lib/ai-grading";
 import { correctionsKey } from "@/lib/storage-keys";
 import { resolveSelfAssessmentRequired } from "@/lib/self-assessment-gate";
 import { paperQuestionPrefixes } from "@/lib/assignments";
-import { releasesStudentMarkScheme, studentMarkSchemeParts } from "@/lib/student-mark-scheme";
+import { releasesStudentMarkScheme, studentMarkSchemeParts, type StudentMarkSchemeItem } from "@/lib/student-mark-scheme";
+import { explanationReader, loadStoredExplanations } from "@/lib/mark-scheme-explanation-store";
 import { REMARK_STUDENT_COLUMNS, toReflectionRemark } from "@/lib/remark-requests";
 import type { GradeBoundary } from "@/lib/grade-bands";
 import type {
@@ -360,8 +361,9 @@ export async function getReflectionItemsForInvitedStudent(
  * same function. A test with no mark scheme released, or one released as a
  * link somewhere else, is returned untouched.
  *
- * Read under the viewer's own session, like the route: RLS on tests and
- * test_items is what lets a student read either.
+ * Read under the viewer's own session, like the mark-scheme page: RLS on
+ * tests and test_items is what lets a student read either. The written
+ * explanations are the exception (lib/mark-scheme-explanation-store.ts).
  */
 export async function attachStudentMarkScheme(
   items: ReflectionItem[],
@@ -370,11 +372,18 @@ export async function attachStudentMarkScheme(
   if (!test || items.length === 0 || !releasesStudentMarkScheme(test)) return items;
   const supabase = await createClient();
 
-  const [{ data: row }, { data: testItems }] = await Promise.all([
+  const [{ data: row }, { data: testItems }, stored] = await Promise.all([
     supabase.from("tests").select("custom_content").eq("id", test.id).maybeSingle(),
-    supabase.from("test_items").select("id, sort_order, markscheme_text").eq("test_id", test.id),
+    supabase
+      .from("test_items")
+      .select("id, sort_order, question_number, part_label, max_marks, stem_text, question_text, markscheme_text")
+      .eq("test_id", test.id),
+    // The written explanations are read with the service role: students
+    // have no policy on that table, and the gates it would need are the
+    // ones this test already passed to be in the viewer's list.
+    loadStoredExplanations(explanationReader(supabase), test.id),
   ]);
-  const parts = studentMarkSchemeParts(row?.custom_content ?? null, testItems ?? []);
+  const parts = studentMarkSchemeParts(row?.custom_content ?? null, (testItems ?? []) as StudentMarkSchemeItem[], stored);
   if (parts.size === 0) return items;
 
   return items.map((item) => ({ ...item, mark_scheme: parts.get(item.test_item_id) ?? null }));

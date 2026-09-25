@@ -1,5 +1,7 @@
 /** Types for the CleverReflection portal */
 
+import type { ExplanationStep } from "./mark-scheme-explanation";
+
 /** A test item with its marks data for reflection */
 export interface ReflectionItem {
   id: string;
@@ -68,11 +70,31 @@ export interface ReflectionRemark {
  * One part's student mark scheme, rendered on the server by
  * renderStudentMarkSchemePart (lib/student-mark-scheme.ts): escaped, marking
  * codes stripped, maths typeset -- the same renderer as the full
- * mark-scheme page. Either half may be null, never both.
+ * mark-scheme page. `answer_html` and `how_marked_html` are the teacher's own
+ * answer and note; at least one of the three fields is set.
  */
 export interface ReflectionMarkScheme {
   answer_html: string | null;
   how_marked_html: string | null;
+  /** The written explanation of the part, when one is current for it
+   *  (lib/mark-scheme-explanation.ts). Leads the card when present; the
+   *  teacher's own text then sits behind "Full mark scheme (exact wording)". */
+  guide?: ReflectionMarkGuide | null;
+}
+
+/**
+ * A part's written explanation as the card shows it. What is always visible
+ * -- the answer, how the marks work, the watch-out notes -- is typeset on the
+ * server. The "Explain more" steps travel as their LaTeX source and are
+ * typeset in the browser only when a student opens them
+ * (components/reflection/ExplainMore.tsx), which keeps KaTeX out of the
+ * self-grade form's first download and a 36-part paper's page small.
+ */
+export interface ReflectionMarkGuide {
+  answer_html: string;
+  marks: { marks: number; html: string }[];
+  watch_html: string[];
+  steps: ExplanationStep[];
 }
 
 /** A test in the reflection context */
