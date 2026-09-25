@@ -3875,25 +3875,56 @@ seen: the parent closed the modal the moment the import succeeded.
   [L00] P2 UniStats (4 of 5), [K05] P2 (13 of 14) and, red, [P01] P1 (none of
   14; three of its codes are not in the bank). No banner on FA1, FA2, both
   KA1s or [L00] P2 BiStats.
-- Not checked in a browser: minting a teacher session was declined by the
-  agent's permission check, so the banner and dialog were verified through
-  the helper's tests, the type check and the build only.
+- In a browser, locally against production (teacher session minted with the
+  teacher's approval at the prompt, revoked with scope `local` after): Mark
+  Scans shows amber on [K06] P1, red on [P01] P1 (its three unknown codes say
+  "not in the PPQ bank" and link to the bank search), and nothing on Key
+  Assessment 1 or the new L67 test. The Import dialog, given warnings (a
+  mocked response -- no second test), stays open, links to Mark Scans and
+  closes on Close; the real L67 import returned no warnings and closed.
 
-### L67 itself -- NOT done yet
+### L67 made ready (25 Sep 2026)
 
-No production data was changed. To make it ready: extract question and mark
-scheme LaTeX for all eight questions (LaTeX Review "Extract & apply"; for the
-single-part ones the PPQ Bank's "Extract" is fine but mind Auto-classify),
-check each against its image, then Tests -> "Import from PPQ Bank" -> "27AH
-[L67] P1" (14 parts, 70 marks) and set its date to 23 Sep 2026. The
-`ib_questions` ids are 17N.1.AHL.TZ0.H_4 `4114c3f4`, 18M.1.SL.TZ2.S_3
-`ecf0811f`, 19M.1.AHL.TZ2.H_4 `156fa7c4`, 13M.1.AHL.TZ2.H_5 `4fb6865b`,
-13M.1.AHL.TZ1.H_7 `4bdddd86`, 19N.1.AHL.TZ0.H_6 `25d224d6`,
-18N.1.AHL.TZ0.H_9 `73bc0cba`, 18N.1.AHL.TZ0.H_10 `dbf4a4cc`. Section B is
-answered in a separate booklet, so each student's scan is the 9 printed
-pages plus a variable number of booklet pages; Quick read handles that, but
-a booklet cover can read as a second row for the same student ("Merge into
-one row").
+Test `290bd5bc-7f43-4dc0-90fe-da36dc14afe2` "27AH [L67] P1", created through
+Tests -> "Import from PPQ Bank" (14 parts, 70 marks), date 23 Sep 2026.
+`loadGradeableMarkScheme` on it: 14/14 parts, 70/70 marks, every part
+`part_latex`, no warnings. Question and mark-scheme LaTeX was extracted for
+all eight bank questions (the `ib_questions` ids are 17N.1.AHL.TZ0.H_4
+`4114c3f4`, 18M.1.SL.TZ2.S_3 `ecf0811f`, 19M.1.AHL.TZ2.H_4 `156fa7c4`,
+13M.1.AHL.TZ2.H_5 `4fb6865b`, 13M.1.AHL.TZ1.H_7 `4bdddd86`,
+19N.1.AHL.TZ0.H_6 `25d224d6`, 18N.1.AHL.TZ0.H_9 `73bc0cba`,
+18N.1.AHL.TZ0.H_10 `dbf4a4cc`), each checked against its images and sent to
+the teacher side by side for approval. What went wrong on the way, and is
+worth knowing before extracting another multi-part question:
+
+- **LaTeX Review's mark-scheme "Extract & apply" wrote the QUESTION into
+  18N.1.AHL.TZ0.H_9's mark scheme.** Run without MathPix (any agent session:
+  `ocr-latex` falls back to Claude vision), the `parts_draft_markscheme_latex`
+  prompt asks to "extract the FULL question content", and the model rebuilt
+  the question from the mark-scheme images. Production normally has MathPix,
+  whose literal transcription is normalised instead, so this may not bite
+  there -- but check the parts after any mark-scheme Extract & apply. What
+  worked: the plain `markscheme_latex` prompt (a faithful transcription of
+  the whole scheme), then that text pasted into the Review draft box and
+  "Apply to editors", which splits it by part with the page's own code.
+- **The splitter only sees a part label at the start of a line.** A
+  transcription with `\section*{(a) METHOD 1}` headings (18N.1.AHL.TZ0.H_10)
+  did not split, so every part got the whole scheme. Rewriting those
+  headings as plain "(a)" lines fixed it.
+- **The question-side boundary pass missed three setup paragraphs** (Q2,
+  Q7, Q8: the sentence introducing part (b) or (c) sat at the end of the
+  previous part). Moved by hand through `latex-update`.
+- **LaTeX Review loses images for some focused questions.** Its "targeted
+  image-presence lookup" (`review/page.tsx`) still hits PostgREST's 1000-row
+  cap on the merged set, so 18M.1.SL.TZ2.S_3 and 18N.1.AHL.TZ0.H_10 showed
+  "No page images available" and the right-hand Question / Mark Scheme toggle
+  instead of Q / MS. Extraction still works (the route reads
+  `question_images` itself); the page's own images do not show.
+
+Section B is answered in a separate booklet, so each student's scan is the 9
+printed pages plus a variable number of booklet pages; Quick read handles
+that, but a booklet cover can read as a second row for the same student
+("Merge into one row").
 
 ### Not done (follow-ups)
 
@@ -3901,6 +3932,10 @@ one row").
   run the same check; the Mark Scans banner covers tests made that way.
 - The three 422 messages still say "Extract the mark scheme LaTeX in the PPQ
   Bank" rather than pointing at LaTeX Review.
+- `ocr-latex`'s `parts_draft_markscheme_latex` prompt says "extract the FULL
+  question content" for a mark scheme; it should ask for the mark scheme.
+- LaTeX Review's image-presence lookup (`review/page.tsx`) needs paging or a
+  per-question query; at ~600 questions it passes the 1000-row cap.
 - The run-app skill's `revoke-session.mjs` now runs in place and defaults to
   scope `"local"` (it used to sign out `"global"`, which also ended the
   teacher's own browser sessions). `mint-session.mjs` is unchanged: an agent
