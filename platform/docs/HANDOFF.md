@@ -4036,6 +4036,81 @@ printed pages plus a variable number of booklet pages; Quick read handles
 that, but a booklet cover can read as a second row for the same student
 ("Merge into one row").
 
+### [K05] P2 rebuilt and made ready (25 Sep 2026)
+
+The teacher asked for the mark schemes behind the banner on 27AH [K05] P2
+(`a0000000-0000-0000-0000-000000000002`, 13 of 14 parts missing) to be
+imported, from their Drive if the database did not have them.
+
+- **The schemes were already in the database, as images only.** All seven
+  questions (22M.2.AHL.TZ2.H_6 to H_12) have complete mark-scheme images in
+  `question_images`, copied from the Drive Docs in April; each was checked
+  for every "[N marks]" and "Total [N marks]". The gaps in their file
+  numbers (e.g. H_11 has no `03.png`) are the importer's: it skips
+  blocklisted images and numbers the rest in `inlineObjects` order, not
+  document order. Nothing needed re-importing. What was missing was the
+  typed text the grader reads.
+- **The test itself was wrong.** Legacy
+  `migrations-legacy/009_import_p2_marks.sql` ("Insert 14 test items matching
+  gradebook") gave K05 P2 the 14-part, 64-mark layout of 27AH [P01] P1, and
+  its 182 `student_marks` equal P01 P1's cell for cell (same student, position,
+  label, maximum and mark), all 13 students. The paper that was sat is 80
+  marks in 21 printed parts. Marked as it stood, Q1 would have been out of 7
+  against a 5-mark scheme and Q2's (a) and (b) one 4-mark part.
+- **Three bank questions had the wrong parts:** H_7 and H_9 were single `''`
+  parts but print (a) and (b); H_12 was a, b, c(7), e(9) but prints (a) to
+  (f) -- c and d, e and f had been merged, which is where legacy 007's
+  "Q7 ... no d" came from.
+
+What was done, with the teacher's go-ahead to rebuild in place:
+
+- Migration `20260925213111_k05_p2_real_paper_parts` (ids, labels and marks
+  only; one DO block guarded by md5 fingerprints taken at inspection):
+  relabels H_7 and H_9's `''` part as (a) and adds (b); sets H_12 (c) 7 -> 5
+  and (e) 9 -> 7 and adds (d) and (f); deletes K05 P2's 14 copied parts with
+  their 182 copied marks, the teacher's own 14 test self-scores and one
+  0 -> 0 mark change; inserts the 21 printed parts (subtopics and Doc ids
+  from the bank); sets `total_marks` to 80. It checks that P01 P1's parts and
+  marks are unchanged. Dry-run first through `execute_sql` with a forced
+  raise, then applied; the file is byte-identical to the ledger row. The
+  deleted rows are backed up only in that session's scratchpad -- P01 P1
+  still holds the identical marks.
+- Question and mark-scheme LaTeX for all 21 parts, typed from the images
+  and written straight to `ib_questions.stem_latex` and
+  `question_parts.content_latex` / `markscheme_latex` (not committed: IB
+  copyright, public repo). Writes were compare-and-set against the inspected
+  values and mirror `latex-update` (command-term flags re-derived) and
+  `stem-update`. H_6's question was stored three times over (stem, draft and
+  part), so the grader saw it twice; its stem and `parts_draft_latex` are now
+  NULL, as for other single-part questions.
+- **Mark codes after `\hfill` are plain text (`\hfill (M1)`), not
+  `\hfill \textbf{(M1)}`.** `LatexRenderer` prints the text after `\hfill`
+  verbatim, after `preprocessLatex` has already turned `\textbf{..}` into its
+  private-use bold markers, so a bold mark code shows as `◆(M1)◇`. The L67
+  schemes above use the bold form and display that way (follow-up below).
+
+Verified, read-only, through the real modules (`loadGradeableMarkScheme`,
+`summariseMarkSchemeReadiness`, `assembleMarkschemeImages`,
+`buildGradingUserPrompt`): 21 units, 21 gradeable, 80 marks, every source
+`part_latex` (the old Tesseract `markscheme_text` would otherwise have
+counted as `part_text`), no warnings, no banner, the AA HL Paper 2 policy on
+every unit, every unit has mark-scheme images, no question text repeated.
+Every string passed a lint that restates the renderer's rules (KaTeX with
+`throwOnError`, inline math on one line, only `\textbf`/`\hfill` outside
+math, tariffs equal to the part's marks), and each part was compared, as the
+app renders it, against its image; the teacher was sent that side-by-side as
+a PDF. `latex_verified` stays false, as for L67.
+
+No Paper layout exists for the 21 parts, so marking works but no evidence
+crop is cut until one is locked: draw it, or mark the class first and check
+and lock the layout proposed from the marker's boxes (section 33). The test
+is still hidden and hidden from the gradebook, as it was.
+
+The ledger, as this branch leaves it: 188 rows, 187 files. The missing file
+is `20260925040006_mark_scheme_explanations`, which lives on
+`claude/amazing-curie-om19bf`; the migrations workflow stays red on it until
+that branch merges. That is the documented fail-safe, not drift to repair.
+
 ### Not done (follow-ups)
 
 - ExamBuilder "Save to Gradebook" (`app/api/gradebook/tests/route.ts`) could
@@ -4046,6 +4121,15 @@ that, but a booklet cover can read as a second row for the same student
   question content" for a mark scheme; it should ask for the mark scheme.
 - LaTeX Review's image-presence lookup (`review/page.tsx`) needs paging or a
   per-question query; at ~600 questions it passes the 1000-row cap.
+- `LatexRenderer` shows a bold mark code after `\hfill` as `◆(M1)◇` (the mark
+  column prints `splitHfillMark`'s text raw, after `preprocessLatex`). Either
+  render the markers there or rewrite the L67 schemes' marks as plain
+  `\hfill (M1)`. The extraction prompts' style guide (`IB_NORMALISE_SYSTEM`)
+  is worth checking for the same advice.
+- K05 P2: the four new parts' subtopics (H_7(b) 5.13, H_9(b) 1.10, H_12(d)
+  5.8, H_12(f) `5.18 (sep)`) were chosen by hand, not by Auto-classify; the
+  old whole-question Tesseract `markscheme_text` still sits on H_8, H_9(a)
+  and H_10 (a)-(d), inert while the LaTeX is there.
 - The run-app skill's `revoke-session.mjs` now runs in place and defaults to
   scope `"local"` (it used to sign out `"global"`, which also ended the
   teacher's own browser sessions). `mint-session.mjs` now runs in place too,
