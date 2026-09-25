@@ -258,10 +258,9 @@ export function TestsClient({ initialTests, courses }: TestsClientProps) {
       {showImport && (
         <ImportFromPpqModal
           onClose={() => setShowImport(false)}
-          onImported={async (testId) => {
-            await fetchAndPrependTest(testId);
-            setShowImport(false);
-          }}
+          // The modal closes itself: at once after a clean import, or once
+          // the teacher has read the import's warnings.
+          onImported={fetchAndPrependTest}
         />
       )}
 

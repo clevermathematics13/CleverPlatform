@@ -77,14 +77,26 @@ emailing it) → `verifyOtp` → serialise the session into
 into `.0` / `.1` chunks at 3180 characters (`@supabase/ssr` 0.10's
 `MAX_CHUNK_SIZE`).
 
+Run it in place from the repo root, passing the anon key as an argument
+(an env prefix would stop the allow rule in `.claude/settings.json` from
+matching):
+`node .claude/skills/run-app/scripts/mint-session.mjs --anon-key <legacy anon JWT> --out <file>`.
+The allow rule only removes the permission prompt; the user's OK below is
+still needed every time.
+
 Two things to respect:
 
 - **Ask first.** Minting a login for a real person's account is gated by the
   permission classifier, and rightly so. Explain what you are doing and why,
   and let them approve it. Do not look for a way around the refusal.
 - **Revoke afterwards.** `scripts/revoke-session.mjs` calls
-  `admin.auth.admin.signOut(access_token, "global")`. Run it and delete the
-  session file when you are done, so nothing outlives the task.
+  `admin.auth.admin.signOut(access_token, scope)`. Run it and delete the
+  session file when you are done, so nothing outlives the task. It runs in
+  place from the repo root (no copy into `platform/`):
+  `node .claude/skills/run-app/scripts/revoke-session.mjs --session <file>`.
+  `--scope` defaults to `local`, which ends only the minted session;
+  `--scope global` also signs the teacher out of every browser they are
+  logged in on, which is what it always did before 25 Sep 2026.
 
 The teacher account is `clevermathematics@gmail.com`; `app/auth/callback`
 hardcodes that address, and `getApiTeacher()` requires `profiles.role =
@@ -107,6 +119,10 @@ git status --porcelain   # confirm you left nothing behind
 
 Use `.mts`/`npx tsx` when the script imports repo TypeScript (importing the
 real module is much better than restating its logic - see §7).
+
+The two session scripts are the exception: they find supabase-js under
+`platform/` themselves, so run them in place as in section 3. A copy of
+either one breaks.
 
 ## 5. Chromium and the agent proxy — gotcha
 
@@ -197,7 +213,7 @@ the `.mts` + `npx tsx` route in §4.
 
 ```bash
 pkill -f "next dev"           # returns 143; that is your own signal
-node <revoke-session script>  # then delete the session JSON
+node .claude/skills/run-app/scripts/revoke-session.mjs --session <file>  # from the repo root; then delete the file
 git status --porcelain        # must be clean
 ```
 

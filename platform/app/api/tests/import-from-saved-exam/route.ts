@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getApiTeacher } from "@/lib/auth";
+import { markSchemeGapWarning, summariseMarkSchemeReadiness } from "@/lib/mark-scheme-readiness";
 
 /**
  * POST /api/tests/import-from-saved-exam
@@ -24,6 +25,12 @@ import { getApiTeacher } from "@/lib/auth";
  *
  * question_number is assigned by array position (ExamBuilder's own question
  * order), 1-indexed, since saved_exams does not store one explicitly.
+ *
+ * The response's warnings end with the parts AI marking will skip because the
+ * bank holds no mark scheme for them (lib/mark-scheme-readiness.ts). Keeping
+ * the IB code is what makes a test gradeable at all, but it is not enough on
+ * its own: 27AH [L67] P1 would have imported with 12 of its 14 parts in that
+ * state, and the grader only refuses a test when EVERY part is.
  */
 export async function POST(request: NextRequest) {
   const auth = await getApiTeacher();
@@ -234,6 +241,25 @@ export async function POST(request: NextRequest) {
     // Clean up the test if items failed, mirroring POST /api/tests's own behaviour.
     await supabase.from("tests").delete().eq("id", test.id);
     return NextResponse.json({ error: itemsErr.message }, { status: 500 });
+  }
+
+  // Which of the new parts AI marking will skip for want of a mark scheme,
+  // worked out by the same assembly every marking path uses. Advisory only:
+  // the test exists now, so nothing here may fail the import. The grader is
+  // loaded lazily because it reads its policy files as it loads -- if that
+  // ever fails, the teacher gets a note rather than a 500 for a test that was
+  // in fact created.
+  try {
+    const { assembleMarkScheme } = await import("@/lib/ai-grading");
+    const { units } = await assembleMarkScheme(supabase, test.id);
+    const gap = markSchemeGapWarning(summariseMarkSchemeReadiness(units));
+    if (gap) warnings.push(gap);
+  } catch (e) {
+    warnings.push(
+      `Could not check which parts have a mark scheme (${
+        e instanceof Error ? e.message : String(e)
+      }). The test's Mark Scans page lists any that are missing.`
+    );
   }
 
   return NextResponse.json({

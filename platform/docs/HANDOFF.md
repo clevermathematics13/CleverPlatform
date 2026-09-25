@@ -263,7 +263,7 @@ must exercise Server Actions.
 ## 4. Database and migrations
 
 **The migration ledger and the repo agree on versions: 187 files, 187 rows**
-(verified 25 Sep 2026 once §40's two migrations and §41's one were on one
+(verified 25 Sep 2026 once §40's two migrations and §42's one were on one
 branch, by comparing the two version lists; it read 184/184 on 24 Sep after §38's two migrations, 181/181 that morning, 83/83 when this handoff was written, 95/95 after
 the second reconciliation, 116/116 after the third, 149/149 on 13 Sep and
 171/171 on 20 Sep). Two
@@ -3921,10 +3921,144 @@ platform can grade. It is live and hidden on 9D: test
 04:00 UTC by another session, whose branch was not on the remote when this
 one was pushed. Until both branches merge, `platform-supabase-migrations.yml`
 names whichever version main lacks. That is the fail-safe described in the
-README, not drift: never "repair" it as reverted. (Resolved when §41's
+README, not drift: never "repair" it as reverted. (Resolved when §42's
 branch merged main: 187 files, 187 rows, the same versions.)
 
-## 41. Student mark schemes lead with the answer, and explain themselves (25 Sep 2026)
+## 41. Parts with no mark scheme are listed before marking (25 Sep 2026)
+
+The teacher asked whether 27AH [L67] P1 (AA HL Paper 1, sat 23 Sep 2026)
+was ready for scans. It was not, twice over, and nothing on screen said so:
+
+- It existed only as an ExamBuilder draft (`saved_exams`
+  `7bc430fd-8db5-4814-9707-9513038b11a6`); no `tests` row, so no Mark Scans
+  page to upload to.
+- Six of its eight bank questions (Q2, Q3, Q4, Q5, Q7, Q8 -- 12 of the 14
+  parts it would import as, 59 of 70 marks) have no mark scheme text in the
+  PPQ bank: no `markscheme_latex`, `markscheme_text`, `stem_markscheme_latex`
+  or `parts_draft_markscheme_latex`. They do have mark-scheme IMAGES, which
+  the grader never reads. Q1 and Q6 have only old Tesseract
+  `markscheme_text`.
+
+Because two parts were gradeable, marking would NOT have been refused -- the
+422 fires only when zero parts are (`ai-grade/route.ts`, `queue/route.ts`,
+`collect/route.ts`). The paper would have been marked out of 11 and said so
+only afterwards ("graded X/11 of 70 total"). The Import dialog also promised
+the new test "can be AI-graded straight away", and its warnings were never
+seen: the parent closed the modal the moment the import succeeded.
+
+### What was built
+
+- `lib/mark-scheme-readiness.ts` (pure, `import type` only): summarises the
+  units `assembleMarkScheme` builds -- total parts/marks, and the parts whose
+  `markschemeSource` is `"none"` grouped by question -- plus the headline,
+  the import note and the banner rows. Only `"none"` counts: it is exactly
+  what `loadGradeableMarkScheme` drops, so "will be skipped" is literal.
+  Whole-question and draft schemes are still marked and already warned about
+  per part.
+- `POST /api/tests/import-from-saved-exam` appends one note listing the gaps
+  (headline, "use LaTeX Review's Extract & apply", a line per question). The
+  grader is imported lazily in a try/catch: the test exists by then, so a
+  failure can only add a softer note, never fail the import.
+- The Import dialog now awaits `onImported` and closes itself: at once after
+  a clean import (as before), otherwise it stays open on its warnings with a
+  "Mark Scans ->" link. The subtitle no longer promises instant grading.
+- Mark Scans (`/dashboard/tests/[id]/ai-grade`) shows a banner above the
+  roster (`mark-scheme-gaps.tsx`, server-only): amber when some parts are
+  missing, red when all are (marking is refused then). Each question links to
+  LaTeX Review (`?focus=<ib_questions.id>`), or to the PPQ Bank search when
+  its code is not in the bank. Its load starts beside the roster's loads, it
+  renders in its own `<Suspense fallback={null}>`, and it never throws (no
+  `error.tsx` exists under `app/`): a failed load shows no banner. LaTeX
+  Review is the link because the PPQ Bank's per-question "Extract" writes the
+  whole question's LaTeX onto every part (`ocr-latex/route.ts`), and on a
+  question-side extract it also re-runs Auto-classify, which can rewrite
+  hand-set subtopic tags.
+
+### Verified
+
+- `lib/mark-scheme-readiness.test.ts` (16 tests, L67 as the fixture),
+  `npm run build`, `npm test` (132 files, 2251 tests), eslint on the changed
+  files (the one error left, the `<a>` "Back to tests" link in the ai-grade
+  `page.tsx`, predates this change).
+- The build traces the four policy files the grader reads at load into both
+  the import route and the ai-grade page, as for the existing grading route.
+- Read-only against production with the real `assembleMarkScheme`: the
+  banner shows on 27AH [K06] P1 (2 of 19 parts, 7 of 70 marks -- Q6 (a), (b)),
+  [L00] P2 UniStats (4 of 5), [K05] P2 (13 of 14) and, red, [P01] P1 (none of
+  14; three of its codes are not in the bank). No banner on FA1, FA2, both
+  KA1s or [L00] P2 BiStats.
+- In a browser, locally against production (teacher session minted with the
+  teacher's approval at the prompt, revoked with scope `local` after): Mark
+  Scans shows amber on [K06] P1, red on [P01] P1 (its three unknown codes say
+  "not in the PPQ bank" and link to the bank search), and nothing on Key
+  Assessment 1 or the new L67 test. The Import dialog, given warnings (a
+  mocked response -- no second test), stays open, links to Mark Scans and
+  closes on Close; the real L67 import returned no warnings and closed.
+
+### L67 made ready (25 Sep 2026)
+
+Test `290bd5bc-7f43-4dc0-90fe-da36dc14afe2` "27AH [L67] P1", created through
+Tests -> "Import from PPQ Bank" (14 parts, 70 marks), date 23 Sep 2026.
+`loadGradeableMarkScheme` on it: 14/14 parts, 70/70 marks, every part
+`part_latex`, no warnings. Question and mark-scheme LaTeX was extracted for
+all eight bank questions (the `ib_questions` ids are 17N.1.AHL.TZ0.H_4
+`4114c3f4`, 18M.1.SL.TZ2.S_3 `ecf0811f`, 19M.1.AHL.TZ2.H_4 `156fa7c4`,
+13M.1.AHL.TZ2.H_5 `4fb6865b`, 13M.1.AHL.TZ1.H_7 `4bdddd86`,
+19N.1.AHL.TZ0.H_6 `25d224d6`, 18N.1.AHL.TZ0.H_9 `73bc0cba`,
+18N.1.AHL.TZ0.H_10 `dbf4a4cc`), each checked against its images and sent to
+the teacher side by side for approval. What went wrong on the way, and is
+worth knowing before extracting another multi-part question:
+
+- **LaTeX Review's mark-scheme "Extract & apply" wrote the QUESTION into
+  18N.1.AHL.TZ0.H_9's mark scheme.** Run without MathPix (any agent session:
+  `ocr-latex` falls back to Claude vision), the `parts_draft_markscheme_latex`
+  prompt asks to "extract the FULL question content", and the model rebuilt
+  the question from the mark-scheme images. Production normally has MathPix,
+  whose literal transcription is normalised instead, so this may not bite
+  there -- but check the parts after any mark-scheme Extract & apply. What
+  worked: the plain `markscheme_latex` prompt (a faithful transcription of
+  the whole scheme), then that text pasted into the Review draft box and
+  "Apply to editors", which splits it by part with the page's own code.
+- **The splitter only sees a part label at the start of a line.** A
+  transcription with `\section*{(a) METHOD 1}` headings (18N.1.AHL.TZ0.H_10)
+  did not split, so every part got the whole scheme. Rewriting those
+  headings as plain "(a)" lines fixed it.
+- **The question-side boundary pass missed three setup paragraphs** (Q2,
+  Q7, Q8: the sentence introducing part (b) or (c) sat at the end of the
+  previous part). Moved by hand through `latex-update`.
+- **LaTeX Review loses images for some focused questions.** Its "targeted
+  image-presence lookup" (`review/page.tsx`) still hits PostgREST's 1000-row
+  cap on the merged set, so 18M.1.SL.TZ2.S_3 and 18N.1.AHL.TZ0.H_10 showed
+  "No page images available" and the right-hand Question / Mark Scheme toggle
+  instead of Q / MS. Extraction still works (the route reads
+  `question_images` itself); the page's own images do not show.
+
+Section B is answered in a separate booklet, so each student's scan is the 9
+printed pages plus a variable number of booklet pages; Quick read handles
+that, but a booklet cover can read as a second row for the same student
+("Merge into one row").
+
+### Not done (follow-ups)
+
+- ExamBuilder "Save to Gradebook" (`app/api/gradebook/tests/route.ts`) could
+  run the same check; the Mark Scans banner covers tests made that way.
+- The three 422 messages still say "Extract the mark scheme LaTeX in the PPQ
+  Bank" rather than pointing at LaTeX Review.
+- `ocr-latex`'s `parts_draft_markscheme_latex` prompt says "extract the FULL
+  question content" for a mark scheme; it should ask for the mark scheme.
+- LaTeX Review's image-presence lookup (`review/page.tsx`) needs paging or a
+  per-question query; at ~600 questions it passes the 1000-row cap.
+- The run-app skill's `revoke-session.mjs` now runs in place and defaults to
+  scope `"local"` (it used to sign out `"global"`, which also ended the
+  teacher's own browser sessions). `mint-session.mjs` now runs in place too,
+  taking the anon key as `--anon-key`, and `.claude/settings.json` allows
+  both scripts and the read-only Supabase `execute_sql` without a prompt.
+  The auto-mode check refused an agent making these edits, twice; the
+  teacher then asked for them and approved them outside auto mode. The rule
+  only removes the prompt: minting still needs the teacher's OK in the
+  conversation every time.
+
+## 42. Student mark schemes lead with the answer, and explain themselves (25 Sep 2026)
 
 The teacher asked for the mark schemes students read while self-assessing to
 be simpler: each part should start with the clear answer, then very brief
