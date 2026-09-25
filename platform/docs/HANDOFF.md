@@ -262,9 +262,9 @@ must exercise Server Actions.
 
 ## 4. Database and migrations
 
-**The migration ledger and the repo agree on versions: 185 files, 185 rows**
-(verified 25 Sep 2026 after §40's migration, by comparing the two version
-lists; it read 184/184 on 24 Sep after §38's two migrations, 181/181 that morning, 83/83 when this handoff was written, 95/95 after
+**The migration ledger and the repo agree on versions: 187 files, 187 rows**
+(verified 25 Sep 2026 once §40's two migrations and §41's one were on one
+branch, by comparing the two version lists; it read 184/184 on 24 Sep after §38's two migrations, 181/181 that morning, 83/83 when this handoff was written, 95/95 after
 the second reconciliation, 116/116 after the third, 149/149 on 13 Sep and
 171/171 on 20 Sep). Two
 rows applied through MCP on 18 Sep (`20260918205816`, `20260918210444`) had no
@@ -3813,7 +3813,118 @@ next plain word is ("A1 -- the whole" reads "The whole").
 - A part whose note was only a label and which has no answer now shows no
   box at all, rather than an empty one.
 
-## 40. Student mark schemes lead with the answer, and explain themselves (25 Sep 2026)
+## 40. Grade 9 Standard Level Formative Assessment 2 (25 Sep 2026)
+
+The teacher supplied Formative Assessment 2 (5 pages, 6 questions, 14
+parts, 36 marks) and asked for it as a Grade 9 Standard Level formative the
+platform can grade. It is live and hidden on 9D: test
+`739386b4-9b96-4695-8978-bc8ef8370d0c`.
+
+### What was built
+
+- **The paper as data, in KA1's pattern (section 21).** A fixture,
+  `lib/fixtures/g9-standard-fa2.ts`, and a seed generated from it rather
+  than copied by hand (`20260925040451_seed_g9_standard_fa2`, applied
+  through MCP; the ledger's md5 is the file's minus its trailing newline).
+  One `tests` row: `formative`, `standards_rubric` set, self-assessment
+  required, no boundary set, `short_name` Form2, no test date (the paper
+  prints none), no `mark_scheme_url`, `hidden = true`. 14 `custom` items,
+  each with its stem, its own wording and a scheme.
+- **Not through the importer.** `/dashboard/tests/standards-import` reads
+  a paper AND its Teacher Marking Rubric. This paper came with no rubric,
+  so there was nothing to transcribe strands from.
+- **So the rubric was written here, from the paper's own question
+  grouping in KA1's shape:** A Expressions: evaluate, write and rewrite
+  (Q1-Q2, 13 marks); B Arithmetic sequences: explicit rules and
+  representations (Q3, 12); C Arithmetic and geometric sequences (Q4-Q5,
+  7); D Reasoning and justification (Q6, 4). Standards are worded as KA1
+  words them wherever KA1 names the same one, and the descriptors were
+  written to agree with the part schemes. Ranges (E / M / AP / B): A
+  12-13 / 9-11 / 6-8 / 0-5, B 11-12 / 8-10 / 5-7 / 0-4, C 6-7 / 5 / 3-4 /
+  0-2, D 4 / 3 / 2 / 0-1, overall 31-36 / 24-30 / 15-23 / 0-14. D is only 4
+  marks, so its level moves a band per mark. All of it is editable on the
+  test page.
+- **The schemes carry the KA1 rulings forward** (section 26 and KA1's
+  `marking_notes`): an intermediate result only the method could produce
+  is evidence of it; follow-through is applied, not mentioned; one error
+  costs one mark; a reason earns its mark for its content, not its
+  wording; a check by substitution is a complete method. There are no
+  M/A/R codes, so `stripMarkCodes` leaves every scheme as written.
+- **One call for the teacher.** "Show all work" is printed only on the
+  cover. The calculation parts (1a-c, 2a, 3a, 5) give a bare correct answer
+  its answer mark and withhold the method mark, citing the cover. Rule A6
+  of `lib/ask-what-you-mark.ts` says a demand made only in the instructions
+  does not carry into a part. If the teacher reads the cover that way,
+  each of those schemes has one sentence to change.
+- **Q3's stem is only on (b)-(d)**: the printed table and graph, in a
+  bracketed marker's note like KA1 Q9's figures. Q3(a) is a different
+  sequence. The marking page prints a stem in the row header on a
+  question's first part only, so Q3's row header shows none; the Expand
+  panel shows it on (b)-(d).
+
+### Verified
+
+- `lib/fixtures/g9-standard-fa2.test.ts` covers:
+  - parts against the printed question totals and 36;
+  - rubric validity, and `validateStandardsDraft` with no findings;
+  - the Standard Level policy in the prompt and the Formative one absent;
+  - an itemisation on every multi-mark scheme;
+  - a bare answer refused a mark only for a demand the paper makes;
+  - the student mark scheme (14 rows, 36 marks, typeset).
+
+  Mutation-checked: a 4-mark 3(b), a marking code in a scheme and a strand
+  naming a missing part each fail it.
+- The seed was dry-run in PGlite: twice, to show a re-run is a no-op, and
+  once with 9D missing, which the guard refused. After applying, the live
+  rows matched the fixture on all 42 fields (14 rows x stem, question,
+  scheme) by md5. `assembleMarkScheme` over the live rows gives 14 units,
+  36 marks, no warnings, every unit on its strand.
+- **One real marking pass.** A synthetic script was written onto the
+  actual paper: typed answers in the boxes, and a point plotted at (3, 15)
+  with the graph's scale calibrated off its three printed points. It was
+  wrong on purpose in 9 parts. It went through `buildGradingRequest` with
+  the live units to `claude-opus-4-5` (`GRADING_MODEL`). Read-only: no
+  run, no results, no usage row.
+  - First pass: 13 of 14 parts as the schemes say. Q1(b) came back 1 of 3
+    where the scheme says one carried sign error earns 2. The scheme had
+    defined its last mark as "working correctly to the end, -5", and the
+    marker read that over the follow-through sentence after it.
+  - Reworded in `20260925041302_fa2_1b_scheme_follow_through` (md5-guarded
+    on the text it replaces and the text it writes; fixture updated in the
+    same change) and re-marked: 14 of 14, 24/36 as predicted. Every other
+    part came back identical across the two runs.
+  - About $0.43 for both calls, on `GRADING_ANTHROPIC_API_KEY`.
+
+### Deliberately not done
+
+- **Not released to students.** The test is hidden and no student mark
+  scheme is set. To release the platform's own scheme (section 26), set
+  Mark Scheme URL to
+  `/api/tests/739386b4-9b96-4695-8978-bc8ef8370d0c/mark-scheme`.
+- **No test date and no boundaries.** The gradebook shows `~approx` until
+  the teacher decides lines on the boundaries page (section 37). A 9D
+  PowerSchool export uses the fallback bands until then.
+- **No `marking_notes`.** Those are the teacher's rulings from real
+  scripts.
+- **Section 7 of `grading_policies/g9_standard_level_marking_principles.md`
+  was written for KA1.** It says a calculator is permitted and mentions a
+  precision rule; FA2 prints neither. It is harmless here, since every
+  answer is an integer, but worth generalising before a no-calculator
+  Standard paper.
+- **Nothing real has been marked yet.** The first class through deserves
+  section 11's spot-check.
+
+### The ledger, as this branch leaves it
+
+187 ledger rows against 186 files on this branch.
+`20260925040006_mark_scheme_explanations` was applied through MCP at
+04:00 UTC by another session, whose branch was not on the remote when this
+one was pushed. Until both branches merge, `platform-supabase-migrations.yml`
+names whichever version main lacks. That is the fail-safe described in the
+README, not drift: never "repair" it as reverted. (Resolved when §41's
+branch merged main: 187 files, 187 rows, the same versions.)
+
+## 41. Student mark schemes lead with the answer, and explain themselves (25 Sep 2026)
 
 The teacher asked for the mark schemes students read while self-assessing to
 be simpler: each part should start with the clear answer, then very brief
