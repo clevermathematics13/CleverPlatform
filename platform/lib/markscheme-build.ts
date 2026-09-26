@@ -60,8 +60,14 @@ export const TranscribedSchemeSchema = z.object({
   sourceProblems: z
     .array(z.string())
     .describe(
-      "Anything wrong with the source itself: the images show a different question, the scheme continues beyond them, a part is missing. Empty when there are none."
+      "Real problems with the images only: a different question, a scheme visibly cut off, a reference to a part that is not there. Never a missing question number, label, marks or total. Empty when there are none."
     ),
+  misprints: z
+    .array(z.string())
+    .describe("Each obvious misprint in the scheme itself, transcribed as printed. Empty when there are none."),
+  diagrams: z
+    .array(z.string())
+    .describe("Each diagram or graph described in words instead of transcribed. Empty when there are none."),
 });
 
 export type TranscribedScheme = z.infer<typeof TranscribedSchemeSchema>;
@@ -107,6 +113,8 @@ export interface NormalizedScheme {
   parts: NormalizedPart[];
   unreadable: string[];
   sourceProblems: string[];
+  misprints: string[];
+  diagrams: string[];
 }
 
 const TOTAL_LINE_RE = /^\s*(?:\\hfill\s*)?(?:\\textbf\{\s*)?total\s*\[\s*(\d+)\s*marks?\s*\]\s*\}?\s*$/gim;
@@ -144,7 +152,87 @@ export function normalizeTranscription(t: TranscribedScheme): NormalizedScheme {
     parts: ordered,
     unreadable: t.unreadable,
     sourceProblems: t.sourceProblems,
+    misprints: t.misprints,
+    diagrams: t.diagrams,
   };
+}
+
+// ---- sub-parts that share their parent's marks ------------------------------
+
+const ROMANS = ["i", "ii", "iii", "iv", "v", "vi", "vii", "viii", "ix", "x"];
+const SUBPART_LINE_RE = /^\s*\((i|ii|iii|iv|v|vi|vii|viii|ix|x)\)(?=\s|$)\s*/;
+const MARKS_STATEMENT_END_RE = /\\hfill\s*\[\s*\d+\s*marks?\s*\]\s*$/i;
+
+/**
+ * A part whose (i), (ii) ... share one printed "[N marks]", cut at the lines
+ * that start with those labels. Each piece is valued by its own codes, and
+ * the pieces must add up to the part's marks. Null when it cannot be cut
+ * cleanly: scheme text before "(i)", labels out of order, or a piece whose
+ * codes allow more than one total.
+ */
+export function splitSubparts(p: NormalizedPart): NormalizedPart[] | null {
+  if (!p.label) return null;
+  const pieces: { roman: string; lines: string[] }[] = [];
+  for (const line of p.latex.replace(MARKS_STATEMENT_END_RE, "").trim().split("\n")) {
+    const m = line.match(SUBPART_LINE_RE);
+    if (m) pieces.push({ roman: m[1], lines: [line.slice(m[0].length)] });
+    else if (pieces.length > 0) pieces[pieces.length - 1].lines.push(line);
+    else if (line.trim()) return null;
+  }
+  if (pieces.length < 2 || pieces.some((piece, i) => piece.roman !== ROMANS[i])) return null;
+
+  const out: NormalizedPart[] = [];
+  for (const piece of pieces) {
+    const body = piece.lines.join("\n").trim();
+    const totals = summarizeSchemeMarks(body).possibleTotals;
+    if (!body || totals.length !== 1) return null;
+    out.push({
+      label: `${p.label}${piece.roman}`,
+      printedLabel: `${p.printedLabel}(${piece.roman})`,
+      marks: totals[0],
+      latex: `${body}\n\n${marksStatement(totals[0])}`,
+    });
+  }
+  if (p.marks !== null && out.reduce((s, x) => s + (x.marks ?? 0), 0) !== p.marks) return null;
+  return out;
+}
+
+export interface AlignedScheme {
+  scheme: NormalizedScheme;
+  marks: (number | null)[];
+  /** Labels whose marks came from their codes, because the scheme printed only their parent's. */
+  derived: Set<string>;
+}
+
+/**
+ * The scheme with a part cut into its sub-parts wherever the bank (or a
+ * test) uses exactly those sub-part labels and not the part's own. The IB
+ * often prints one "[5 marks]" for (a) while the question paper, and so the
+ * bank, gives (a)(i) and (a)(ii) marks of their own.
+ */
+export function alignSubparts(scheme: NormalizedScheme, marks: (number | null)[], wanted: Set<string>): AlignedScheme {
+  const parts: NormalizedPart[] = [];
+  const outMarks: (number | null)[] = [];
+  const derived = new Set<string>();
+  scheme.parts.forEach((p, i) => {
+    const subLabels = [...wanted].filter(
+      (l) => p.label !== "" && l.startsWith(p.label) && ROMANS.includes(l.slice(p.label.length))
+    );
+    if (subLabels.length > 0 && !wanted.has(p.label)) {
+      const pieces = splitSubparts({ ...p, marks: marks[i] ?? p.marks });
+      if (pieces && pieces.length === subLabels.length && pieces.every((q) => wanted.has(q.label))) {
+        for (const q of pieces) {
+          parts.push(q);
+          outMarks.push(q.marks);
+          derived.add(q.label);
+        }
+        return;
+      }
+    }
+    parts.push(p);
+    outMarks.push(marks[i]);
+  });
+  return { scheme: { ...scheme, parts }, marks: outMarks, derived };
 }
 
 // ---- KaTeX ------------------------------------------------------------------
@@ -273,6 +361,9 @@ export function checkTranscription(scheme: NormalizedScheme, ctx: CheckContext):
   }
   for (const u of scheme.unreadable) issues.push(`Unreadable: ${u}`);
   for (const s of scheme.sourceProblems) issues.push(`Source: ${s}`);
+  // Transcribed faithfully, so worth recording but not a reason to hold the scheme back.
+  for (const m of scheme.misprints) warnings.push(`Misprint in the scheme: ${m}`);
+  for (const d of scheme.diagrams) warnings.push(`Diagram described in words: ${d}`);
 
   // Each part.
   const totalsPerPart: number[][] = [];
@@ -428,7 +519,12 @@ export function planPartChanges(args: {
   marks: (number | null)[];
   inUse: InUseTarget | null;
 }): PartPlan {
-  const { existing, scheme, marks, inUse } = args;
+  const { existing, inUse } = args;
+  const { scheme, marks, derived } = alignSubparts(
+    args.scheme,
+    args.marks,
+    new Set(inUse ? inUse.labels : existing.map((p) => p.part_label))
+  );
   const flags: string[] = [];
   const actions: PartAction[] = [];
   const rebuild = isIdenticalSiblingCopy(existing);
@@ -606,7 +702,14 @@ export function planPartChanges(args: {
     if (extra.length) flags.push(`The bank has ${extra.join(", ")}, which the scheme does not show; nothing is deleted.`);
     scheme.parts.forEach((sp, i) => {
       const p = byLabel.get(sp.label);
-      if (p) fill(p, sp.latex, marks[i]);
+      const m = marks[i];
+      // Marks the scheme printed replace the bank's. Marks worked out from
+      // the codes, or a verified part's, are only compared: a disagreement
+      // there is for the teacher to settle.
+      if (p && m !== null && m !== p.marks && (locked(p) || derived.has(sp.label))) {
+        flags.push(`The bank gives (${sp.label}) ${p.marks} mark${p.marks === 1 ? "" : "s"}, the scheme ${m}.`);
+      }
+      if (p) fill(p, sp.latex, m);
       else {
         actions.push({
           kind: "insert",

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  alignSubparts,
   checkTranscription,
   isIdenticalSiblingCopy,
   isValidBankLabel,
@@ -9,6 +10,7 @@ import {
   planPartChanges,
   questionNumberFromCode,
   realBankTotal,
+  splitSubparts,
   toBankLabel,
   wholeQuestionLatex,
   type ExistingPart,
@@ -19,7 +21,7 @@ import {
 // this repository (it is public).
 
 function scheme(parts: TranscribedScheme["parts"], extra: Partial<TranscribedScheme> = {}): TranscribedScheme {
-  return { questionNumber: 4, totalMarks: null, parts, unreadable: [], sourceProblems: [], ...extra };
+  return { questionNumber: 4, totalMarks: null, parts, unreadable: [], sourceProblems: [], misprints: [], diagrams: [], ...extra };
 }
 
 const partA = { label: "(a)", marks: 2, latex: "attempt at chain rule \\hfill M1\n$y' = 6x$ \\hfill A1\n\\hfill [2 marks]" };
@@ -169,6 +171,13 @@ describe("checkTranscription", () => {
     expect(check.issues.join(" ")).toMatch(/states \[4 marks\]/);
   });
 
+  it("records misprints and diagrams without holding the scheme back", () => {
+    const { check } = checked(scheme([partA], { misprints: ["a doubled equals sign"], diagrams: ["a sketch of a parabola"] }));
+    expect(check.issues).toEqual([]);
+    expect(check.warnings.join(" ")).toMatch(/Misprint in the scheme: a doubled equals sign/);
+    expect(check.warnings.join(" ")).toMatch(/Diagram described in words: a sketch of a parabola/);
+  });
+
   it("warns about codes left without \\hfill", () => {
     const { check } = checked(scheme([{ label: "", marks: 1, latex: "$s = 1$ A1\n$s = 1$ \\hfill A1\n\\hfill [1 mark]" }]));
     expect(check.issues).toEqual([]);
@@ -223,10 +232,17 @@ describe("planPartChanges", () => {
 
   it("leaves a verified part or an existing scheme alone", () => {
     const existing = [
-      part({ id: "a", part_label: "a", latex_verified: true }),
-      part({ id: "b", part_label: "b", markscheme_latex: "kept \\hfill A1" }),
+      part({ id: "a", part_label: "a", marks: 2, latex_verified: true }),
+      part({ id: "b", part_label: "b", marks: 3, markscheme_latex: "kept \\hfill A1" }),
     ];
-    expect(planPartChanges({ existing, scheme: twoParts, marks, inUse: null }).actions).toEqual([]);
+    expect(planPartChanges({ existing, scheme: twoParts, marks, inUse: null })).toMatchObject({ actions: [], flags: [] });
+  });
+
+  it("flags a verified part whose marks disagree with the scheme instead of changing them", () => {
+    const existing = [part({ id: "a", part_label: "a", marks: 1, latex_verified: true }), part({ id: "b", part_label: "b", marks: 3 })];
+    const plan = planPartChanges({ existing, scheme: twoParts, marks, inUse: null });
+    expect(plan.actions).toEqual([]);
+    expect(plan.flags).toEqual(["The bank gives (a) 1 mark, the scheme 2."]);
   });
 
   it("rebuilds the parts of a whole-question copy, pinning the old text", () => {
@@ -277,6 +293,99 @@ describe("planPartChanges", () => {
       expect(plan.actions).toEqual([]);
       expect(plan.flags.join(" ")).toMatch(/count marks twice/);
     });
+  });
+});
+
+describe("sub-parts that share their parent's marks", () => {
+  // One printed [5 marks] for (a); (i) and (ii) inside it, as older IB schemes print them.
+  const shared = {
+    label: "(a)",
+    marks: 5,
+    latex: [
+      "(i) attempt at product rule",
+      "\\hfill (M1)",
+      "$y' = 2x + 1$",
+      "\\hfill A1",
+      "",
+      "(ii)",
+      "sets $y' = 0$",
+      "\\hfill M1",
+      "$x = -\\frac{1}{2}$",
+      "\\hfill A1",
+      "Note: accept $-0.5$. Award A1 only when the M1 is awarded.",
+      "$y = 3$",
+      "\\hfill A1AG",
+      "",
+      "\\hfill [5 marks]",
+    ].join("\n"),
+  };
+  const normalizedShared = () => normalizeTranscription(scheme([shared, partB], { totalMarks: 8 }));
+
+  it("cuts a part at its (i), (ii) lines and values each piece by its codes", () => {
+    const pieces = splitSubparts(normalizedShared().parts[0])!;
+    expect(pieces.map((p) => [p.label, p.printedLabel, p.marks])).toEqual([
+      ["ai", "(a)(i)", 2],
+      ["aii", "(a)(ii)", 3],
+    ]);
+    expect(pieces[0].latex).toMatch(/^attempt at product rule/);
+    expect(pieces[0].latex.endsWith("\\hfill [2 marks]")).toBe(true);
+    expect(pieces[1].latex).toMatch(/Note: accept/);
+    expect(pieces[1].latex).not.toMatch(/\[5 marks\]/);
+  });
+
+  it("will not cut when it cannot do so cleanly", () => {
+    const base = normalizedShared().parts[0];
+    expect(splitSubparts({ ...base, latex: `a lead-in line\n${base.latex}` })).toBeNull();
+    expect(splitSubparts({ ...base, latex: base.latex.replace("(ii)", "(iii)") })).toBeNull();
+    expect(splitSubparts({ ...base, marks: 6 })).toBeNull();
+    expect(splitSubparts({ ...base, label: "", printedLabel: "" })).toBeNull();
+    expect(splitSubparts(normalizeTranscription(scheme([partA])).parts[0])).toBeNull();
+  });
+
+  it("aligns only to the sub-parts the bank already uses", () => {
+    const s = normalizedShared();
+    const aligned = alignSubparts(s, [5, 3], new Set(["ai", "aii", "b"]));
+    expect(aligned.scheme.parts.map((p) => p.label)).toEqual(["ai", "aii", "b"]);
+    expect(aligned.marks).toEqual([2, 3, 3]);
+    expect([...aligned.derived]).toEqual(["ai", "aii"]);
+    expect(alignSubparts(s, [5, 3], new Set(["a", "b"])).scheme.parts.map((p) => p.label)).toEqual(["a", "b"]);
+    expect(alignSubparts(s, [5, 3], new Set(["ai", "aii", "aiii"])).scheme.parts.map((p) => p.label)).toEqual(["a", "b"]);
+  });
+
+  it("fills the bank's sub-parts from a scheme that prints only their parent's marks", () => {
+    const existing = [
+      part({ id: "ai", part_label: "ai", marks: 2 }),
+      part({ id: "aii", part_label: "aii", marks: 3 }),
+      part({ id: "b", part_label: "b", marks: 3 }),
+    ];
+    const plan = planPartChanges({ existing, scheme: normalizedShared(), marks: [5, 3], inUse: null });
+    expect(plan.flags).toEqual([]);
+    expect(plan.actions).toEqual([
+      expect.objectContaining({ kind: "fill", partId: "ai", marks: null }),
+      expect.objectContaining({ kind: "fill", partId: "aii", marks: null }),
+      expect.objectContaining({ kind: "fill", partId: "b", marks: null }),
+    ]);
+  });
+
+  it("flags sub-part marks worked out from the codes that disagree with the bank's", () => {
+    const existing = [part({ id: "ai", part_label: "ai", marks: 1 }), part({ id: "aii", part_label: "aii", marks: 4 })];
+    const plan = planPartChanges({ existing, scheme: normalizedShared(), marks: [5, 3], inUse: null });
+    expect(plan.actions).toEqual([]);
+    expect(plan.flags).toContain("The bank gives (ai) 1 mark, the scheme 2.");
+  });
+
+  it("creates the sub-parts a test uses", () => {
+    const plan = planPartChanges({
+      existing: [],
+      scheme: normalizedShared(),
+      marks: [5, 3],
+      inUse: { labels: ["ai", "aii"], maxMarks: { ai: 2, aii: 3 } },
+    });
+    expect(plan.flags).toEqual([]);
+    expect(plan.actions.map((a) => ("label" in a ? [a.label, a.marks] : []))).toEqual([
+      ["ai", 2],
+      ["aii", 3],
+    ]);
   });
 });
 

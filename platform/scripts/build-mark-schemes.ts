@@ -33,7 +33,8 @@
 // their images by hand) at each --effort (default medium,high) and compares
 // marks, codes and text with the bank. It writes nothing but usage rows.
 // --out saves the full comparison, scheme text included, so it must point
-// outside the repository, which is public.
+// outside the repository, which is public. --from <that file> compares a
+// saved run again, against the bank as it is now, without calling the model.
 //
 // --hold (with --apply or --collect) stores the transcription, checks and
 // plan but leaves passing builds pending, for a look before they go live;
@@ -52,11 +53,12 @@
 
 import { createClient } from "@supabase/supabase-js";
 import Anthropic from "@anthropic-ai/sdk";
-import { writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { recordUsage } from "../lib/ai-usage";
 import { summarizeSchemeMarks } from "../lib/mark-codes";
 import {
+  alignSubparts,
   checkTranscription,
   isIdenticalSiblingCopy,
   normalizeTranscription,
@@ -106,7 +108,9 @@ const ROLLBACK_RUN = opt("rollback");
 if (MODE === "rollback" && !ROLLBACK_RUN) throw new Error("--rollback needs the run id to undo");
 
 const EFFORTS: TranscriptionEffort[] = ["low", "medium", "high", "xhigh", "max"];
-// Until the gold run has compared medium with high.
+// The 26 Sep 2026 gold run (13 known-good questions, 31 parts) found medium
+// and high equally right on marks and codes; high kept the notation more
+// faithfully for about a cent more a question.
 const DEFAULT_EFFORT: TranscriptionEffort = "high";
 const efforts = (list("effort") ?? (MODE === "gold" ? ["medium", "high"] : [DEFAULT_EFFORT])) as TranscriptionEffort[];
 if (efforts.some((e) => !EFFORTS.includes(e))) throw new Error(`--effort takes ${EFFORTS.join(", ")}`);
@@ -124,6 +128,7 @@ const PAPERS = list("paper")?.map(Number) ?? null;
 const RUN_FILTER = opt("run");
 const RUN_ID = RUN_FILTER ?? `ms-${new Date().toISOString().replace(/[-:]/g, "").slice(0, 15)}`;
 const OUT = opt("out");
+const FROM = opt("from");
 const VERBOSE = flag("verbose");
 
 if ((MODE === "apply" || MODE === "batch") && LIMIT === Infinity && !CODES && !flag("all")) {
@@ -138,7 +143,7 @@ const supabaseUrl = process.env.SUPABASE_URL ?? "https://qnawglgnoojrlaivylou.su
 const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const anthropicKey = process.env.ANTHROPIC_API_KEY ?? process.env.GRADING_ANTHROPIC_API_KEY;
 if (!serviceKey) throw new Error("SUPABASE_SERVICE_ROLE_KEY is required");
-const CALLS_MODEL = MODE === "gold" || MODE === "apply" || MODE === "batch" || MODE === "collect";
+const CALLS_MODEL = (MODE === "gold" && !FROM) || MODE === "apply" || MODE === "batch" || MODE === "collect";
 if (CALLS_MODEL && !anthropicKey) throw new Error("ANTHROPIC_API_KEY (or GRADING_ANTHROPIC_API_KEY) is required");
 
 const supabase = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } });
@@ -876,19 +881,25 @@ interface PartComparison {
 }
 
 /**
- * Lines as the grader would read them, with the differences that do not
- * change a mark taken out: spacing, \left/\right, \dfrac, dollar signs,
- * and the marks statement ("[N marks]", "Total [N marks]").
+ * The content lines as the grader would read them, with what never changes
+ * a mark taken out: code-only lines and trailing codes (compared on their
+ * own), the marks statement, spacing, dollar signs, \left/\right and \big
+ * sizes, \dfrac, \displaystyle, and \text/\textbf/\mathrm wrappers.
  */
 function comparableLines(latex: string): string[] {
   return latex
-    .replace(/\\hfill\s*\[\s*\d+\s*marks?\s*\]/gi, "")
     .split("\n")
     .map((line) =>
       line
+        .replace(/\\hfill.*$/, "")
         .replace(/^\s*(?:\\textbf\{)?\s*total\s*\[\s*\d+\s*marks?\s*\]\s*\}?\s*$/i, "")
-        .replace(/\\(?:left|right)(?=[()[\]|.\\])/g, "")
+        .replace(/\\(?:text|textbf|textit|textrm|mathrm|mathbf|emph)\s*\{([^{}]*)\}/g, "$1")
+        .replace(/\\(?:left|right|[bB]igg?[lr]?)(?=[()[\]|.\\{}])/g, "")
         .replace(/\\[dt]frac/g, "\\frac")
+        .replace(/\\displaystyle/g, "")
+        .replace(/\\ldots|\\dots|\\cdots/g, "...")
+        .replace(/\^\{\\circ\}/g, "^\\circ")
+        .replace(/([_^])\{([A-Za-z0-9])\}/g, "$1$2")
         .replace(/\\(?:quad|qquad|[,;:! ])/g, "")
         .replace(/[\s~$]/g, "")
     )
@@ -911,7 +922,9 @@ const codeList = (latex: string) =>
     .sort()
     .join(" ");
 
-function compareToBank(bank: ExistingPart[], scheme: NormalizedScheme, marks: (number | null)[]): PartComparison[] {
+function compareToBank(bank: ExistingPart[], normalized: NormalizedScheme, resolved: (number | null)[]): PartComparison[] {
+  // Cut shared-marks parts into the bank's sub-parts first, as the planner does.
+  const { scheme, marks } = alignSubparts(normalized, resolved, new Set(bank.map((p) => p.part_label)));
   const unlabelledScheme = scheme.parts.length === 1 && scheme.parts[0].label === "";
   const out: PartComparison[] = [];
   for (const p of bank) {
@@ -962,6 +975,68 @@ interface GoldRow {
   transcription?: TranscribedScheme;
 }
 
+function goldRowFor(c: Candidate, base: GoldRow, saved: TranscribedScheme): GoldRow {
+  // Transcriptions saved by an older prompt lack the newer fields.
+  const raw: TranscribedScheme = { ...saved, misprints: saved.misprints ?? [], diagrams: saved.diagrams ?? [] };
+  const scheme = normalizeTranscription(raw);
+  const check = checkTranscription(scheme, {
+    expectedQuestionNumber: questionNumberFromCode(c.code),
+    bankTotal: realBankTotal(c.parts),
+  });
+  return {
+    ...base,
+    issues: check.issues,
+    warnings: check.warnings,
+    parts: compareToBank(c.parts, scheme, check.resolvedMarks),
+    transcription: raw,
+  };
+}
+
+function printGold(effort: string, rows: GoldRow[]): void {
+  let compared = 0;
+  let marksAgree = 0;
+  let codesAgree = 0;
+  let similarity = 0;
+  for (const r of rows) {
+    if (r.error) {
+      console.log(`${r.code}: ERROR ${r.error}`);
+      continue;
+    }
+    const ps = r.parts ?? [];
+    const mOk = ps.filter((p) => p.schemeMarks === p.bankMarks).length;
+    const cOk = ps.filter((p) => p.schemeCodes === p.bankCodes).length;
+    const sim = ps.reduce((s, p) => s + p.similarity, 0);
+    compared += ps.length;
+    marksAgree += mOk;
+    codesAgree += cOk;
+    similarity += sim;
+    console.log(
+      `${r.code}: marks ${mOk}/${ps.length}, codes ${cOk}/${ps.length}, text ${ps.length ? ((100 * sim) / ps.length).toFixed(0) : "-"}%, ` +
+        `${r.issues?.length ?? 0} issue(s); ${r.seconds?.toFixed(0) ?? "-"}s, ${r.usage?.output_tokens ?? "-"} out, $${r.cost?.toFixed(3) ?? "-"}`
+    );
+    for (const issue of r.issues ?? []) console.log(`    issue: ${issue}`);
+    if (VERBOSE) for (const w of r.warnings ?? []) console.log(`    warning: ${w}`);
+    for (const p of ps) {
+      const differs = p.schemeMarks !== p.bankMarks || p.schemeCodes !== p.bankCodes || p.similarity < 1;
+      if (!differs && !VERBOSE) continue;
+      console.log(
+        `    ${labelName(p.label)}${p.verified ? " (verified)" : ""}: marks ${p.bankMarks} vs ${p.schemeMarks ?? "?"}; ` +
+          `codes [${p.bankCodes}] vs [${p.schemeCodes}]; text ${(100 * p.similarity).toFixed(0)}%`
+      );
+      for (const l of p.onlyBank) console.log(`      - ${l}`);
+      for (const l of p.onlyScheme) console.log(`      + ${l}`);
+    }
+  }
+  const ok = rows.filter((r) => !r.error);
+  const cost = rows.reduce((s, r) => s + (r.cost ?? 0), 0);
+  console.log(
+    `\neffort ${effort}: ${ok.length}/${rows.length} transcribed; parts compared ${compared}: marks agree ${marksAgree}, codes agree ${codesAgree}, ` +
+      `mean text ${compared ? ((100 * similarity) / compared).toFixed(0) : "-"}%; ${ok.filter((r) => (r.issues?.length ?? 0) > 0).length} would be flagged; ` +
+      `$${cost.toFixed(2)}, mean ${(ok.reduce((s, r) => s + (r.seconds ?? 0), 0) / Math.max(1, ok.length)).toFixed(0)}s, ` +
+      `mean ${Math.round(ok.reduce((s, r) => s + (r.usage?.output_tokens ?? 0), 0) / Math.max(1, ok.length))} output tokens`
+  );
+}
+
 async function gold(): Promise<void> {
   const verified = await fetchAll<{ question_id: string }>((from, to) =>
     supabase.from("question_parts").select("question_id").eq("latex_verified", true).order("id").range(from, to)
@@ -976,79 +1051,38 @@ async function gold(): Promise<void> {
     .filter((q) => imagePaths.has(q.id))
     .map((q) => ({ ...q, imagePaths: imagePaths.get(q.id)!, parts: parts.get(q.id) ?? [], printable: true }))
     .sort((a, b) => a.code.localeCompare(b.code));
+  const byCode = new Map(set.map((c) => [c.code, c]));
 
   const report: GoldRow[] = [];
-  for (const effort of efforts) {
-    console.log(`\n== effort ${effort}: ${set.length} questions ==`);
-    const rows: GoldRow[] = [];
-    await pool(set, CONCURRENCY, async (c) => {
-      try {
-        const t = await transcribeNow(c, effort, null);
-        const base = { code: c.code, effort, seconds: t.seconds, cost: costOf(t.message.usage), usage: t.message.usage };
-        if (!t.result.ok) {
-          rows.push({ ...base, error: t.result.error });
-          return;
-        }
-        const scheme = normalizeTranscription(t.result.scheme);
-        const check = checkTranscription(scheme, {
-          expectedQuestionNumber: questionNumberFromCode(c.code),
-          bankTotal: realBankTotal(c.parts),
-        });
-        rows.push({
-          ...base,
-          issues: check.issues,
-          warnings: check.warnings,
-          parts: compareToBank(c.parts, scheme, check.resolvedMarks),
-          transcription: t.result.scheme,
-        });
-      } catch (e) {
-        rows.push({ code: c.code, effort, error: errorText(e) });
-      }
-    });
-    rows.sort((a, b) => a.code.localeCompare(b.code));
-
-    let compared = 0;
-    let marksAgree = 0;
-    let codesAgree = 0;
-    let similarity = 0;
-    for (const r of rows) {
-      if (r.error) {
-        console.log(`${r.code}: ERROR ${r.error}`);
-        continue;
-      }
-      const ps = r.parts ?? [];
-      const mOk = ps.filter((p) => p.schemeMarks === p.bankMarks).length;
-      const cOk = ps.filter((p) => p.schemeCodes === p.bankCodes).length;
-      compared += ps.length;
-      marksAgree += mOk;
-      codesAgree += cOk;
-      similarity += ps.reduce((s, p) => s + p.similarity, 0);
-      const out = r.usage?.output_tokens ?? 0;
-      console.log(
-        `${r.code}: marks ${mOk}/${ps.length}, codes ${cOk}/${ps.length}, text ${ps.length ? ((100 * ps.reduce((s, p) => s + p.similarity, 0)) / ps.length).toFixed(0) : "-"}%, ` +
-          `${r.issues?.length ?? 0} issue(s); ${r.seconds?.toFixed(0)}s, ${out} out, $${r.cost?.toFixed(3)}`
-      );
-      for (const issue of r.issues ?? []) console.log(`    issue: ${issue}`);
-      for (const p of ps) {
-        const differs = p.schemeMarks !== p.bankMarks || p.schemeCodes !== p.bankCodes || p.similarity < 1;
-        if (!differs && !VERBOSE) continue;
-        console.log(
-          `    ${labelName(p.label)}${p.verified ? " (verified)" : ""}: marks ${p.bankMarks} vs ${p.schemeMarks ?? "?"}; ` +
-            `codes [${p.bankCodes}] vs [${p.schemeCodes}]; text ${(100 * p.similarity).toFixed(0)}%`
-        );
-        for (const l of p.onlyBank) console.log(`      - ${l}`);
-        for (const l of p.onlyScheme) console.log(`      + ${l}`);
-      }
+  if (FROM) {
+    // Compare a saved run again, against the bank as it is now, without calling the model.
+    const saved = JSON.parse(readFileSync(FROM, "utf8")) as { rows: GoldRow[] };
+    for (const effort of [...new Set(saved.rows.map((r) => r.effort))]) {
+      console.log(`\n== effort ${effort} (from ${FROM}) ==`);
+      const rows = saved.rows
+        .filter((r) => r.effort === effort && byCode.has(r.code))
+        .map((r) => (r.transcription ? goldRowFor(byCode.get(r.code)!, { ...r, parts: undefined }, r.transcription) : r))
+        .sort((a, b) => a.code.localeCompare(b.code));
+      printGold(effort, rows);
+      report.push(...rows);
     }
-    const ok = rows.filter((r) => !r.error);
-    const cost = rows.reduce((s, r) => s + (r.cost ?? 0), 0);
-    console.log(
-      `\neffort ${effort}: ${ok.length}/${rows.length} transcribed; parts compared ${compared}: marks agree ${marksAgree}, codes agree ${codesAgree}, ` +
-        `mean text ${compared ? ((100 * similarity) / compared).toFixed(0) : "-"}%; ${ok.filter((r) => (r.issues?.length ?? 0) > 0).length} would be flagged; ` +
-        `$${cost.toFixed(2)}, mean ${(ok.reduce((s, r) => s + (r.seconds ?? 0), 0) / Math.max(1, ok.length)).toFixed(0)}s, ` +
-        `mean ${Math.round(ok.reduce((s, r) => s + (r.usage?.output_tokens ?? 0), 0) / Math.max(1, ok.length))} output tokens`
-    );
-    report.push(...rows);
+  } else {
+    for (const effort of efforts) {
+      console.log(`\n== effort ${effort}: ${set.length} questions ==`);
+      const rows: GoldRow[] = [];
+      await pool(set, CONCURRENCY, async (c) => {
+        try {
+          const t = await transcribeNow(c, effort, null);
+          const base = { code: c.code, effort, seconds: t.seconds, cost: costOf(t.message.usage), usage: t.message.usage };
+          rows.push(t.result.ok ? goldRowFor(c, base, t.result.scheme) : { ...base, error: t.result.error });
+        } catch (e) {
+          rows.push({ code: c.code, effort, error: errorText(e) });
+        }
+      });
+      rows.sort((a, b) => a.code.localeCompare(b.code));
+      printGold(effort, rows);
+      report.push(...rows);
+    }
   }
   if (OUT) {
     writeFileSync(

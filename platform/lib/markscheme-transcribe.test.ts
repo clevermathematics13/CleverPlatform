@@ -14,6 +14,8 @@ const valid = {
   parts: [{ label: "", marks: 2, latex: "$x = 1$ \\hfill M1A1\n\\hfill [2 marks]" }],
   unreadable: [],
   sourceProblems: [],
+  misprints: [],
+  diagrams: [],
 };
 
 function message(overrides: Partial<Anthropic.Message> & { parsed_output?: unknown } = {}): Anthropic.Message & {

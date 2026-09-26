@@ -21,7 +21,7 @@ import { TranscribedSchemeSchema, type TranscribedScheme } from "@/lib/markschem
 export const MARKSCHEME_BUILD_MODEL = "claude-opus-5";
 
 /** Bumped whenever the prompt changes, so builds record which one they ran. */
-export const MARKSCHEME_PROMPT_VERSION = "2026-09-26.1";
+export const MARKSCHEME_PROMPT_VERSION = "2026-09-26.3";
 
 export type TranscriptionEffort = "low" | "medium" | "high" | "xhigh" | "max";
 
@@ -66,22 +66,24 @@ WHAT YOU RETURN
 - label: exactly as printed, e.g. "(a)" or "(b)(ii)".
 - marks: the part's printed "[N marks]", or null when the scheme prints none for it.
 - latex: that part's scheme only. Do not start it with the part's own label. End it with \\hfill [N marks] when marks are printed. Never put the question's "Total [N marks]" line in any part; give that number as totalMarks.
-- questionNumber: the question number printed on the scheme, or null. totalMarks: the printed total, or null.
+- questionNumber: the question number printed on the scheme, or null. The images are often cropped to the scheme alone, with no number and no total; that is normal. totalMarks: the printed total, or null.
 - unreadable: every place where you are not certain of a character, digit, sign, exponent or code. Leave it empty only when you are certain of everything.
-- sourceProblems: anything wrong with the images themselves: they show a different question, the scheme is cut off or continues beyond them, a part seems missing, the scheme contains a diagram you could not transcribe, or the scheme itself contains an obvious misprint. Empty when there are none.
+- sourceProblems: real problems with the images only: they show a different question, the scheme is visibly cut off mid-line or mid-step, or it refers to a part that is not there. Never report that a question number, part labels, part marks or a total are not printed, or that you cannot tell whether other parts exist: older schemes print no marks, and the images are cropped to this question's scheme on purpose. Empty when there are none.
+- misprints: each obvious misprint in the scheme itself (a stray symbol, a doubled sign, a wrong letter), which you transcribe as printed. Empty when there are none.
+- diagrams: each diagram or graph in the scheme that you described in words instead of transcribing. Empty when there are none.
 
 HOW TO WRITE THE LATEX
 ${IB_LATEX_STYLE_GUIDE}
 
 For mark schemes these rules come first, and override the guide above where they differ:
 - Maths: $...$ inline and $$...$$ for display. Never \\[...\\] or \\(...\\). Never \\begin{IBPart} or \\begin{enumerate}.
-- Mark codes: each code goes at the end of the line it annotates, after \\hfill, exactly as printed: (M1), M1, A1, (A1)(A1), M1A1, A2, R1, AG, N2, and combinations such as A1 N2 or A1A1 N2. Never put a code inside maths. Never drop the brackets of an implied mark. Never split or merge codes: A2 stays A2 and A1A1 stays A1A1.
+- Mark codes: as the guide says, \\hfill and the codes on their own line, straight after the line they annotate, exactly as printed: (M1), M1, A1, (A1)(A1), M1A1, A2, R1, AG, N2, and combinations such as A1 N2 or A1A1 N2. Never put a code inside maths. Never drop the brackets of an implied mark. Never split or merge codes: A2 stays A2 and A1A1 stays A1A1.
 - Keep every structural line as its own line of text: METHOD 1 / METHOD 2, EITHER / OR / THEN, "Note: ..." lines, and phrases such as "eg", "accept", "award", "do not award", "(seen anywhere)", "FT". Transcribe them verbatim.
-- Sub-parts that share their parent's marks start on their own line with their printed label, e.g. "(i)".
+- Sub-parts that share their parent's marks start on their own line with their printed label, e.g. "(i)", and everything up to the next such label belongs to that sub-part.
 - One line per line of the scheme, with a blank line between separate steps.
 - Transcribe only the mark scheme, never the question.
-- Do not add, correct or complete anything. If the scheme contains a misprint, transcribe it as printed and mention it in sourceProblems.
-- A diagram or graph in the scheme becomes one line such as [diagram: sketch of a cubic through the origin with a minimum near x = 2], and a sourceProblems entry saying so.`;
+- Do not add, correct or complete anything. If the scheme contains a misprint, transcribe it as printed and list it in misprints.
+- A diagram or graph in the scheme becomes one line such as [diagram: sketch of a cubic through the origin with a minimum near x = 2], and a diagrams entry saying so. Describe everything a marker would check: shape, intercepts, turning points, asymptotes, labels.`;
 }
 
 export function buildTranscriptionUserText(code: string, questionNumber: number | null): string {
