@@ -4196,6 +4196,57 @@ Verified:
 
 `latex_verified` stays false.
 
+### The last doubled `\hfill`s, and three faults found with them (26 Sep 2026)
+
+At the teacher's request, the four questions that the follow-up below named
+for a doubled `\hfill`. The renderer splits a line at its first `\hfill`
+only, so "A1 \hfill N2" showed the second one. Three more faults turned up
+in the same questions, and the teacher chose to fix those too. 15 values
+were written compare-and-set against a backup in the session scratchpad and
+read back. No migration: the text is IB copyright, and the marks change is
+the Question Studio's own edit.
+
+- **Mark column.** `\hfill A1 \hfill N2` became `\hfill A1 N2`, as printed,
+  in 07M.1.AHL.TZ1.H_1 (a) and (b), 15N.1.SL.TZ0.S_6 (twice),
+  16M.1.SL.TZ2.S_3 (a) and (b), and 19N.1.SL.TZ0.S_3 (a) and (b). The same
+  lines were fixed in each `parts_draft_markscheme_latex`.
+- **15N.1.SL.TZ0.S_6 stored its question three times.** `stem_latex`,
+  `parts_draft_latex` and the part's `content_latex` were identical, so
+  `composeQuestionText` gave the grader the question twice.
+  `stem_markscheme_latex` also held a second copy of the scheme. The stem,
+  the stem scheme and both drafts are now NULL, as for 22M.2.AHL.TZ2.H_6 and
+  1439 of the bank's 1441 single-part questions.
+- **16M.1.SL.TZ2.S_3 (a) was stored as 1 mark.** It prints [2], its scheme
+  is (A1) A1 [2 marks], and the question totals 6 = 2 + 4. It is now 2. The
+  change was made the way the part-metadata PATCH makes it: first a
+  `question_part_metadata_history` snapshot of the old row, then the update.
+  The snapshot's `changed_by` is NULL, because no teacher clicked it.
+- **Question totals in part schemes.** 16M S_3 (b) ended with a stray
+  `\end{IBPart}` and "Total [6 marks]"; 19N S_3 (b) ended with "Total [7
+  marks]". Both were cut, from the drafts too. That is how they got there:
+  "Apply to editors" (`splitDraftIntoParts`) gives the last part everything
+  to the end of the draft and strips `\end{IBPart}` only when it is last.
+
+Checked before writing, through the app's own code:
+- `parseMSTokens` gives the same token ids before and after every changed
+  scheme, so the stored `mark_attributions` still line up.
+- `splitDraftIntoParts` on each new draft gives exactly the new part
+  schemes.
+- Rendering all 14 LaTeX fields before and after through `LatexRenderer`
+  showed 18 literal "\hfill"s and 2 part "Total"s before, and none after.
+- The K05 lint passes, except that 07M H_1's stored text carries no tariffs
+  (left as it is).
+
+After writing:
+- The read-back matched 15/15, and one history row was added.
+- A re-scan of all 2101 parts and 2011 questions finds none of the five
+  renderer faults: text-mode `\quad`, bold or italic mark, table-then-mark,
+  TeX quotes and doubled `\hfill`.
+- 27AH [K06] P1 is the only test using any of the four; it was hand-marked
+  and has no AI results. `loadGradeableMarkScheme` on it gives the same 19
+  units, 70 marks, sources, warnings and banner as before. Only 19N S_3's two
+  schemes changed.
+
 ### Not done (follow-ups)
 
 - ExamBuilder "Save to Gradebook" (`app/api/gradebook/tests/route.ts`) could
@@ -4215,11 +4266,29 @@ Verified:
   - a second `\hfill` on a line prints literally.
 
   After the fixes above, a scan of all 2101 parts and 2011 questions on
-  26 Sep 2026 found none of the first three left. A doubled `\hfill` is
-  still stored in 07M.1.AHL.TZ1.H_1, 15N.1.SL.TZ0.S_6, 16M.1.SL.TZ2.S_3 and
-  19N.1.SL.TZ0.S_3. The extraction style guide (`IB_LATEX_STYLE_GUIDE`)
-  already asks for plain `\hfill (A1)`. Hardening the renderer would stop a
-  hand-typed scheme bringing any of these back.
+  26 Sep 2026 found none of them left in stored text. The extraction style
+  guide (`IB_LATEX_STYLE_GUIDE`) already asks for plain `\hfill (A1)`.
+  Hardening the renderer would stop a hand-typed scheme bringing any of these
+  back.
+- The same 26 Sep scan found these part structures and tariffs wrong. None
+  is fixed, and none of these questions is in a test.
+  - 19M.2.AHL.TZ2.H_11 holds the whole question and scheme in each of its
+    four parts, as 18M.2.SL.TZ1.S_8 did.
+  - 18M.1.AHL.TZ2.H_9 stores both (a) and its (ai) and (aii), and both (f)
+    and its (fi) and (fii): 32 marks for a 24-mark question.
+  - 24M.1.AHL.TZ2.H_7's (ci) and (cii) are stored as 1 mark each, but (c)
+    prints [3] and the scheme totals 7 (6 are stored).
+  - 11M.1.AHL.TZ2.H_6 (b)'s scheme closes with the question's [5 marks];
+    the part is 3.
+- 25 parts in 21 multi-part questions still end their scheme with the whole
+  question's "Total [N marks]". Three are in 27AH [K06] P1:
+  15M.1.AHL.TZ2.H_13 (c), 22N.1.SL.TZ0.S_1 (c) and 22N.1.SL.TZ0.S_7 (c).
+  17M.1.AHL.TZ1.H_1 is the one single-part question left whose stem repeats
+  its part.
+- 27AH [K06] P1 shows the Mark Scans banner:
+  - 17M.1.AHL.TZ1.H_5 (a) and (b) have no scheme (7 marks);
+  - 24M.1.AHL.TZ2.H_2 is marked from its Tesseract text;
+  - 22N.1.SL.TZ0.S_7 (bii) is marked from the whole-question scheme.
 - K05 P2: the four new parts' subtopics (H_7(b) 5.13, H_9(b) 1.10, H_12(d)
   5.8, H_12(f) `5.18 (sep)`) were chosen by hand, not by Auto-classify; the
   old whole-question Tesseract `markscheme_text` still sits on H_8, H_9(a)
