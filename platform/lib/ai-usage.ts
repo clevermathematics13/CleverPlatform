@@ -61,7 +61,10 @@ export type UsagePipeline =
   | "placement_upload"
   | "placement_segment"
   | "placement_grade"
-  | "placement_recommend";
+  | "placement_recommend"
+  // The bulk mark-scheme build (scripts/build-mark-schemes.ts): one call per
+  // PPQ question, synchronous for gold runs and pilots, batched for the bulk.
+  | "markscheme_build";
 
 export type UsageRefType =
   | "ai_grade_run"
@@ -70,7 +73,9 @@ export type UsageRefType =
   | "na_crop"
   | "na_scan_batch"
   // a whole test, for calls about the paper rather than one script (boundary_suggest)
-  | "test";
+  | "test"
+  // one markscheme_builds row: a question's transcription
+  | "markscheme_build";
 
 /** The subset of the SDK's Message.usage this cares about. Cache fields are nullable on the wire. */
 export interface UsageMeters {
