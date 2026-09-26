@@ -3,6 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import fs from "fs";
 import path from "path";
 import { findExposedDeliberation, findHedgedReading } from "./examiner-reasoning";
+import { totalAwardedMarks, type AwardedTotal } from "./mark-codes";
 import { classifyUnderPrecision, matchesRequiredPrecision } from "./numerical-accuracy";
 import {
   levelRanges,
@@ -376,6 +377,22 @@ export function gradeNeedsReview(g: Pick<ValidatedGrade, "confidence"> & { item:
 }
 
 /**
+ * What a part's awarded breakdown is worth. A PPQ bank scheme's tokens are
+ * IB codes, valued the IB way (totalAwardedMarks: A2 is two marks, AG none,
+ * N marks only in place of M/A/R marks). A teacher's own scheme (source
+ * "custom") names its tokens freely -- the Grade 9 Standard Level policy
+ * numbers them M1, A1, A2, A3 in order -- so each of its tokens stays one
+ * mark.
+ */
+export function breakdownTotal(
+  unit: Pick<GradingUnit, "markschemeSource">,
+  breakdown: readonly { token: string; awarded: boolean }[]
+): AwardedTotal {
+  if (isCustomAssessment(unit)) return { marks: breakdown.filter((b) => b.awarded).length, mixedN: false };
+  return totalAwardedMarks(breakdown);
+}
+
+/**
  * Validate a raw model response against the units that were actually sent.
  *
  * Guarantees on success:
@@ -546,8 +563,8 @@ export function validateGradeResponse(
     // Counted because these grants are the one legitimate way the breakdown
     // may end up awarding MORE than suggestedMarks: each one is a mark this
     // pass added deterministically, so the consistency rule below must let
-    // the total rise by exactly this many and no further.
-    let grantedCount = 0;
+    // the total rise by exactly what they are worth and no further.
+    const beforeGrants = breakdownTotal(unit, item.markBreakdown).marks;
     for (const entry of item.markBreakdown) {
       if (entry.awarded) continue;
       let grant: string | null = null;
@@ -566,7 +583,6 @@ export function validateGradeResponse(
         }
       }
       if (grant) {
-        grantedCount += 1;
         entry.awarded = true;
         entry.note = entry.note ? `${entry.note} (corrected: ${grant})` : `Corrected: ${grant}`;
         reasoningCorrections.push(`${entry.token} was granted on deterministic re-check — ${grant}.`);
@@ -580,8 +596,10 @@ export function validateGradeResponse(
     }
 
     // The model is instructed that awarded mark_breakdown tokens must sum to
-    // suggestedMarks (every token here is a single mark — M1/A1/R1/AG, never
-    // M2/A2), but it doesn't always follow its own arithmetic. When it
+    // suggestedMarks, but it doesn't always follow its own arithmetic. Each
+    // token is valued by breakdownTotal(): an IB bank scheme's codes by their
+    // digits (A2 is two marks, AG none, N marks only without M/A/R marks), a
+    // teacher's own scheme at one mark a token. When it
     // disagrees with itself the result is always flagged low confidence: an
     // internal inconsistency means something about the grading went wrong
     // regardless of which number was "right".
@@ -608,11 +626,19 @@ export function validateGradeResponse(
     // effect. Any excess beyond that is the model disagreeing with itself:
     // suggestedMarks stands and a human is asked instead.
     if (item.markBreakdown.length > 0) {
-      const awardedCount = item.markBreakdown.filter((b) => b.awarded).length;
-      const raiseCeiling = Math.min(clampedMarks + grantedCount, unit.maxMarks);
+      const awarded = breakdownTotal(unit, item.markBreakdown);
+      const awardedCount = awarded.marks;
+      const grantedMarks = Math.max(0, awardedCount - beforeGrants);
+      const raiseCeiling = Math.min(clampedMarks + grantedMarks, unit.maxMarks);
+      if (awarded.mixedN) {
+        warnings.push(
+          `${unitLabel(unit)}: the breakdown awards N marks alongside M/A/R marks, which the IB never combines; the N marks were not counted and the part is flagged for teacher review`
+        );
+        confidence = "low";
+      }
       if (awardedCount < clampedMarks) {
         warnings.push(
-          `${unitLabel(unit)}: model reported ${clampedMarks} mark(s) but its own breakdown only awards ${awardedCount} token(s); corrected to ${awardedCount} and flagged low confidence`
+          `${unitLabel(unit)}: model reported ${clampedMarks} mark(s) but its own breakdown only awards ${awardedCount}; corrected to ${awardedCount} and flagged low confidence`
         );
         clampedMarks = Math.min(awardedCount, unit.maxMarks);
         confidence = "low";
@@ -620,7 +646,7 @@ export function validateGradeResponse(
         const raised = Math.min(awardedCount, raiseCeiling);
         if (awardedCount > raiseCeiling) {
           warnings.push(
-            `${unitLabel(unit)}: model reported ${clampedMarks} mark(s) but its own breakdown awards ${awardedCount} token(s); kept ${raised} — a breakdown is never used to raise a mark beyond what this pass granted — and flagged for teacher review`
+            `${unitLabel(unit)}: model reported ${clampedMarks} mark(s) but its own breakdown awards ${awardedCount}; kept ${raised} — a breakdown is never used to raise a mark beyond what this pass granted — and flagged for teacher review`
           );
         }
         clampedMarks = raised;
@@ -1278,13 +1304,14 @@ judgement calls made in parallel:
    already a single, undivided part with no such internal structure.
 4. REASONING: briefly explain the itemisation above, in the settled, deliberation-free professional style rule 18 requires — not a record of how you arrived at it.
 5. SUGGESTED MARKS: suggestedMarks is NOT a separate judgement call — it is
-   the count of tokens you just marked awarded in step 3 (every token here
-   is worth exactly one mark; there is no M2 or A2). Compute it by counting,
-   don't estimate it separately from a general impression of the work. If a
-   number you were about to write down doesn't match that count, the count
-   is right and the number is wrong — go back and recheck the breakdown
-   against the mark scheme rather than reporting a total that disagrees
-   with your own itemisation.
+   the total of the tokens you just marked awarded in step 3: one mark per
+   token, except in the parts that IB MARK CODE VALUES (after these rules,
+   when this prompt has it) gives other values. Compute it by adding up the
+   breakdown, don't estimate it separately from a general impression of the
+   work. If a number you were about to write down doesn't match that total,
+   the total is right and the number is wrong — go back and recheck the
+   breakdown against the mark scheme rather than reporting a total that
+   disagrees with your own itemisation.
 6. CONFIDENCE: assessed last, since it depends on everything above.
    - "high": the work is legible and maps cleanly onto the mark scheme.
    - "medium": legible but needs a judgement call (alternative method, partial working, follow-through).
@@ -1306,7 +1333,7 @@ generate the JSON in this order too, since suggestedMarks depends on markBreakdo
       "evidenceBox": { "page": 3, "x0": 0.08, "y0": 0.42, "x1": 0.95, "y1": 0.61 } | null,
       "markBreakdown": [{ "token": "M1", "awarded": true, "note": "<brief>" }] | [{ "token": "A1", "awarded": true, "note": "<brief>", "part": "a)(i)" }, ...] (add "part" only when this unit's own mark scheme covers multiple sub-parts),
       "reasoning": "<one or two sentences citing the tokens satisfied or missed>",
-      "suggestedMarks": <the count of markBreakdown entries above with awarded: true>,
+      "suggestedMarks": <the total of the markBreakdown entries above with awarded: true, as step 5 counts it>,
       "confidence": "high" | "medium" | "low"
     }
   ]
@@ -1504,8 +1531,46 @@ export function buildActivityRubricBlock(
  * directly, so a policy can't be wired into one grading path and silently
  * missed by another.
  */
+/**
+ * How an IB markscheme's codes are valued, for parts whose scheme comes from
+ * the PPQ bank. buildGradingSystemPrompt appends it only when a test has such
+ * a part, so a teacher-authored test's prompt -- whose tokens are one mark
+ * each, and may be numbered A1, A2, A3 in order -- never carries it.
+ * validateGradeResponse values the breakdown the same way (breakdownTotal).
+ */
+export const IB_MARK_CODE_VALUES = `===============================================================================
+IB MARK CODE VALUES
+(applies to every part whose "Source question" is a question-bank code: its
+mark scheme is an official IB markscheme)
+===============================================================================
+
+In these parts a code is not always one mark. Itemise and add them up like
+this, in place of step 5's one mark per token:
+
+- A code's digit is its value. M1, A1, R1 and the bracketed (M1), (A1) are
+  one mark each; A2, M2 and R2 are two marks, awarded whole or not at all.
+  An A2 is one markBreakdown entry, never two A1s.
+- Codes printed together are separate marks: itemise M1A1 as two entries,
+  M1 and A1, and (A1)(A1) as two entries, each decided on its own criterion.
+- AG (answer given) is worth no marks. Itemise it as MARK TYPES describes,
+  but it adds nothing to suggestedMarks: the marks for reaching the given
+  answer are the M, A and R codes before it.
+- N marks (N1, N2, ...) are what a correct answer earns with NO working.
+  They replace the part's M, A and R marks, never add to them. When the
+  student shows working, mark it with the M, A and R codes and itemise every
+  N token as not awarded. Award the N tokens only when there is no working
+  at all, and then itemise the M, A and R tokens as not awarded.
+- FT (follow through) is a note on the mark it follows, not a mark. Never
+  itemise it as a token.`;
+
 export function buildGradingSystemPrompt(units: GradingUnit[]): string {
   let prompt = GRADING_SYSTEM_PROMPT;
+
+  if (units.some((u) => !isCustomAssessment(u))) {
+    prompt += `
+
+${IB_MARK_CODE_VALUES}`;
+  }
 
   if (units.some(isAaHlPaper2)) {
     prompt += `
