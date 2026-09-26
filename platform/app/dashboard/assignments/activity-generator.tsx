@@ -70,6 +70,12 @@ type Props = {
    * Undefined for the first packet in a course, or when no course is selected.
    */
   continuityContext?: string;
+  /**
+   * The course family's generation lessons, sent by the same route: what
+   * marking real scripts showed a packet should do differently. Undefined for
+   * a course with none, or when no course is selected.
+   */
+  lessons?: string;
 };
 
 const UPLOADS_BUCKET = "uploads";
@@ -83,7 +89,7 @@ function sanitizeFileName(name: string): string {
 
 // ---- Component ----
 
-export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerated, continuityContext }: Props) {
+export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerated, continuityContext, lessons }: Props) {
   const [description, setDescription] = useState("");
   const [history, setHistory] = useState<ChatMessage[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -534,7 +540,7 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
     ];
 
     const requestBody = JSON.stringify({
-      system: buildActivityGeneratorSystemPrompt(gradeLevel, continuityContext),
+      system: buildActivityGeneratorSystemPrompt(gradeLevel, continuityContext, lessons),
       messages,
     });
 

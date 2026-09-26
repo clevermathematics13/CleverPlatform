@@ -61,6 +61,12 @@ type ContinuityState = {
   packets: PacketDigest[];
   nextSection: string | null;
   context: string;
+  /** The course family's generation lessons, appended to the generator's
+   *  system prompt (lib/generation-lessons.ts). Empty for a course with none. */
+  lessons?: string;
+  lessonsLabel?: string | null;
+  /** Set when the lessons could not be worked out; the continuity still loaded. */
+  lessonsError?: string | null;
 };
 
 // ---- Default formatting ----
@@ -535,6 +541,12 @@ export function NuancedAnalysisSandbox() {
           {!continuityLoading && !courseId && (
             <span className="text-da-muted">No course selected — continuity off</span>
           )}
+          {!continuityLoading && continuity?.lessonsLabel && (
+            <span className="ml-3 text-da-muted">Writing lessons: {continuity.lessonsLabel}</span>
+          )}
+          {!continuityLoading && continuity?.lessonsError && (
+            <span className="ml-3 text-amber-400">● {continuity.lessonsError} Generating without them.</span>
+          )}
         </div>
       </div>
 
@@ -550,6 +562,7 @@ export function NuancedAnalysisSandbox() {
         formatting={formatting}
         onDraftGenerated={handleDraftGenerated}
         continuityContext={sectionContext || undefined}
+        lessons={continuity?.lessons || undefined}
       />
 
       {/* ---- Toolbar ---- */}

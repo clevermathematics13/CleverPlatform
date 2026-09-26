@@ -351,9 +351,17 @@ export function isDiplomaProgrammeGrade(gradeLevel: string): boolean {
   return gradeLevel === "Grade 12" || gradeLevel === "Grade 11";
 }
 
+/**
+ * `lessons` is the course family's generation lessons
+ * (generation_lessons/, lib/generation-lessons.ts): what marking real scripts
+ * showed a packet should do differently. It is passed in, not loaded here,
+ * because this runs in the browser; the continuity route sends it with the
+ * course's continuity. Without it the prompt is exactly what it was before.
+ */
 export function buildActivityGeneratorSystemPrompt(
   gradeLevel: string,
   continuityContext?: string,
+  lessons?: string,
 ): string {
   const isIB = isDiplomaProgrammeGrade(gradeLevel);
   const isMYP = gradeLevel === "Grade 9" || gradeLevel === "Grade 10";
@@ -465,6 +473,7 @@ export function buildActivityGeneratorSystemPrompt(
     askWhatYouMarkBlock(),
     "",
     mathematicalRegisterBlock(),
+    ...(lessons ? ["", lessons] : []),
     ...(continuityContext ? ["", continuityContext] : []),
   ].join("\n");
 }

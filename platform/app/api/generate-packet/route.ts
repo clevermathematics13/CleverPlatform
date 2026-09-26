@@ -6,6 +6,7 @@ import { sanitizeJsonBackslashes } from "@/lib/json-repair";
 import { compileSpecToSystemPrompt } from "@/lib/nuanced-analysis-spec.compile";
 import { loadCanonicalSpecForGeneration } from "@/lib/nuanced-analysis-spec.load";
 import { recordUsage } from "@/lib/ai-usage";
+import { withGenerationLessons } from "@/lib/generation-lessons";
 
 export const runtime = "nodejs";
 // A full Nuanced Analysis packet at max_tokens: 32000 with adaptive thinking can
@@ -51,6 +52,9 @@ export async function POST(request: Request) {
       );
       systemPrompt = SYSTEM_PROMPT;
     }
+    // Every packet from here is for AAHL, whichever prompt it was built from,
+    // so both get AAHL's lessons from marking (generation_lessons/).
+    systemPrompt = withGenerationLessons(systemPrompt, "ibdp_aa_hl");
 
     // The Anthropic TypeScript SDK requires streaming for non-streaming requests
     // whose max_tokens exceeds ~21,333, since a single buffered HTTP response that
