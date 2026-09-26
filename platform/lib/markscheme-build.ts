@@ -72,6 +72,13 @@ export const TranscribedSchemeSchema = z.object({
 
 export type TranscribedScheme = z.infer<typeof TranscribedSchemeSchema>;
 
+/** A transcription as a build row stores it; the first prompt version did not ask for misprints or diagrams. */
+export function readStoredTranscription(raw: unknown): TranscribedScheme | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const parsed = TranscribedSchemeSchema.safeParse({ misprints: [], diagrams: [], ...(raw as Record<string, unknown>) });
+  return parsed.success ? parsed.data : null;
+}
+
 // ---- labels and codes -------------------------------------------------------
 
 /** "(b)(ii)" -> "bii", "(a)" -> "a", "Part (c)" -> "c", "" -> "". */
@@ -155,6 +162,63 @@ export function normalizeTranscription(t: TranscribedScheme): NormalizedScheme {
     misprints: t.misprints,
     diagrams: t.diagrams,
   };
+}
+
+// ---- a teacher's corrections, from LaTeX Review ----------------------------
+
+/** One proposed part as LaTeX Review shows it and the teacher edits it. */
+export interface EditedPart {
+  /** As printed, e.g. "(a)" or "(b)(ii)"; "" when the question has no labelled parts. */
+  label: string;
+  marks: number | null;
+  latex: string;
+}
+
+/** The proposal a flagged build makes: its parts in paper order, with the marks the checks settled on. */
+export function proposalParts(t: TranscribedScheme, resolvedMarks: readonly (number | null)[] = []): EditedPart[] {
+  return normalizeTranscription(t).parts.map((p, i) => ({
+    label: p.printedLabel,
+    marks: p.marks ?? resolvedMarks[i] ?? null,
+    latex: p.latex,
+  }));
+}
+
+/**
+ * A teacher's corrected proposal as a scheme to plan from. The teacher has
+ * checked it against the images, so their marks stand and the code
+ * arithmetic is not checked again. What is still refused is anything the
+ * bank cannot hold: no parts, labels the marking screen cannot print or a
+ * label twice, an unlabelled part beside labelled ones, marks that are not
+ * whole numbers, an empty scheme, or maths KaTeX cannot render.
+ */
+export function schemeFromEdits(
+  original: TranscribedScheme,
+  edits: readonly EditedPart[]
+): { scheme: NormalizedScheme; marks: number[]; problems: string[] } {
+  const scheme = normalizeTranscription({
+    questionNumber: original.questionNumber,
+    totalMarks: null,
+    parts: edits.map((e) => ({
+      label: e.label,
+      marks: e.marks,
+      // A marks statement the teacher did not update would contradict their marks.
+      latex: e.latex.replace(MARKS_STATEMENT_END_RE, "").trim(),
+    })),
+    unreadable: [],
+    sourceProblems: [],
+    misprints: original.misprints ?? [],
+    diagrams: original.diagrams ?? [],
+  });
+  const problems: string[] = [];
+  if (scheme.parts.length === 0) problems.push("There are no parts to save.");
+  problems.push(...labelIssues(scheme.parts));
+  for (const p of scheme.parts) {
+    const name = p.printedLabel || "The question";
+    if (p.marks === null || !Number.isInteger(p.marks) || p.marks < 0) problems.push(`${name} needs its marks as a whole number.`);
+    if (!p.latex.replace(MARKS_STATEMENT_END_RE, "").trim()) problems.push(`${name} has no scheme text.`);
+    for (const e of latexMathErrors(p.latex)) problems.push(`${name}: maths does not render: ${e}`);
+  }
+  return { scheme, marks: scheme.parts.map((p) => p.marks ?? 0), problems };
 }
 
 // ---- sub-parts that share their parent's marks ------------------------------
@@ -327,16 +391,9 @@ function combine(sets: number[][]): number[] {
   return out.sort((a, b) => a - b);
 }
 
-export function checkTranscription(scheme: NormalizedScheme, ctx: CheckContext): TranscriptionCheck {
+/** What the bank cannot hold about a set of part labels. */
+function labelIssues(parts: NormalizedPart[]): string[] {
   const issues: string[] = [];
-  const warnings: string[] = [];
-  const parts = scheme.parts;
-
-  if (parts.length === 0) {
-    return { issues: ["No parts were transcribed."], warnings, resolvedMarks: [] };
-  }
-
-  // Labels.
   const labels = parts.map((p) => p.label);
   const seen = new Set<string>();
   for (const p of parts) {
@@ -350,6 +407,19 @@ export function checkTranscription(scheme: NormalizedScheme, ctx: CheckContext):
   if (labels.includes("") && parts.length > 1) {
     issues.push("An unlabelled part sits beside labelled ones.");
   }
+  return issues;
+}
+
+export function checkTranscription(scheme: NormalizedScheme, ctx: CheckContext): TranscriptionCheck {
+  const issues: string[] = [];
+  const warnings: string[] = [];
+  const parts = scheme.parts;
+
+  if (parts.length === 0) {
+    return { issues: ["No parts were transcribed."], warnings, resolvedMarks: [] };
+  }
+
+  issues.push(...labelIssues(parts));
 
   // Source.
   if (
@@ -477,7 +547,14 @@ export type PartAction =
 export interface PartPlan {
   inUse: boolean;
   actions: PartAction[];
+  /** Everything a teacher should see before this plan is applied. */
   flags: string[];
+  /**
+   * The flags a teacher cannot accept past in LaTeX Review: anything about a
+   * question a test or saved exam uses, and overwriting a scheme that is
+   * already there. The rest are for their judgement.
+   */
+  blocking: string[];
   /** Clear question_images.part_id on this question's scheme images (a split re-labels its parts). */
   resetImagePartIds: boolean;
 }
@@ -518,14 +595,25 @@ export function planPartChanges(args: {
   /** Marks per scheme part, from checkTranscription. */
   marks: (number | null)[];
   inUse: InUseTarget | null;
+  /**
+   * A teacher has read the flags in LaTeX Review and accepts the plan: it
+   * keeps its actions unless a flag is blocking.
+   */
+  acceptFlags?: boolean;
 }): PartPlan {
   const { existing, inUse } = args;
+  const acceptFlags = args.acceptFlags ?? false;
   const { scheme, marks, derived } = alignSubparts(
     args.scheme,
     args.marks,
     new Set(inUse ? inUse.labels : existing.map((p) => p.part_label))
   );
   const flags: string[] = [];
+  const blocking: string[] = [];
+  const block = (flag: string) => {
+    flags.push(flag);
+    blocking.push(flag);
+  };
   const actions: PartAction[] = [];
   const rebuild = isIdenticalSiblingCopy(existing);
   const locked = (p: ExistingPart) => p.latex_verified || (hasText(p.markscheme_latex) && !rebuild);
@@ -616,7 +704,8 @@ export function planPartChanges(args: {
         }
       }
     }
-    return settle({ inUse: true, actions, flags, resetImagePartIds: false });
+    // A test already relies on this question's structure: nothing here is the teacher's to wave through.
+    return settle({ inUse: true, actions, flags, blocking: [...flags], resetImagePartIds: false }, acceptFlags);
   }
 
   // Not in use: the printed scheme decides the structure.
@@ -624,7 +713,7 @@ export function planPartChanges(args: {
     const latex = scheme.parts[0].latex;
     const m = marks[0] ?? scheme.totalMarks;
     if (existing.length === 0) {
-      if (m === null) flags.push("The scheme's marks are unknown.");
+      if (m === null) block("The scheme's marks are unknown.");
       else {
         actions.push({
           kind: "insert",
@@ -642,11 +731,11 @@ export function planPartChanges(args: {
     } else {
       flags.push(`The bank has parts ${existing.map((p) => `(${p.part_label})`).join(", ")} but the scheme shows none.`);
     }
-    return settle({ inUse: false, actions, flags, resetImagePartIds: false });
+    return settle({ inUse: false, actions, flags, blocking, resetImagePartIds: false }, acceptFlags);
   }
 
   const missingMarks = scheme.parts.filter((_, i) => marks[i] === null).map((p) => p.printedLabel);
-  if (missingMarks.length) flags.push(`No marks known for ${missingMarks.join(", ")}.`);
+  if (missingMarks.length) block(`No marks known for ${missingMarks.join(", ")}.`);
 
   if (existing.length === 0) {
     scheme.parts.forEach((sp, i) => {
@@ -663,7 +752,7 @@ export function planPartChanges(args: {
     });
   } else if (existing.length === 1 && hasUnlabelled) {
     const only = byLabel.get("")!;
-    if (locked(only)) flags.push("The unlabelled part already has a scheme; it will not be split.");
+    if (locked(only)) block("The unlabelled part already has a scheme; it will not be split.");
     if (hasText(only.content_latex)) flags.push("The unlabelled part carries the whole question's text, which would land on part (a).");
     if (hasText(only.command_term) || (only.command_terms?.length ?? 0) > 0) {
       flags.push("The unlabelled part carries a command term, which would land on part (a).");
@@ -693,7 +782,7 @@ export function planPartChanges(args: {
         });
       }
     });
-    return settle({ inUse: false, actions, flags, resetImagePartIds: true });
+    return settle({ inUse: false, actions, flags, blocking, resetImagePartIds: true }, acceptFlags);
   } else if (hasUnlabelled) {
     flags.push("The bank mixes an unlabelled part with labelled ones.");
   } else {
@@ -724,11 +813,52 @@ export function planPartChanges(args: {
       }
     });
   }
-  return settle({ inUse: false, actions, flags, resetImagePartIds: false });
+  return settle({ inUse: false, actions, flags, blocking, resetImagePartIds: false }, acceptFlags);
 }
 
-/** All or nothing: a flagged question keeps its flags and loses its actions. */
-function settle(plan: PartPlan): PartPlan {
+/**
+ * All or nothing: a flagged question keeps its flags and loses its actions,
+ * unless a teacher accepts it and none of the flags is blocking.
+ */
+function settle(plan: PartPlan, acceptFlags: boolean): PartPlan {
   if (plan.flags.length === 0) return plan;
+  if (acceptFlags && plan.blocking.length === 0) return plan;
   return { ...plan, actions: [], resetImagePartIds: false };
+}
+
+// ---- a teacher's Accept in LaTeX Review ---------------------------------------
+
+export type AcceptDecision =
+  | { ok: true; plan: PartPlan & { acceptedFlags: string[] } }
+  | { ok: false; reason: "invalid" | "blocked" | "nothing"; problems: string[] };
+
+/**
+ * What a teacher's Accept of a flagged build may do. Their corrected parts
+ * are planned again against the question as it is now; flags they have
+ * read are accepted, blocking ones never are (a question a test uses, a
+ * scheme already there), and neither is a disagreement between the tests
+ * themselves. The plan that comes back has no flags left, which is what
+ * apply_markscheme_build() requires; the ones the teacher accepted are kept
+ * beside it as acceptedFlags, for the record.
+ */
+export function decideAcceptance(args: {
+  transcription: TranscribedScheme;
+  edits: readonly EditedPart[];
+  existing: ExistingPart[];
+  inUse: InUseTarget | null;
+  inUseConflicts?: readonly string[];
+}): AcceptDecision {
+  const { scheme, marks, problems } = schemeFromEdits(args.transcription, args.edits);
+  if (problems.length > 0) return { ok: false, reason: "invalid", problems };
+  if (args.inUseConflicts?.length) return { ok: false, reason: "blocked", problems: [...args.inUseConflicts] };
+  const plan = planPartChanges({ existing: args.existing, scheme, marks, inUse: args.inUse, acceptFlags: true });
+  if (plan.blocking.length > 0) return { ok: false, reason: "blocked", problems: plan.blocking };
+  if (plan.actions.length === 0) {
+    return {
+      ok: false,
+      reason: "nothing",
+      problems: plan.flags.length > 0 ? plan.flags : ["Every part this scheme covers already has a scheme or was verified."],
+    };
+  }
+  return { ok: true, plan: { ...plan, flags: [], acceptedFlags: plan.flags } };
 }

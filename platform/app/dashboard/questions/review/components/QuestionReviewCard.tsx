@@ -6,6 +6,7 @@ import { CommandTermCombobox } from "./CommandTermCombobox";
 import { DraftPartsPanel } from "./DraftPartsPanel";
 import type { DraftPartsPanelHandle } from "./DraftPartsPanel";
 import { PartEditor } from "./PartEditor";
+import { SchemeProposalPanel } from "./SchemeProposalPanel";
 import { StemEditor } from "./StemEditor";
 import {
   canonicalCommandTerm,
@@ -25,10 +26,13 @@ import type { DraftField, Field, PartMetadataPayload, PartMetadataVersion, Quest
 export function QuestionReviewCard({
   question,
   onVerify,
+  onSchemeResolved,
   autoExpand,
 }: {
   question: Question;
   onVerify: (id: string, v: boolean) => void;
+  /** A flagged mark-scheme build was accepted (with the question's parts now) or dismissed (null). */
+  onSchemeResolved?: (id: string, parts: QuestionPart[] | null) => void;
   autoExpand?: boolean;
 }) {
   const cardRef = useRef<HTMLDivElement>(null);
@@ -39,9 +43,11 @@ export function QuestionReviewCard({
   const [signedUrls, setSignedUrls] = useState<Record<string, string>>({});
   const [loadingUrls, setLoadingUrls] = useState(false);
   const [allQuestionImages, setAllQuestionImages] = useState<QuestionImage[]>([]);
-  const [imageType, setImageType] = useState<"question" | "markscheme">("question");
+  const [imageType, setImageType] = useState<"question" | "markscheme">(
+    question.scheme_build && question.has_markscheme_images ? "markscheme" : "question"
+  );
   const [imageZoom, setImageZoom] = useState(100);
-  const [activeField, setActiveField] = useState<Field>("content_latex");
+  const [activeField, setActiveField] = useState<Field>(question.scheme_build ? "markscheme_latex" : "content_latex");
   const [verified, setVerifiedState] = useState(
     question.question_parts.every((p) => p.latex_verified)
   );
@@ -554,6 +560,14 @@ export function QuestionReviewCard({
           >
             {hasMSLatex ? "TeX MS" : "No TeX MS"}
           </span>
+          {question.scheme_build && (
+            <span
+              className="text-xs bg-amber-500/15 text-amber-300 px-2 py-0.5 rounded-full font-medium"
+              title={[...question.scheme_build.issues, ...question.scheme_build.flags].join("\n")}
+            >
+              Scheme build flagged
+            </span>
+          )}
           {allVerified && (
             <span className="text-xs bg-green-500/15 text-green-300 px-2 py-0.5 rounded-full font-medium">
               ✓ All verified
@@ -1066,6 +1080,16 @@ export function QuestionReviewCard({
               </div>
             )}
             <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4">
+              {/* Outside the parts branch: many flagged questions have no parts yet. */}
+              {question.scheme_build && (
+                <SchemeProposalPanel
+                  build={question.scheme_build}
+                  onResolved={(newParts) => {
+                    if (newParts) setParts([...newParts].sort((a, b) => a.sort_order - b.sort_order));
+                    onSchemeResolved?.(question.id, newParts);
+                  }}
+                />
+              )}
               {parts.length === 0 ? (
                 <p className="text-da-muted text-sm italic">No parts found.</p>
               ) : (

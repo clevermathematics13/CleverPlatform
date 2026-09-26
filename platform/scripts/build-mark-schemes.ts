@@ -56,6 +56,8 @@ import Anthropic from "@anthropic-ai/sdk";
 import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { recordUsage } from "../lib/ai-usage";
+import { loadExistingParts, loadQuestionUse } from "../lib/markscheme-builds-service";
+import { fetchAllRows, fetchInChunks } from "../lib/supabase-paging";
 import { summarizeSchemeMarks } from "../lib/mark-codes";
 import {
   alignSubparts,
@@ -65,10 +67,8 @@ import {
   planPartChanges,
   questionNumberFromCode,
   realBankTotal,
-  toBankLabel,
   wholeQuestionLatex,
   type ExistingPart,
-  type InUseTarget,
   type NormalizedScheme,
   type PartAction,
   type TranscribedScheme,
@@ -150,30 +150,6 @@ const supabase = createClient(supabaseUrl, serviceKey, { auth: { persistSession:
 const anthropic = new Anthropic({ apiKey: anthropicKey ?? "unused" });
 
 // -- helpers ----------------------------------------------------------------
-type Page<T> = PromiseLike<{ data: T[] | null; error: { message: string } | null }>;
-
-/** Every row, a page at a time: PostgREST returns at most 1,000 a request. */
-async function fetchAll<T>(page: (from: number, to: number) => Page<T>): Promise<T[]> {
-  const rows: T[] = [];
-  for (let from = 0; ; from += 1000) {
-    const { data, error } = await page(from, from + 999);
-    if (error) throw new Error(error.message);
-    rows.push(...(data ?? []));
-    if (!data || data.length < 1000) return rows;
-  }
-}
-
-/** An .in() filter over many ids, in chunks short enough for one URL. */
-async function fetchIn<T>(ids: string[], size: number, page: (chunk: string[]) => Page<T>): Promise<T[]> {
-  const rows: T[] = [];
-  for (let i = 0; i < ids.length; i += size) {
-    const { data, error } = await page(ids.slice(i, i + size));
-    if (error) throw new Error(error.message);
-    rows.push(...(data ?? []));
-  }
-  return rows;
-}
-
 async function pool<T>(items: T[], n: number, fn: (item: T, i: number) => Promise<void>): Promise<void> {
   let next = 0;
   const worker = async () => {
@@ -218,30 +194,15 @@ interface Candidate extends Question {
   printable: boolean;
 }
 
-const PART_COLUMNS =
-  "id, question_id, part_label, marks, sort_order, markscheme_latex, content_latex, command_term, command_terms, latex_verified, subtopic_codes, primary_subtopic_code";
-
-async function loadParts(questionIds: string[]): Promise<Map<string, ExistingPart[]>> {
-  const rows = await fetchIn<ExistingPart & { question_id: string }>(questionIds, 50, (chunk) =>
-    supabase.from("question_parts").select(PART_COLUMNS).in("question_id", chunk)
-  );
-  const byQuestion = new Map<string, ExistingPart[]>();
-  for (const r of rows) byQuestion.set(r.question_id, [...(byQuestion.get(r.question_id) ?? []), r]);
-  for (const parts of byQuestion.values()) {
-    parts.sort((a, b) => a.sort_order - b.sort_order || a.part_label.localeCompare(b.part_label));
-  }
-  return byQuestion;
-}
-
 async function loadQuestions(ids: string[]): Promise<Question[]> {
-  return fetchIn<Question>(ids, 100, (chunk) =>
+  return fetchInChunks<Question>(ids, (chunk) =>
     supabase.from("ib_questions").select("id, code, session, paper, level").in("id", chunk)
   );
 }
 
 /** Mark-scheme image paths per question, in their stored order (which the prompt does not rely on). */
 async function loadImagePaths(): Promise<Map<string, string[]>> {
-  const rows = await fetchAll<{ question_id: string; storage_path: string; sort_order: number | null }>((from, to) =>
+  const rows = await fetchAllRows<{ question_id: string; storage_path: string; sort_order: number | null }>((from, to) =>
     supabase
       .from("question_images")
       .select("question_id, storage_path, sort_order")
@@ -284,8 +245,8 @@ async function selectCandidates(): Promise<{ candidates: Candidate[]; skipped: M
 
   const imagePaths = await loadImagePaths();
   const questions = (await loadQuestions([...imagePaths.keys()])).filter(matchesFilters);
-  const parts = await loadParts(questions.map((q) => q.id));
-  const builds = await fetchAll<{ question_id: string; status: string }>((from, to) =>
+  const parts = await loadExistingParts(supabase, questions.map((q) => q.id));
+  const builds = await fetchAllRows<{ question_id: string; status: string }>((from, to) =>
     supabase
       .from("markscheme_builds")
       .select("question_id, status")
@@ -296,7 +257,7 @@ async function selectCandidates(): Promise<{ candidates: Candidate[]; skipped: M
   const buildStatus = new Map(builds.map((b) => [b.question_id, b.status]));
   const printable = new Set(
     (
-      await fetchAll<{ question_id: string }>((from, to) =>
+      await fetchAllRows<{ question_id: string }>((from, to) =>
         supabase.from("question_images").select("question_id").eq("image_type", "question").order("id").range(from, to)
       )
     ).map((r) => r.question_id)
@@ -312,76 +273,6 @@ async function selectCandidates(): Promise<{ candidates: Candidate[]; skipped: M
   }
   candidates.sort((a, b) => Number(b.printable) - Number(a.printable) || a.code.localeCompare(b.code));
   return { candidates: candidates.slice(0, LIMIT), skipped };
-}
-
-// -- which tests and saved exams use a question ------------------------------
-interface Use {
-  target: InUseTarget;
-  /** Tests that disagree on a part's marks: the teacher settles which is right. */
-  conflicts: string[];
-}
-
-interface SavedExamQuestion {
-  id?: unknown;
-  partSubtopics?: { partLabel?: unknown }[] | null;
-}
-
-/**
- * The labels each question's tests and saved exams use, as the planner's
- * in-use target. It matches markscheme_question_in_use(), which the
- * database checks again when a build is applied: tests by code, saved
- * exams (live and archived) by question id.
- */
-async function loadUse(questions: { id: string; code: string }[]): Promise<Map<string, Use>> {
-  const ids = new Set(questions.map((q) => q.id));
-  const idByCode = new Map(questions.map((q) => [q.code, q.id]));
-  const labels = new Map<string, Set<string>>();
-  const marks = new Map<string, Map<string, Set<number>>>();
-  const add = (questionId: string, label: string, max?: number | null) => {
-    labels.set(questionId, (labels.get(questionId) ?? new Set<string>()).add(label));
-    if (typeof max === "number") {
-      const byLabel = marks.get(questionId) ?? new Map<string, Set<number>>();
-      byLabel.set(label, (byLabel.get(label) ?? new Set<number>()).add(max));
-      marks.set(questionId, byLabel);
-    }
-  };
-
-  const items = await fetchIn<{ ib_question_code: string; part_label: string | null; max_marks: number | null }>(
-    [...idByCode.keys()],
-    100,
-    (chunk) => supabase.from("test_items").select("ib_question_code, part_label, max_marks").in("ib_question_code", chunk)
-  );
-  for (const it of items) {
-    const id = idByCode.get(it.ib_question_code);
-    if (id) add(id, toBankLabel(it.part_label ?? ""), it.max_marks);
-  }
-  for (const table of ["saved_exams", "archived_saved_exams"]) {
-    const exams = await fetchAll<{ questions: unknown }>((from, to) =>
-      supabase.from(table).select("id, questions").order("id").range(from, to)
-    );
-    for (const exam of exams) {
-      if (!Array.isArray(exam.questions)) continue;
-      for (const q of exam.questions as SavedExamQuestion[]) {
-        if (typeof q?.id !== "string" || !ids.has(q.id)) continue;
-        const subs = Array.isArray(q.partSubtopics) ? q.partSubtopics : [];
-        // No partSubtopics is one whole-question item, as the test import reads it.
-        if (subs.length === 0) add(q.id, "");
-        for (const s of subs) add(q.id, toBankLabel(typeof s?.partLabel === "string" ? s.partLabel : ""));
-      }
-    }
-  }
-
-  const out = new Map<string, Use>();
-  for (const [id, set] of labels) {
-    const maxMarks: Record<string, number> = {};
-    const conflicts: string[] = [];
-    for (const [label, values] of marks.get(id) ?? new Map<string, Set<number>>()) {
-      if (values.size === 1) maxMarks[label] = [...values][0];
-      else conflicts.push(`Its tests disagree on ${labelName(label)}: ${[...values].join(" vs ")} marks.`);
-    }
-    out.set(id, { target: { labels: [...set], maxMarks }, conflicts });
-  }
-  return out;
 }
 
 // -- the model call -----------------------------------------------------------
@@ -491,8 +382,8 @@ async function settleBuild(
   usage?: Anthropic.Usage
 ): Promise<Settled> {
   const scheme = normalizeTranscription(raw);
-  const parts = (await loadParts([q.id])).get(q.id) ?? [];
-  const use = (await loadUse([q])).get(q.id) ?? null;
+  const parts = (await loadExistingParts(supabase, [q.id])).get(q.id) ?? [];
+  const use = (await loadQuestionUse(supabase, [q])).get(q.id) ?? null;
   const check = checkTranscription(scheme, {
     expectedQuestionNumber: questionNumberFromCode(q.code),
     bankTotal: realBankTotal(parts),
@@ -575,7 +466,7 @@ function shapeOf(parts: ExistingPart[]): string {
 
 async function dryRun(): Promise<void> {
   const { candidates, skipped } = await selectCandidates();
-  const use = await loadUse(candidates);
+  const use = await loadQuestionUse(supabase, candidates);
   const count = (key: (c: Candidate) => string) => {
     const m = new Map<string, number>();
     for (const c of candidates) m.set(key(c), (m.get(key(c)) ?? 0) + 1);
@@ -596,9 +487,10 @@ async function dryRun(): Promise<void> {
       console.log(`    ${c.code} [${shapeOf(c.parts)}] tests use ${labels}`);
     }
   }
-  // The plan's estimate (about 10K tokens in, 4K out a question) until --gold measures it.
+  // Measured by the 26 Sep 2026 gold run at high effort: $0.70 for 13
+  // questions synchronously, about $0.054 each; batches are half price.
   console.log(
-    `  estimated cost: ~$${(candidates.length * 0.075).toFixed(0)} as batches, ~$${(candidates.length * 0.15).toFixed(0)} synchronously`
+    `  estimated cost: ~$${(candidates.length * 0.027).toFixed(0)} as batches, ~$${(candidates.length * 0.054).toFixed(0)} synchronously`
   );
   if (VERBOSE) for (const c of candidates) console.log(`    ${c.code} [${shapeOf(c.parts)}] ${c.imagePaths.length} image(s)`);
 }
@@ -706,7 +598,7 @@ interface WaitingBuild {
 }
 
 async function collect(): Promise<void> {
-  const waiting = await fetchAll<WaitingBuild>((from, to) =>
+  const waiting = await fetchAllRows<WaitingBuild>((from, to) =>
     supabase
       .from("markscheme_builds")
       .select("id, question_id, anthropic_batch_id, created_at")
@@ -791,7 +683,7 @@ async function collect(): Promise<void> {
 }
 
 async function release(): Promise<void> {
-  const held = await fetchAll<{ id: string; question_id: string; transcription: TranscribedScheme }>((from, to) => {
+  const held = await fetchAllRows<{ id: string; question_id: string; transcription: TranscribedScheme }>((from, to) => {
     let query = supabase
       .from("markscheme_builds")
       .select("id, question_id, transcription")
@@ -823,7 +715,7 @@ async function release(): Promise<void> {
 }
 
 async function rollback(runId: string): Promise<void> {
-  const builds = await fetchAll<{ id: string; question_id: string; status: string }>((from, to) =>
+  const builds = await fetchAllRows<{ id: string; question_id: string; status: string }>((from, to) =>
     supabase
       .from("markscheme_builds")
       .select("id, question_id, status")
@@ -1038,14 +930,14 @@ function printGold(effort: string, rows: GoldRow[]): void {
 }
 
 async function gold(): Promise<void> {
-  const verified = await fetchAll<{ question_id: string }>((from, to) =>
+  const verified = await fetchAllRows<{ question_id: string }>((from, to) =>
     supabase.from("question_parts").select("question_id").eq("latex_verified", true).order("id").range(from, to)
   );
   const { data: extra, error } = await supabase.from("ib_questions").select("id").in("code", GOLD_EXTRA_CODES);
   if (error) throw new Error(error.message);
   const ids = [...new Set([...verified.map((r) => r.question_id), ...(extra ?? []).map((r) => r.id as string)])];
   const imagePaths = await loadImagePaths();
-  const parts = await loadParts(ids);
+  const parts = await loadExistingParts(supabase, ids);
   const set: Candidate[] = (await loadQuestions(ids))
     .filter(matchesFilters)
     .filter((q) => imagePaths.has(q.id))
