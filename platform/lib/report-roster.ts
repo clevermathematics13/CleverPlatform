@@ -193,11 +193,21 @@ export async function loadReportRoster(
               : null;
         byProfile.set(pid, { name: displayName ?? "Unknown", courseId: r.course_id as string });
       }
+      // A student since removed from every class has no students row left to
+      // name them by, only their profile.
+      const unenrolled = profileIds.filter((pid) => !byProfile.has(pid));
+      const profileNames = new Map<string, string>();
+      if (unenrolled.length > 0) {
+        const { data: profs } = await supabase.from("profiles").select("id, display_name").in("id", unenrolled);
+        for (const p of profs ?? []) {
+          if (p.display_name) profileNames.set(p.id as string, p.display_name as string);
+        }
+      }
       for (const pid of profileIds) {
         const hit = byProfile.get(pid);
         // No students row at all: keep them rather than drop the marks, under
         // a null class, which the view prints as "Other".
-        extras.push({ subjectId: pid, name: hit?.name ?? "Unknown", courseId: hit?.courseId ?? "" });
+        extras.push({ subjectId: pid, name: hit?.name ?? profileNames.get(pid) ?? "Unknown", courseId: hit?.courseId ?? "" });
         if (hit?.courseId) extraCourseIds.add(hit.courseId);
       }
     }

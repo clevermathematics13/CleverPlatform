@@ -38,6 +38,7 @@ export async function setInvitedStudentExtraTime(formData: FormData) {
   revalidatePath("/dashboard/students");
 }
 
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
 import { requireTeacher } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
@@ -124,6 +125,53 @@ export async function addManualInvite(formData: FormData) {
   };
 }
 
+/**
+ * The imported roster rows (invited_students) that put an enrolled student in
+ * the same class as their `students` row, matched on profile or email.
+ *
+ * A signed-in student is in a class twice: their enrollment, which is all this
+ * page lists, and the imported row they registered from, which keeps its
+ * profile_id and which this page never shows once they have signed in. The
+ * marking page, the reports, the scan cover-page matcher and the PowerSchool
+ * export read the imported row too, and deliberately keep a signed-in student
+ * whose enrollment is missing or hidden (lib/course-roster.ts). So Remove and
+ * Hide have to reach both rows, or the student stays on every marking page
+ * after the teacher has taken them off this one.
+ */
+async function importedRowIdsFor(supabase: SupabaseClient, studentId: string): Promise<string[]> {
+  const { data: enrollment, error } = await supabase
+    .from("students")
+    .select("profile_id, course_id, profiles:profile_id ( email )")
+    .eq("id", studentId)
+    .maybeSingle();
+  if (error) throw new Error(`Failed to load the enrollment: ${error.message}`);
+  if (!enrollment) return [];
+
+  // Supabase types a to-one join as an array until the schema is regenerated.
+  const prof = (Array.isArray(enrollment.profiles) ? enrollment.profiles[0] : enrollment.profiles) as
+    | { email: string | null }
+    | null
+    | undefined;
+  const email = prof?.email?.trim().toLowerCase() ?? "";
+
+  const { data: rows, error: rowsError } = await supabase
+    .from("invited_students")
+    .select("id, profile_id, email")
+    .eq("course_id", enrollment.course_id as string);
+  if (rowsError) throw new Error(`Failed to load the imported roster: ${rowsError.message}`);
+
+  // By email as well as profile: an unclaimed row with this student's email
+  // would enroll them again the next time they sign in
+  // (auto_enroll_from_invitations).
+  return (rows ?? [])
+    .filter(
+      (r) =>
+        r.profile_id === enrollment.profile_id ||
+        (email !== "" && ((r.email as string | null) ?? "").trim().toLowerCase() === email)
+    )
+    .map((r) => r.id as string);
+}
+
 export async function removeStudent(formData: FormData) {
   await requireTeacher();
   const supabase = await createClient();
@@ -131,8 +179,22 @@ export async function removeStudent(formData: FormData) {
   const studentId = formData.get("student_id") as string;
   if (!studentId) return;
 
-  await supabase.from("students").delete().eq("id", studentId);
+  const importedIds = await importedRowIdsFor(supabase, studentId);
+
+  const { error } = await supabase.from("students").delete().eq("id", studentId);
+  if (error) {
+    console.error("[removeStudent] Failed to delete students row:", error.message, error.code);
+    throw new Error(`Failed to remove student: ${error.message}`);
+  }
+  if (importedIds.length > 0) {
+    const { error: importedError } = await supabase.from("invited_students").delete().in("id", importedIds);
+    if (importedError) {
+      console.error("[removeStudent] Failed to delete invited_students rows:", importedError.message, importedError.code);
+      throw new Error(`Removed from this list, but not from the class roster: ${importedError.message}`);
+    }
+  }
   revalidatePath("/dashboard/students");
+  revalidatePath("/dashboard/courses");
 }
 
 export async function removeInvitedStudent(formData: FormData) {
@@ -154,7 +216,23 @@ export async function setStudentHidden(formData: FormData) {
   const hidden = (formData.get("hidden") as string) === "true";
   if (!studentId) return;
 
-  await supabase.from("students").update({ hidden }).eq("id", studentId);
+  const importedIds = await importedRowIdsFor(supabase, studentId);
+
+  const { error } = await supabase.from("students").update({ hidden }).eq("id", studentId);
+  if (error) {
+    console.error("[setStudentHidden] Failed to update students.hidden:", error.message, error.code);
+    throw new Error(`Failed to ${hidden ? "hide" : "unhide"} student: ${error.message}`);
+  }
+  if (importedIds.length > 0) {
+    const { error: importedError } = await supabase
+      .from("invited_students")
+      .update({ hidden })
+      .in("id", importedIds);
+    if (importedError) {
+      console.error("[setStudentHidden] Failed to update invited_students.hidden:", importedError.message, importedError.code);
+      throw new Error(`Failed to ${hidden ? "hide" : "unhide"} student on the class roster: ${importedError.message}`);
+    }
+  }
   revalidatePath("/dashboard/students");
   revalidatePath("/dashboard/courses");
 }

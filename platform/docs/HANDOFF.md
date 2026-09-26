@@ -4055,3 +4055,57 @@ that, but a booklet cover can read as a second row for the same student
   teacher then asked for them and approved them outside auto mode. The rule
   only removes the prompt: minting still needs the teacher's OK in the
   conversation every time.
+
+---
+
+## 42. Remove and Hide on the Students page now reach the marking page (26 Sep 2026)
+
+The teacher asked for two students to be taken off 27AH completely: one who
+has left the school, and one enrolled only so they could follow the class's
+Google Classroom. Both were still on every 27AH marking page, with **Upload
+scan & mark** and **Mark absent**, although one had already been hidden on the
+Students page and the other's enrollment was gone.
+
+Why: a student who has signed in is in a class through two rows -- their
+enrollment (`students`) and the imported row they registered from
+(`invited_students`, which keeps their `profile_id`). The Students page lists
+only the enrollment (it shows an imported row only while `profile_id` is
+null), and **Remove** and **Hide** changed only that. Everything else reads the
+imported row as well: the marking roster (`lib/course-roster.ts`, which
+deliberately keeps a signed-in student whose enrollment is missing or hidden),
+the reports and grade-boundaries page (`lib/report-roster.ts`), the scan
+cover-page matcher (`loadInvitedRoster`), the aliases route and the dashboard
+count. So each click left the student on every marking page, and offered to
+every cover-page match, with nothing on the Students page left to click.
+
+Fixed in `app/dashboard/students/actions.ts`: `removeStudent` and
+`setStudentHidden` now also delete or hide the same class's imported row,
+found by profile or by email -- an unclaimed row with the student's email
+would otherwise enroll them again on their next sign-in
+(`auto_enroll_from_invitations`). Both now throw on a failed write instead of
+ignoring it. Checked read-only on 26 Sep: every enrollment in the five current
+classes matches exactly one imported row.
+
+`lib/report-roster.ts`: a student with accepted marks on a paper but no
+enrollment anywhere (removed after sitting it) was named "Unknown" on the
+grade-boundaries page, because the name came from the `students` row. It now
+falls back to `profiles.display_name`.
+
+**Data repair, 26 Sep 2026, at the teacher's request.** Deleted: both
+students' 27AH imported rows, the one remaining (hidden) 27AH enrollment, and
+a single stray 0 mark, with its `mark_changes` entry, on one part of 27AH
+[P01] P1 for the student who never took the course. Kept: the departed
+student's accepted marks and self-assessment on last year's [P01] P1, [K05] P2
+and [K06] P1, which are real grade history, until the teacher decides; they
+now show on those papers' boundaries page as a student outside the class.
+Both `profiles` rows remain -- they are sign-in accounts, not class
+membership. The 27AH marking roster is now the 12 students of the class.
+
+Two things to know:
+
+- **Re-importing 27AH from Google Classroom would put the Classroom-only
+  student back.** The import ticks every student in the Classroom course by
+  default (`google-classroom-import.tsx`); untick them.
+- Left as found: in archived 2025-26 classes, two students hidden on the
+  Students page are still listed through their imported rows, and a test
+  account's imported rows outlive its enrollments.
