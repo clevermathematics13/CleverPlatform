@@ -4247,6 +4247,101 @@ After writing:
   units, 70 marks, sources, warnings and banner as before. Only 19N S_3's two
   schemes changed.
 
+### [K06] P1 made ready (26 Sep 2026)
+
+At the teacher's request, 27AH [K06] P1
+(`63b97886-04e3-4094-b92e-8e1358286f87`) got the same treatment as K05 P2.
+It is a live test: visible to students, with 14 students' hand-entered
+marks, 263 self-scores, 6 mark changes and no AI runs.
+- **Before:** the banner said 2 of 19 parts (7 of 70 marks) had no mark
+  scheme. The assembly also warned that 22N.1.SL.TZ0.S_7 (bii) fell back to
+  a whole-question scheme, and 24M.1.AHL.TZ2.H_2 was marked from its
+  Tesseract text.
+- **Where the faults were:** all in the question bank. The test's own items
+  were right: they match the gradebook (legacy 048/050/051) and the printed
+  tariffs.
+- **Images:** all nine questions have question and mark-scheme images in
+  `question_images`, so nothing needed importing.
+
+What was done:
+- **17M.1.AHL.TZ1.H_5 was one `''` part of 7 marks.** K06 marks Q6 as (a) 3
+  and (b) 4 (legacy 051 split it), and the paper prints (a) [3] and (b) [4],
+  so neither item matched a part.
+  - Migration `20260926133817_k06_p1_q6_parts` relabels the part as (a) with
+    3 marks and adds (b) with 4 and subtopic 3.13 Scalar product, chosen by
+    hand. It touches ids, labels, marks and subtopics only.
+  - At the teacher's request it also retags K06's item 6b from 3.16 Vector
+    product to 3.13. That moves those 4 marks in the subtopic breakdowns
+    (reflection dashboard, mastery analysis); no mark changed.
+  - It is one DO block, guarded by fingerprints taken at inspection and
+    dry-run first with a forced raise. The file is byte-identical to the
+    ledger row.
+  - The ExamBuilder draft "27AH [K06] P1" (`saved_exams`) keeps its 20 May
+    snapshot of the question as one 7-mark part; it was not repointed.
+- **Typed from the images:**
+  - 24M.1.AHL.TZ2.H_2: question and scheme, with its Note;
+  - 17M.1.AHL.TZ1.H_5: the stem, then (a) and (b) with their schemes (METHOD
+    1 and 2 for (b)).
+
+  The Tesseract text stays on 24M H_2 and 17M H_5 (a), inert.
+- **22N.1.SL.TZ0.S_7's (b) scheme put back together.** The extraction put
+  the first mark-scheme image, (b)(i) METHOD 2 and (b)(ii), ahead of the
+  rest. "Apply to editors" then filed it as `stem_markscheme_latex`, left
+  (bii) empty and gave (bi) METHOD 1 only. Now:
+  - (bi) holds both methods. METHOD 2 is appended, so its stored mark
+    attributions stay aligned.
+  - (bii) holds (ii)'s scheme, with the printed `[7 marks]` for (b).
+  - The stem scheme is NULL.
+  - The draft is rebuilt in print order, so Apply gives the same parts.
+- **All 19 parts checked against the images** (the teacher's choice). What
+  differed was fixed:
+  - 15M.1.AHL.TZ2.H_13 (c): two transcription errors in the OR branch. The
+    numerators are sqrt(k+1)sqrt(k)+1 and sqrt(k)sqrt(k)+1, as printed, not
+    sqrt(k+1)sqrt(k+1) and sqrt(k)sqrt(k+1).
+  - 22N.1.SL.TZ0.S_1 (b): "their" in bold, as printed.
+  - 15N.1.AHL.TZ0.H_1: removed the scheme's leading "1.", which is its
+    question number.
+  - 07M.1.AHL.TZ1.H_7 (a): the final form in brackets, as printed.
+  - 22N.1.SL.TZ0.S_7 (c): the Delta line made inline, so ", because ..." no
+    longer starts a line of its own.
+  - 15M.1.AHL.TZ2.H_13 (c): a blank line between its Note and
+    `\hfill [9 marks]`. Without it, `mergeTrailingHfillLines` joins the
+    tariff onto the Note and it is drawn inside the Note box.
+  - The question "Total [N marks]" was cut from 22N S_1 (c), with a stray
+    `\end{IBPart}`, and from 22N S_7 (c) and 15M H_13 (c).
+  - The drafts carry the same fixes. `splitDraftIntoParts` on each gives
+    exactly the new parts.
+  - Left as it is: 21M.1.SL.TZ2.S_4's printed scheme has a typo
+    (7C1 k^5 x^1) that the bank already had right (k^6).
+- **The writes.** 21 LaTeX fields were written compare-and-set against a
+  backup in the session scratchpad and read back. The `content_latex`
+  writes re-derived the command-term flags, as `latex-update` does; 17M
+  H_5 (b) gets `is_using`.
+
+Verified, read-only, through the real modules (`loadGradeableMarkScheme`,
+`summariseMarkSchemeReadiness`, `assembleMarkschemeImages`,
+`buildGradingUserPrompt`):
+- **Readiness.** 19 units, 19 gradeable, 70 marks, all `part_latex`. No
+  warnings and no banner, and the layout matches the printed paper.
+- **Content.** Every unit has question text, none repeated, and mark-scheme
+  images. No scheme carries a question Total or a doubled `\hfill`. As a
+  Paper 1, no unit takes the AA HL Paper 2 accuracy policy.
+- **Mark codes.** Every existing mark code kept its position
+  (`parseMSTokens`), so the stored `mark_attributions` still line up.
+- **Student data.** Fingerprints before and after show K06's marks
+  unchanged and its items unchanged but for 6b's tag. Its 263 self-scores
+  and 6 mark changes are unchanged too.
+
+The teacher was sent the side-by-side of all 19 parts as a PDF.
+`latex_verified` stays false.
+
+No Paper layout exists for K06 P1. Marking works, but no evidence crop is
+cut until one is locked (section 33).
+
+The ledger, as this branch leaves it: 189 rows, 188 files. The missing file
+is still `20260925040006_mark_scheme_explanations`, on
+`claude/amazing-curie-om19bf`.
+
 ### Not done (follow-ups)
 
 - ExamBuilder "Save to Gradebook" (`app/api/gradebook/tests/route.ts`) could
@@ -4265,7 +4360,7 @@ After writing:
   - a text-mode `\quad` prints literally;
   - a second `\hfill` on a line prints literally.
 
-  After the fixes above, a scan of all 2101 parts and 2011 questions on
+  After the fixes above, a scan of all 2102 parts and 2011 questions on
   26 Sep 2026 found none of them left in stored text. The extraction style
   guide (`IB_LATEX_STYLE_GUIDE`) already asks for plain `\hfill (A1)`.
   Hardening the renderer would stop a hand-typed scheme bringing any of these
@@ -4280,15 +4375,14 @@ After writing:
     prints [3] and the scheme totals 7 (6 are stored).
   - 11M.1.AHL.TZ2.H_6 (b)'s scheme closes with the question's [5 marks];
     the part is 3.
-- 25 parts in 21 multi-part questions still end their scheme with the whole
-  question's "Total [N marks]". Three are in 27AH [K06] P1:
-  15M.1.AHL.TZ2.H_13 (c), 22N.1.SL.TZ0.S_1 (c) and 22N.1.SL.TZ0.S_7 (c).
-  17M.1.AHL.TZ1.H_1 is the one single-part question left whose stem repeats
-  its part.
-- 27AH [K06] P1 shows the Mark Scans banner:
-  - 17M.1.AHL.TZ1.H_5 (a) and (b) have no scheme (7 marks);
-  - 24M.1.AHL.TZ2.H_2 is marked from its Tesseract text;
-  - 22N.1.SL.TZ0.S_7 (bii) is marked from the whole-question scheme.
+- 22 parts in 18 multi-part questions still end their scheme with the whole
+  question's "Total [N marks]". None of them is in a test since K06 P1's
+  three were cut. 17M.1.AHL.TZ1.H_1 is the one single-part question left
+  whose stem repeats its part.
+- K06 P1: no Paper layout, so no evidence crops yet (see above). 17M H_5
+  (b)'s subtopic, 3.13, was chosen by hand. The "27AH [K06] P1" ExamBuilder
+  draft still lists 17M H_5 as one 7-mark part, so a test imported from it
+  again would get Q6 as one item.
 - K05 P2: the four new parts' subtopics (H_7(b) 5.13, H_9(b) 1.10, H_12(d)
   5.8, H_12(f) `5.18 (sep)`) were chosen by hand, not by Auto-classify; the
   old whole-question Tesseract `markscheme_text` still sits on H_8, H_9(a)
