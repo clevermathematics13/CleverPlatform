@@ -8,6 +8,7 @@ import {
   GRADING_SYSTEM_PROMPT,
   buildRegradeItemPrompt,
   MATHMEDIC_ACTIVITY_MARKING_PRINCIPLES,
+  READING_INTEGRITY_PRINCIPLES,
   buildActivityRubricBlock,
   buildGradingSystemPrompt,
   buildGradingUserPrompt,
@@ -392,7 +393,7 @@ describe("validateGradeResponse", () => {
   // Measured over a full class the rule fired 21 times, and both of the two
   // upward corrections were wrong -- in each the model's own suggestedMarks
   // was right and a breakdown token was not, with the prose reasoning siding
-  // with suggestedMarks. Both put unearned marks into Clev's Marks.
+  // with suggestedMarks. Both put unearned marks into ClevMarks.
   it("never raises a mark to match a breakdown that awards more than the model proposed", () => {
     const raw = JSON.stringify({
       items: [
@@ -1769,6 +1770,88 @@ describe("GRADING_SYSTEM_PROMPT content", () => {
     expect(GRADING_SYSTEM_PROMPT).toContain("CONSTANT TERM");
     expect(GRADING_SYSTEM_PROMPT).toContain("3x^2 - 5x + 7");
     expect(GRADING_SYSTEM_PROMPT).toMatch(/coefficient of x\^0/);
+  });
+});
+
+// grading_policies/reading_integrity_principles.md, written after scripts
+// marked from upside-down pages were credited with blank boxes, erased pencil
+// and the mark scheme's own working.
+describe("reading integrity in the grading prompt", () => {
+  it("loads the policy file without its maintainer notes", () => {
+    expect(READING_INTEGRITY_PRINCIPLES).toMatch(/^READING INTEGRITY -- what counts as the student's work/);
+    expect(READING_INTEGRITY_PRINCIPLES).not.toContain("<!--");
+    expect(READING_INTEGRITY_PRINCIPLES).not.toContain("notes for whoever edits this file");
+    expect(READING_INTEGRITY_PRINCIPLES).not.toMatch(/\n{3,}/);
+  });
+
+  it("is ASCII, so the prompt cache and the dash rule both hold", () => {
+    expect(/^[\x00-\x7f]*$/.test(READING_INTEGRITY_PRINCIPLES)).toBe(true);
+  });
+
+  it("sits between rule 20 and WORKING ORDER, in every grading prompt", () => {
+    const rule20 = GRADING_SYSTEM_PROMPT.indexOf("\n20. A part may carry TEACHER'S MARKING NOTES");
+    const reading = GRADING_SYSTEM_PROMPT.indexOf(READING_INTEGRITY_PRINCIPLES);
+    const workingOrder = GRADING_SYSTEM_PROMPT.indexOf("\nWORKING ORDER");
+    expect(rule20).toBeGreaterThan(0);
+    expect(reading).toBeGreaterThan(rule20);
+    expect(workingOrder).toBeGreaterThan(reading);
+    expect(buildGradingSystemPrompt([unit()])).toContain(READING_INTEGRITY_PRINCIPLES);
+  });
+
+  // Rules 13, 14, 15, 18 and 20 are cited by number elsewhere in the prompt
+  // and in code comments, so the new text is named rules, not rule 21 on.
+  it("adds no numbered rule and leaves rules 13-20 where they were", () => {
+    expect(GRADING_SYSTEM_PROMPT).not.toMatch(/\n21\. /);
+    expect(READING_INTEGRITY_PRINCIPLES).not.toMatch(/^\s*\d+\. /m);
+    const ruleStarts = [...GRADING_SYSTEM_PROMPT.matchAll(/\n\n?(\d+)\. /g)].map((m) => Number(m[1]));
+    for (const n of [13, 14, 15, 16, 17, 18, 19, 20]) expect(ruleStarts).toContain(n);
+  });
+
+  it("carries every rule the review asked for", () => {
+    for (const heading of [
+      "ONLY WHAT IS ON THE PAGE",
+      "A BLANK AREA IS NO RESPONSE",
+      "ERASED IS NOT WRITTEN",
+      "ROTATED, UPSIDE-DOWN OR ILLEGIBLE PAGES",
+      "THIS PART'S OWN SPACE",
+      "THE ANSWER THE STUDENT MARKS AS FINAL",
+      "THE STUDENT'S FAVOUR IS FOR WRITING THAT IS THERE",
+      "READ DIGIT BY DIGIT",
+      "THE EVIDENCE BOX FOLLOWS THE TRANSCRIPTION",
+      "A TEACHER'S TRANSCRIPTION IS THE PAGE",
+    ]) {
+      expect(READING_INTEGRITY_PRINCIPLES).toContain(`- ${heading}.`);
+    }
+    expect(READING_INTEGRITY_PRINCIPLES).toContain("workFound false, 0 marks, evidenceBox null");
+    expect(READING_INTEGRITY_PRINCIPLES).toContain("set confidence to \"low\"");
+    // Crossed-out work keeps its own rules (rule 8, the Activity policy).
+    expect(READING_INTEGRITY_PRINCIPLES).toContain("apply to it unchanged");
+  });
+
+  it("uses none of the phrases other prompts and tests look for", () => {
+    for (const phrase of [
+      "Teacher's marking notes",
+      "Formative Assessment Marking Principles",
+      "THIS ASSESSMENT'S STRAND RUBRIC",
+      "YOUR TASK IN THIS CALL",
+      "The marker's result",
+      "Mark ranges",
+      "Marker's note",
+      "Strand:",
+      "Student:",
+    ]) {
+      expect(READING_INTEGRITY_PRINCIPLES).not.toContain(phrase);
+    }
+  });
+
+  it("tightens the transcription step and the whole-scan search", () => {
+    expect(GRADING_SYSTEM_PROMPT).toContain(
+      "1. EVIDENCE: transcribe what the student actually wrote for this part, in\n   their own lines and nothing more"
+    );
+    expect(GRADING_SYSTEM_PROMPT).toContain("never erased pencil");
+    const user = buildGradingUserPrompt([unit()], {});
+    expect(user).toContain("Search the whole document before concluding a part is missing");
+    expect(user).toContain("only when the student has labelled it as that part or clearly continued it there");
   });
 });
 

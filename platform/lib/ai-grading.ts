@@ -30,7 +30,7 @@ import {
  * validates whatever the model returns. Persistence lives in the routes.
  *
  * Nothing here writes to student_marks. AI output is a *proposal* that lands in
- * ai_grade_results for teacher review. Marks only become "Clev's Marks" when a
+ * ai_grade_results for teacher review. Marks only become ClevMarks when a
  * teacher accepts them via the accept route.
  *
  * Schema contract (public.ai_grade_runs / public.ai_grade_results):
@@ -592,7 +592,7 @@ export function validateGradeResponse(
     // where a bare suggestedMarks is not. Measured over a full class (2337
     // parts, Formative Assessment 1) the rule fired 21 times: 19 downward,
     // all sound, and 2 upward -- BOTH of which were wrong, and both of which
-    // put marks a student had not earned into Clev's Marks.
+    // put marks a student had not earned into ClevMarks.
     //
     // In both upward cases the model's own suggestedMarks was correct and a
     // breakdown token was wrongly flagged awarded, with the prose reasoning
@@ -1117,6 +1117,43 @@ export function assembleQuestionImages(
 // Prompts
 // -----------------------------------------------------------------------------
 
+/**
+ * What counts as the student's work: the reading rules every grading call
+ * gets, whatever the paper -- written after a review of scripts marked from
+ * upside-down pages, where the marker credited blank boxes, erased pencil and
+ * the mark scheme's own working. Edit
+ * grading_policies/reading_integrity_principles.md, not a copy of its text.
+ *
+ * Interpolated into GRADING_SYSTEM_PROMPT below, so it is declared first: a
+ * const read before its declaration throws at module init. Loaded once, and
+ * fatal if missing, like the policies further down. HTML comments hold notes
+ * to the file's maintainer and are stripped, as for the NA feedback voice
+ * (lib/na-assessment.ts).
+ */
+const READING_INTEGRITY_POLICY_PATH = path.join(
+  process.cwd(),
+  "grading_policies",
+  "reading_integrity_principles.md"
+);
+
+function loadReadingIntegrityPrinciples(): string {
+  try {
+    return fs
+      .readFileSync(READING_INTEGRITY_POLICY_PATH, "utf8")
+      .replace(/<!--[\s\S]*?-->/g, "")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
+  } catch (e) {
+    throw new Error(
+      `Could not load the reading-integrity principles from ${READING_INTEGRITY_POLICY_PATH}: ${
+        e instanceof Error ? e.message : String(e)
+      }`
+    );
+  }
+}
+
+export const READING_INTEGRITY_PRINCIPLES = loadReadingIntegrityPrinciples();
+
 export const GRADING_SYSTEM_PROMPT = `You are an experienced IB Diploma Programme Mathematics examiner marking a scanned, handwritten student script against an official IB mark scheme.
 
 You mark to the mark scheme. You do not mark to your own preferred method or your own arithmetic. The mark scheme is the authority.
@@ -1182,11 +1219,16 @@ MARKING RULES
 
 20. A part may carry TEACHER'S MARKING NOTES after its mark scheme: rulings the teacher made while reviewing earlier scripts on this same paper (which of two readings of the scheme applies, what a partial answer is worth, an alternative the scheme did not list). Apply them as the authority for that part, above the scheme's own wording where the two conflict. A judgement call the notes settle is settled: mark it as the notes say and do not lower your confidence for it.
 
+${READING_INTEGRITY_PRINCIPLES}
+
 WORKING ORDER — follow these steps in sequence for each part, because the later
 fields in OUTPUT below are DERIVED from the earlier ones, not independent
 judgement calls made in parallel:
 
-1. EVIDENCE: transcribe what the student actually wrote for this part.
+1. EVIDENCE: transcribe what the student actually wrote for this part, in
+   their own lines and nothing more (see READING INTEGRITY above): never the
+   mark scheme's working, never erased pencil, and nothing at all for a
+   blank answer space.
 2. EVIDENCE LOCATION: report evidenceBox — the page and a bounding box, as a
    fraction of that page's full width/height (0 = left/top edge, 1 =
    right/bottom edge), that tightly bounds the student's handwritten working
@@ -1605,7 +1647,7 @@ export function buildGradingUserPrompt(
 
 Each attached PDF is a scan of one student's handwritten work for the whole assessment above. Locate each part below in the scan and mark it against its mark scheme.
 
-The scan may be out of order, may include rough working, and may span multiple pages per question. Search the whole document before concluding a part is missing.
+The scan may be out of order, may include rough working, and may span multiple pages per question. Search the whole document before concluding a part is missing, but take a part's work from elsewhere only when the student has labelled it as that part or clearly continued it there (see READING INTEGRITY in the system prompt).
 
 ${blocks.join("\n\n")}`;
 }
@@ -2021,10 +2063,11 @@ export interface ClassRosterEntry extends RosterEntry {
 
 /**
  * A scan uploaded as one class's pile is matched against that class only, and
- * that makes a partial match look decisive: with a single Santiago left in the
- * class, a cover reading "Santiago Ortega" -- a 9A student whose script was
- * filed with 9C's -- scores 0.5 against 9C's Santiago Ruiz with no rival, which
- * is enough to propose him. That is the 15 Sep 2026 mix-up in reverse.
+ * that makes a partial match look decisive: with one student of a given first
+ * name left in the class, a cover carrying that first name and another
+ * surname -- a student from another class whose script was filed with this
+ * one's -- scores 0.5 against the namesake with no rival, which is enough to
+ * propose them. That is the 15 Sep 2026 mix-up in reverse.
  *
  * So a cover label that is exactly the name (or a recorded alias) of a student
  * in ANOTHER class sitting the same paper is held back: its match is cleared
@@ -2068,9 +2111,10 @@ export function holdOtherClassNames(
 /**
  * Re-runs roster matching for the segments of an already-read batch that
  * still have no match. A batch's proposals are frozen at the moment it was
- * segmented, so a spelling the teacher records afterwards ("Nicole Kum"
- * for Gyuwon Kim) -- or a roster that has since gained a student -- never
- * reached rows that were read earlier. The Batch upload tab restores those
+ * segmented, so a spelling the teacher records afterwards (say, the English
+ * name a student writes on the cover, recorded as an alias) -- or a roster
+ * that has since gained a student -- never reached rows that were read
+ * earlier. The Batch upload tab restores those
  * rows from the server on every load, so the batch list route calls this
  * first. Segments that already carry a match are left exactly as they are.
  */

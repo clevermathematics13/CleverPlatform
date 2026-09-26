@@ -38,9 +38,14 @@ COPY worker ./worker
 # platform/, where the file exists regardless. Only building the image can.
 COPY feedback_voice ./feedback_voice
 
-# Deliberate insurance rather than dead weight: lib/ai-grading.ts loads
-# grading_policies/ the same way, and is one stray import away from being
-# reachable from this worker with the identical non-obvious crashloop.
+# Load-bearing too, for the same reason. lib/ai-grading.ts reads every file in
+# grading_policies/ at MODULE INIT (the policies, and
+# reading_integrity_principles.md, which is part of GRADING_SYSTEM_PROMPT
+# itself) and throws if one is missing -- and this worker does import it:
+# worker/segment-and-split.ts -> lib/na-scanning.ts -> lib/ai-grading.ts
+# (extractJsonBlock). A new file there is covered by this COPY; a new
+# runtime-read FOLDER needs its own COPY, which
+# lib/worker-runtime-files.test.ts checks.
 COPY grading_policies ./grading_policies
 
 # node directly, NOT `npx tsx`. With npx in front, npx is PID 1 and the
