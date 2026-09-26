@@ -108,6 +108,39 @@ export function markTokenValue(token: string): number {
   return codes.reduce((sum, c) => sum + c.value, 0);
 }
 
+export interface AwardedTotal {
+  /** What the awarded entries are worth under the IB rules. */
+  marks: number;
+  /** M, A or R marks were awarded alongside N marks, which the IB never combines. */
+  mixedN: boolean;
+}
+
+/**
+ * What a grader's markBreakdown is worth when its tokens are IB codes: each
+ * code carries its digit (A2 is two marks), AG and FT carry none, and N
+ * marks count only when no M, A or R mark is awarded, since they are the
+ * no-working alternative to them. A token with no recognisable code is one
+ * mark, as the grader always counted it. For a mixed award the N marks are
+ * left out and mixedN says so, for the caller to flag.
+ */
+export function totalAwardedMarks(entries: readonly { token: string; awarded: boolean }[]): AwardedTotal {
+  let scored = 0;
+  let nScored = 0;
+  for (const e of entries) {
+    if (!e.awarded) continue;
+    const codes = parseMarkCodeGroup(e.token);
+    if (codes.length === 0) {
+      scored += 1;
+      continue;
+    }
+    for (const c of codes) {
+      if (c.kind === "N") nScored += c.value;
+      else scored += c.value;
+    }
+  }
+  return { marks: scored > 0 ? scored : nScored, mixedN: scored > 0 && nScored > 0 };
+}
+
 /** True when every code in the token is an N mark ("N2", "(N1)"). */
 export function isNMarkToken(token: string): boolean {
   const codes = parseMarkCodeGroup(token);

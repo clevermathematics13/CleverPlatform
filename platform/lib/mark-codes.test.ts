@@ -5,6 +5,7 @@ import {
   markTokenValue,
   parseMarkCodeGroup,
   summarizeSchemeMarks,
+  totalAwardedMarks,
 } from "./mark-codes";
 
 // Every scheme below is invented for the test. Real IB mark scheme text
@@ -74,6 +75,27 @@ describe("markTokenValue", () => {
     expect(isNMarkToken("A1 N1")).toBe(false);
     expect(isZeroValueToken("AG")).toBe(true);
     expect(isZeroValueToken("M1")).toBe(false);
+  });
+});
+
+describe("totalAwardedMarks", () => {
+  const e = (token: string, awarded = true) => ({ token, awarded });
+
+  it("values each awarded code by its digit and gives AG nothing", () => {
+    expect(totalAwardedMarks([e("M1"), e("A2"), e("(A1)"), e("AG"), e("R1", false)])).toEqual({ marks: 4, mixedN: false });
+    expect(totalAwardedMarks([e("M1A1"), e("(A1)(A1)")])).toEqual({ marks: 4, mixedN: false });
+  });
+
+  it("counts N marks only when nothing else is awarded", () => {
+    expect(totalAwardedMarks([e("M1", false), e("A1", false), e("N2")])).toEqual({ marks: 2, mixedN: false });
+    expect(totalAwardedMarks([e("M1"), e("A1"), e("N2")])).toEqual({ marks: 2, mixedN: true });
+    expect(totalAwardedMarks([e("A1 N2")])).toEqual({ marks: 1, mixedN: true });
+  });
+
+  it("keeps one mark for a token it does not recognise, and nothing for no award", () => {
+    expect(totalAwardedMarks([e("B1"), e("criterion 2")])).toEqual({ marks: 2, mixedN: false });
+    expect(totalAwardedMarks([e("A2", false)])).toEqual({ marks: 0, mixedN: false });
+    expect(totalAwardedMarks([])).toEqual({ marks: 0, mixedN: false });
   });
 });
 
