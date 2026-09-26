@@ -4138,6 +4138,64 @@ compare-and-set against a backup, read back by md5; no migration (IB text).
   on L67 still gives 14/14 parts, 70 marks, all `part_latex`, no warnings.
   `\quad` inside maths was left alone (KaTeX sets it as a space).
 
+### The last text-mode `\quad`s, and 18M.2.SL.TZ1.S_8 split by part (26 Sep 2026)
+
+At the teacher's request, the three questions outside L67 that still showed
+a literal "\quad" (see the follow-up below as it stood). 11 fields, written
+compare-and-set against a backup in the session scratchpad and read back by
+md5; the `content_latex` writes re-derived the command-term flags, as
+`latex-update` does. No migration (IB text).
+
+- 15M.2.SL.TZ1.S_1 (27AH [L00] P2 BiStats): `eg \quad ...` -> `eg ...`
+  twice. Its mark column also had a second `\hfill` (`\hfill A1 \hfill N2`,
+  three times); the renderer splits a line at its first `\hfill` only, so the
+  second printed literally. Now `\hfill A1 N2`, as printed.
+- 24M.1.AHL.TZ2.H_7 (in no test): the leading `\quad` of (ci) and (cii), and
+  `(i) \quad` / `(ii) \quad` in its `parts_draft_markscheme_latex`, so
+  "Apply to editors" cannot bring them back.
+- **18M.2.SL.TZ1.S_8 (BiStats) held the whole question and the whole scheme
+  in each of its three parts** (a 3, b 3, c 7: identical text, three
+  `IBPart` blocks, "[3 marks] [3 marks] [7 marks] [13 marks]"), with no
+  stem. So each part was sent to the grader with all 13 marks' scheme, and
+  the renderer printed each `\begin{IBPart}{3}` label as a bare "3" or "7".
+  With the teacher's go-ahead it was split as the paper prints it:
+  - `stem_latex` (was NULL): the data table and the regression sentence.
+  - Each part's `content_latex`: its own task, ending `\hfill [N]`. (c)
+    opens with the sentence that sets up $y = kx^n$, since setup belongs at
+    the start of the part it introduces.
+  - Each part's `markscheme_latex`: its own block, unwrapped, with a plain
+    mark column (`\hfill A1A1 N3`) and ending `\hfill [N marks]`. The
+    `[13 marks]` total is gone.
+  - Checked against the question image and both mark-scheme images, two
+    transcription slips were corrected. (a)'s "eg" line lacked the printed
+    "one correct value" before the two values. (b)'s two "If no working
+    shown" sentences are one note in print, so they became one note with
+    **N1** and **N2** in bold. METHOD headings and "Note:" were made bold,
+    as in the other typed schemes.
+
+BiStats was already marked: 11 students, 92 AI runs from 24 Aug to 2 Sep
+2026. Each student's latest Q4 result was accepted and equals the stored
+mark. Its breakdown uses only that part's own codes: (a) (M1)A1A1, (b)
+(A1)(A1)A1, and (c) its seven codes. So the whole scheme reaching each part
+does not appear to have changed a mark. No mark was touched.
+
+Verified:
+- **Render.** All 11 fields were rendered before and after through the real
+  `LatexRenderer`. Afterwards no literal command, placeholder or marker
+  glyph shows, and the stem's table renders.
+- **Lint.** The K05 lint passes for every part. The stem's `tabular` trips
+  its brace check, which does not handle tables.
+- **Bank re-scan.** All 2101 parts and 2011 questions (parts, stems and
+  drafts): no text-mode `\quad`, no bold or italic mark after `\hfill`, no
+  table-then-mark and no TeX quotes.
+- **Grading.** `loadGradeableMarkScheme` on BiStats
+  (`ccda9ce4-0be9-4136-8999-b00c92cf6658`): 6 units, 6 gradeable, 33 marks,
+  all `part_latex`, no warnings, no banner. 18M.2.SL.TZ1.S_8's units are
+  a/3, b/3 and c/7, with three different schemes, each ending in its own
+  tariff. Each unit's question text is the stem plus its own part.
+
+`latex_verified` stays false.
+
 ### Not done (follow-ups)
 
 - ExamBuilder "Save to Gradebook" (`app/api/gradebook/tests/route.ts`) could
@@ -4148,15 +4206,19 @@ compare-and-set against a backup, read back by md5; no migration (IB text).
   question content" for a mark scheme; it should ask for the mark scheme.
 - LaTeX Review's image-presence lookup (`review/page.tsx`) needs paging or a
   per-question query; at ~600 questions it passes the 1000-row cap.
-- `LatexRenderer` still shows a bold mark code after `\hfill` as `◆(M1)◇`
-  (the mark column prints `splitHfillMark`'s text raw, after
-  `preprocessLatex`), a table with a mark on the line under `\end{tabular}`
-  as `[[TABULAR_n]]`, and a text-mode `\quad` literally. A scan of all 2101
-  parts on 25 Sep 2026 found no bold/italic mark and no table-then-mark left
-  (the L67 ones were rewritten), but a text-mode `\quad` still in three
-  questions outside L67: 15M.2.SL.TZ1.S_1, 18M.2.SL.TZ1.S_8 and
-  24M.1.AHL.TZ2.H_7. The extraction style guide (`IB_LATEX_STYLE_GUIDE`)
-  already asks for plain `\hfill (A1)`; hardening the renderer would stop a
+- `LatexRenderer` still has these display faults:
+  - a bold mark code after `\hfill` shows as `◆(M1)◇`, because the mark
+    column prints `splitHfillMark`'s text raw, after `preprocessLatex`;
+  - a table with a mark on the line under `\end{tabular}` shows
+    `[[TABULAR_n]]`;
+  - a text-mode `\quad` prints literally;
+  - a second `\hfill` on a line prints literally.
+
+  After the fixes above, a scan of all 2101 parts and 2011 questions on
+  26 Sep 2026 found none of the first three left. A doubled `\hfill` is
+  still stored in 07M.1.AHL.TZ1.H_1, 15N.1.SL.TZ0.S_6, 16M.1.SL.TZ2.S_3 and
+  19N.1.SL.TZ0.S_3. The extraction style guide (`IB_LATEX_STYLE_GUIDE`)
+  already asks for plain `\hfill (A1)`. Hardening the renderer would stop a
   hand-typed scheme bringing any of these back.
 - K05 P2: the four new parts' subtopics (H_7(b) 5.13, H_9(b) 1.10, H_12(d)
   5.8, H_12(f) `5.18 (sep)`) were chosen by hand, not by Auto-classify; the
