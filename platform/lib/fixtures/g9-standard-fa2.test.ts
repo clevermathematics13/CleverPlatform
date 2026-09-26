@@ -18,7 +18,7 @@ import {
   strandForItem,
   type RubricItem,
 } from "../standards-rubric";
-import { buildStudentMarkSchemeHtmlFromItems, stripMarkCodes } from "../student-mark-scheme";
+import { stripMarkCodes, studentMarkSchemeRows } from "../student-mark-scheme";
 import {
   FA2_ITEMS,
   FA2_NAME,
@@ -199,18 +199,25 @@ describe("what a student would read, if the scheme is released", () => {
   });
 
   it("builds one typeset row per part, carrying the paper's 36 marks", () => {
-    const html = buildStudentMarkSchemeHtmlFromItems({
-      title: FA2_NAME,
-      items: FA2_ITEMS.map((it) => ({
+    // The page's rows (app/mark-scheme/[id]), built from the items as the
+    // seed writes them, in order.
+    const rows = studentMarkSchemeRows(
+      null,
+      FA2_ITEMS.map((it, i) => ({
+        id: `fa2-${i}`,
         question_number: it.questionNumber,
         part_label: it.partLabel,
         max_marks: it.maxMarks,
+        sort_order: i,
+        stem_text: it.stemText,
+        question_text: it.questionText,
         markscheme_text: it.markschemeText,
       })),
-    });
-    const marks = [...html.matchAll(/\[(\d+) marks?\]/g)].map((m) => Number(m[1]));
-    expect(marks).toHaveLength(14);
-    expect(marks.reduce((a, b) => a + b, 0)).toBe(FA2_TOTAL_MARKS);
+    );
+    expect(rows).toHaveLength(14);
+    expect(rows.reduce((sum, r) => sum + r.maxMarks, 0)).toBe(FA2_TOTAL_MARKS);
+    expect(rows.every((r) => r.scheme?.how_marked_html)).toBe(true);
+    const html = rows.map((r) => r.scheme?.how_marked_html ?? "").join("");
     expect(html).toContain('class="katex"');
     expect(html).not.toMatch(/\$\d|\$\\frac|\$-/);
   });

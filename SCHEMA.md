@@ -602,6 +602,31 @@ public/anon. RLS: teachers SELECT only.
 | `created_at` | timestamp with time zone | default `now()` |
 | `invited_student_id` | uuid, nullable | FK invited_students(id) on delete set null |
 
+### `mark_scheme_explanations`
+
+A written explanation of one part of a test's mark scheme, for students: the answer, how the
+marks work, watch-out notes and the "Explain more" steps (`lib/mark-scheme-explanation.ts`).
+Keyed on the natural key test_items is unique on, not `test_items.id`, so a Formative
+Assessment re-save (which recreates its items) keeps the explanations of unchanged parts.
+Teachers of the test read and write it; students have no policy -- the server reads rows with
+the service role after the release gates (`lib/mark-scheme-explanation-store.ts`). Migration
+`20260925040006_mark_scheme_explanations.sql`.
+
+| column | type | default |
+|---|---|---|
+| `id` | uuid | default `gen_random_uuid()` |
+| `test_id` | uuid | FK tests(id) on delete cascade |
+| `question_number` | integer |  |
+| `part_label` | text | default `''` -- as `test_items.part_label` |
+| `source_hash` | text | sha256 of what it was written from (`explanationSourceHash`); a student sees the row only while it matches the part as it stands |
+| `content` | jsonb | the explanation, checked by `checkExplanation` before it is stored |
+| `model` | text |  |
+| `prompt_version` | integer | `EXPLANATION_PROMPT_VERSION` when written |
+| `generated_by` | uuid, nullable | FK profiles(id) on delete set null |
+| `created_at` `updated_at` | timestamp with time zone | default `now()`; `updated_at` by `set_updated_at()` |
+
+Unique on `(test_id, question_number, part_label)`.
+
 ### `mastery_analyses`
 
 One cached AI mastery write-up per student. `app/api/mastery/analysis/route.ts`

@@ -5,6 +5,8 @@ import { abbreviateAssessmentName, assessmentShortName } from "@/lib/assessment-
 import type { OverrideMap, OverrideValue } from "@/lib/self-assessment-override-diff";
 import type { OverrideClass } from "@/lib/self-assessment-override-classes";
 import { StandardsRubricSection } from "./standards-rubric-section";
+import { StudentMarkSchemeSection } from "./student-mark-scheme-section";
+import { studentMarkSchemePath } from "@/lib/student-mark-scheme-paths";
 
 /**
  * This assessment's grade boundaries, as the Grading section summarises them.
@@ -611,6 +613,13 @@ export function TestDetailClient({
           </div>
         )}
       </section>
+
+      {/* -- Student mark scheme ------------------------------------------ */}
+      <StudentMarkSchemeSection
+        testId={test.id}
+        releaseKey={`${saved.mark_scheme_url ?? ""}|${saved.hidden}`}
+        onReleasePlatformScheme={() => set("mark_scheme_url", studentMarkSchemePath(test.id))}
+      />
 
       {/* -- Questions ---------------------------------------------------- */}
       <section className="space-y-3 rounded-xl border border-da-border bg-da-surface p-5 shadow-sm">

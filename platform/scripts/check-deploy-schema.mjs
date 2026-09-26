@@ -90,6 +90,14 @@ const probes = [
     column: "status",
     migration: "20260924211255_remark_requests.sql",
   },
+  {
+    // Written explanations on the student mark scheme. Students fall back to
+    // the teacher's own text without it, so nothing breaks -- but the
+    // teacher's "Write explanations" button fails on every part.
+    table: "mark_scheme_explanations",
+    column: "source_hash",
+    migration: "20260925040006_mark_scheme_explanations.sql",
+  },
 ];
 
 const missing = [];

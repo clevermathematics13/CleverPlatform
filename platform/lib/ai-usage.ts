@@ -45,6 +45,10 @@ export type UsagePipeline =
   // distribution and the teacher's guidance (Opus, one call per request, at
   // the desk; lib/boundary-suggestion.ts).
   | "boundary_suggest"
+  // Writing the student mark scheme's explanation of one part: the answer,
+  // how the marks work and the "Explain more" steps (Opus, one call per part
+  // and per retry, at the desk; lib/mark-scheme-explanation-prompt.ts).
+  | "mark_scheme_explanation"
   // Everything below was invisible in this log until 20 Sep 2026: the call
   // sites existed, none recorded usage, so the marking-side profile was the
   // whole picture. Each is one teacher-desk call or one generation.
