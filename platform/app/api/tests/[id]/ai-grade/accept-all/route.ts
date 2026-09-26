@@ -5,6 +5,12 @@ import { INVITED_SUBJECT_PREFIX } from "@/lib/ai-grading";
 import { fetchAllRows } from "@/lib/na-scanning";
 import { parseAssessmentKind } from "@/lib/assessment-kind";
 import { partitionBatchAccept, heldForReviewMessage } from "@/lib/summative-grading-gate";
+import {
+  COULD_NOT_CHECK_SELF_ASSESSMENT,
+  keptSuggestionsMessage,
+  partitionProtectedWrites,
+} from "@/lib/protected-marks";
+import { selfAssessedStudentIds } from "@/lib/protected-marks-service";
 
 export const maxDuration = 300;
 
@@ -66,6 +72,11 @@ function identityFor(r: RunRow): Identity {
  * was fully confident about are written; the rest stay unaccepted and wait for
  * the teacher to open them individually, which is the intervention. See
  * lib/summative-grading-gate.ts. On a formative, behaviour is unchanged.
+ *
+ * Nor does it lower a ClevMark for a student who has self-assessed the test
+ * (lib/protected-marks.ts). Such a suggestion writes nothing and logs nothing,
+ * but is still flagged accepted like the rest of the batch -- the ClevMark on
+ * file is the decision -- and is counted in keptCount and the message.
  *
  * Works the same whether a run's identity is a registered student
  * (student_id) or an imported-but-not-yet-registered one
@@ -146,7 +157,7 @@ export async function POST(
   // a 50-student test (2,050 result rows) handed back 1,000 of them, so the
   // marks below were written for half the class while the accepted flag,
   // set by run id at the end, covered everyone -- 21 students then had
-  // "accepted" suggestions and nothing in Clev's Marks, and a second click
+  // "accepted" suggestions and nothing in ClevMarks, and a second click
   // reported nothing left to accept.
   let results: PendingResult[];
   try {
@@ -234,17 +245,44 @@ export async function POST(
     return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 500 });
   }
 
-  const keyFor = (r: (typeof clamped)[number]) =>
+  const keyFor = (r: { identity: Identity; test_item_id: string }) =>
     r.identity.student_id
       ? `p:${r.identity.student_id}:${r.test_item_id}`
       : `i:${r.identity.invited_student_id}:${r.test_item_id}`;
 
+  // The protection: no ClevMark comes down for a student who has self-assessed
+  // this test. Checked before anything is written; a failed check writes
+  // nothing. Invited-only students cannot have self-assessed.
+  let selfAssessed: Set<string>;
+  try {
+    selfAssessed = await selfAssessedStudentIds(
+      supabase,
+      testId,
+      profileRows.map((r) => r.identity.student_id!)
+    );
+  } catch {
+    return NextResponse.json({ error: COULD_NOT_CHECK_SELF_ASSESSMENT }, { status: 503 });
+  }
+  const { write, kept } = partitionProtectedWrites(clamped, (r) => ({
+    existing: existingByKey.get(keyFor(r)) ?? null,
+    requested: r.marks,
+    selfAssessed: r.identity.student_id !== null && selfAssessed.has(r.identity.student_id),
+  }));
+  const writeProfile = write.filter((r) => r.identity.student_id);
+  const writeInvited = write.filter((r) => r.identity.invited_student_id);
+
   // Every write below goes out in chunks. A whole-class accept (50 students
   // x 41 parts = 2,018 rows on 5 Sep 2026) sent as ONE request had only its
   // first 1,000 rows land, silently, and the request that followed was
-  // refused outright -- so 21 students' marks never reached Clev's Marks
+  // refused outright -- so 21 students' marks never reached ClevMarks
   // while the audit log said they had. 400 rows per request stays well
   // inside the gateway's limits.
+  //
+  // Each upsert reads back what is on file afterwards. The database keeps a
+  // protected ClevMark rather than failing the write (the
+  // student_marks_protect_self_assessed trigger) -- say a student self-assessed
+  // after the check above -- so a value that came back different was kept, not
+  // written, and is reported and left out of the audit log with the rest.
   const CHUNK = 400;
   const chunks = <T,>(rows: T[]): T[][] => {
     const out: T[][] = [];
@@ -252,34 +290,55 @@ export async function POST(
     return out;
   };
 
-  for (const chunk of chunks(profileRows)) {
-    const { error } = await supabase.from("student_marks").upsert(
-      chunk.map((r) => ({
-        test_item_id: r.test_item_id,
-        student_id: r.identity.student_id,
-        invited_student_id: null,
-        marks_awarded: r.marks,
-      })),
-      { onConflict: "test_item_id,student_id" }
-    );
+  const onFileByKey = new Map<string, number>();
+  const readBack = (rows: Omit<ExistingMark, "id">[] | null) => {
+    for (const m of rows ?? []) onFileByKey.set(keyFor({ identity: m, test_item_id: m.test_item_id }), m.marks_awarded);
+  };
+  const RETURNING = "student_id, invited_student_id, test_item_id, marks_awarded";
+
+  for (const chunk of chunks(writeProfile)) {
+    const { data, error } = await supabase
+      .from("student_marks")
+      .upsert(
+        chunk.map((r) => ({
+          test_item_id: r.test_item_id,
+          student_id: r.identity.student_id,
+          invited_student_id: null,
+          marks_awarded: r.marks,
+        })),
+        { onConflict: "test_item_id,student_id" }
+      )
+      .select(RETURNING);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    readBack(data);
   }
-  for (const chunk of chunks(invitedRows)) {
-    const { error } = await supabase.from("student_marks").upsert(
-      chunk.map((r) => ({
-        test_item_id: r.test_item_id,
-        student_id: null,
-        invited_student_id: r.identity.invited_student_id,
-        marks_awarded: r.marks,
-      })),
-      { onConflict: "test_item_id,invited_student_id" }
-    );
+  for (const chunk of chunks(writeInvited)) {
+    const { data, error } = await supabase
+      .from("student_marks")
+      .upsert(
+        chunk.map((r) => ({
+          test_item_id: r.test_item_id,
+          student_id: null,
+          invited_student_id: r.identity.invited_student_id,
+          marks_awarded: r.marks,
+        })),
+        { onConflict: "test_item_id,invited_student_id" }
+      )
+      .select(RETURNING);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    readBack(data);
   }
 
+  // A row the read-back did not return is taken as written: the check before
+  // the write already applied the rule, and this is only its backstop.
+  const keptByDatabase = write.filter((r) => (onFileByKey.get(keyFor(r)) ?? r.marks) !== r.marks);
+  const applied = write.filter((r) => (onFileByKey.get(keyFor(r)) ?? r.marks) === r.marks);
+  const allKept = [...kept, ...keptByDatabase];
+
   // Audit only real changes: a mark that already held this value (e.g. a
-  // re-run of accept-all after a partial failure) is not a change.
-  const changes = clamped
+  // re-run of accept-all after a partial failure) is not a change, and a
+  // kept ClevMark did not change at all.
+  const changes = applied
     .filter((r) => existingByKey.get(keyFor(r)) !== r.marks)
     .map((r) => ({
       test_item_id: r.test_item_id,
@@ -308,6 +367,10 @@ export async function POST(
   // is the exact thing being prevented. Those go out by id instead, in small
   // chunks -- the UUID list is what broke the URL above, so 200 per request
   // rather than one request with all of them.
+  //
+  // Either way the kept suggestions are flagged too: they were covered by
+  // this batch and the ClevMark on file answers them, so leaving them
+  // unaccepted would only offer the same lower value again next time.
   const acceptedAt = new Date().toISOString();
   const acceptPatch = { accepted: true, accepted_at: acceptedAt, accepted_by: user.id };
   const acceptFailed = async (message: string) =>
@@ -338,16 +401,22 @@ export async function POST(
     }
   }
 
-  // Clev's Marks just changed for a whole test, so the stored PowerSchool
-  // export no longer matches. One flag for the run, not one per student.
-  await markExportsStale({ testId });
+  // ClevMarks just changed for a whole test, so the stored PowerSchool
+  // export no longer matches. One flag for the run, not one per student --
+  // and none when every covered suggestion was kept, since nothing moved.
+  if (applied.length > 0) await markExportsStale({ testId });
+
+  const keptStudents = new Set(allKept.map((r) => r.run_id)).size;
+  const message = [heldMessage, keptSuggestionsMessage(allKept.length, keptStudents)].filter(Boolean).join(" ");
 
   return NextResponse.json({
-    appliedCount: clamped.length,
+    appliedCount: applied.length,
     studentsProcessed: runs.length,
-    totalApplied: clamped.reduce((sum, r) => sum + r.marks, 0),
+    totalApplied: applied.reduce((sum, r) => sum + r.marks, 0),
     heldCount: held.length,
     heldStudents,
-    ...(heldMessage ? { message: heldMessage } : {}),
+    keptCount: allKept.length,
+    keptStudents,
+    ...(message ? { message } : {}),
   });
 }

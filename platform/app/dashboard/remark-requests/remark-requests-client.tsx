@@ -159,7 +159,11 @@ function RequestCard({
 
   const parsed = mark.trim() === "" ? NaN : Number(mark);
   const markValid = Number.isInteger(parsed) && parsed >= 0 && parsed <= entry.maxMarks;
-  const canChange = markValid && parsed !== entry.marksAtRequest;
+  // A request always follows self-assessment, and a ClevMark never comes down
+  // after that (lib/protected-marks.ts): "Mark changed" can only raise it.
+  const floor = entry.currentMarks ?? 0;
+  const belowFloor = markValid && entry.currentMarks !== null && parsed < entry.currentMarks;
+  const canChange = markValid && parsed !== entry.marksAtRequest && !belowFloor;
   const canKeep = entry.currentMarks !== null;
   const moved = remarkMarkMoved(entry);
   const agrees = remarkNowAgrees(entry);
@@ -243,7 +247,7 @@ function RequestCard({
           Mark
           <input
             type="number"
-            min={0}
+            min={floor}
             max={entry.maxMarks}
             step={1}
             value={mark}
@@ -275,13 +279,25 @@ function RequestCard({
             type="button"
             disabled={!canChange || busy !== null}
             onClick={() => void answer("changed")}
-            title={canChange ? `Change ClevMarks to ${parsed}` : `Enter a mark other than ${entry.marksAtRequest}`}
+            title={
+              canChange
+                ? `Change ClevMarks to ${parsed}`
+                : belowFloor
+                  ? `ClevMarks cannot go below ${entry.currentMarks}: the student has self-assessed`
+                  : `Enter a mark other than ${entry.marksAtRequest}`
+            }
             className="rounded-lg bg-da-accent px-3 py-1.5 text-sm font-bold text-da-bg hover:bg-da-amber disabled:opacity-50"
           >
             {busy === "changed" ? "Saving…" : "Mark changed"}
           </button>
         </div>
       </div>
+      {belowFloor && (
+        <p className="mt-2 text-xs text-amber-200">
+          A ClevMark is never lowered once the student has self-assessed, so this one stays at {entry.currentMarks}.
+          To answer a student who thinks they were given too much, choose Mark stands.
+        </p>
+      )}
       {error && <p className="mt-2 text-xs text-red-400">{error}</p>}
     </li>
   );

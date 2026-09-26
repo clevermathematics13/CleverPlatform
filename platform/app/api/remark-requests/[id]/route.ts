@@ -3,6 +3,7 @@ import { getApiTeacher } from "@/lib/auth";
 import { describeAuditWarning, logMarkChanges } from "@/lib/mark-audit";
 import { validateResolution } from "@/lib/remark-requests";
 import { markExportsStale } from "@/lib/self-assessment-export";
+import { protectedRefusalMessage } from "@/lib/protected-marks";
 
 /**
  * PATCH /api/remark-requests/[id]
@@ -25,6 +26,12 @@ import { markExportsStale } from "@/lib/self-assessment-export";
  * expectedCurrentMarks is the ClevMark the page showed. A mark that moved
  * since (a gradebook edit, an accept on the marking screen) is refused with
  * 409 rather than overwritten or misreported -- see validateResolution.
+ *
+ * "changed" never lowers the ClevMark: every request follows self-assessment,
+ * and a ClevMark is never lowered after that (lib/protected-marks.ts).
+ * validateResolution refuses it; if the database keeps the mark anyway (the
+ * student_marks_protect_self_assessed trigger), the request is left pending
+ * rather than recorded against a mark that did not change.
  */
 export async function PATCH(
   request: NextRequest,
@@ -89,12 +96,25 @@ export async function PATCH(
     // an account, and leaving invited_student_id out of the payload keeps
     // whatever roster link the row already carries (as update-mark does).
     // RLS refuses the write unless this teacher owns the test.
-    const { error: upsertError } = await supabase.from("student_marks").upsert(
-      { test_item_id: testItemId, student_id: studentId, marks_awarded: decision.resolvedMarks },
-      { onConflict: "test_item_id,student_id" }
-    );
+    const { data: written, error: upsertError } = await supabase
+      .from("student_marks")
+      .upsert(
+        { test_item_id: testItemId, student_id: studentId, marks_awarded: decision.resolvedMarks },
+        { onConflict: "test_item_id,student_id" }
+      )
+      .select("marks_awarded")
+      .maybeSingle();
     if (upsertError) {
       return NextResponse.json({ error: `The mark could not be saved: ${upsertError.message}` }, { status: 500 });
+    }
+    if (typeof written?.marks_awarded === "number" && written.marks_awarded !== decision.resolvedMarks) {
+      return NextResponse.json(
+        {
+          error: `${protectedRefusalMessage({ kept: written.marks_awarded, requested: decision.resolvedMarks })} The request is still waiting.`,
+          keptMarks: written.marks_awarded,
+        },
+        { status: 409 }
+      );
     }
 
     const audit = await logMarkChanges(

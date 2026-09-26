@@ -234,6 +234,39 @@ describe("validateResolution", () => {
       status: 400,
     });
   });
+
+  // Every request follows self-assessment, and a ClevMark never comes down
+  // after that (lib/protected-marks.ts).
+  it("never lowers the ClevMark: a student who says they got too much gets Mark stands", () => {
+    const tooMuch = { ...base, marksAtRequest: 3, currentMarks: 3, expectedCurrentMarks: 3 };
+    const lowered = validateResolution({ ...tooMuch, newMarks: 2 });
+    expect(lowered).toMatchObject({ ok: false, status: 409 });
+    expect(lowered.ok ? "" : lowered.error).toMatch(/stays at 3 and was not lowered to 2/);
+    expect(lowered.ok ? "" : lowered.error).toMatch(/Choose Mark stands\.$/);
+    expect(validateResolution({ ...tooMuch, newMarks: 0 })).toMatchObject({ ok: false, status: 409 });
+    expect(validateResolution({ ...tooMuch, outcome: "stands" })).toMatchObject({
+      ok: true,
+      outcome: "stands",
+      resolvedMarks: 3,
+      writeMark: false,
+    });
+  });
+
+  it("refuses to go below a ClevMark that was raised after the request", () => {
+    // Asked at 2, raised to 3 in the gradebook since: 2 is now a decrease.
+    const raised = { ...base, currentMarks: 3, expectedCurrentMarks: 3 };
+    expect(validateResolution({ ...raised, newMarks: 1 })).toMatchObject({ ok: false, status: 409 });
+    expect(validateResolution({ ...raised, newMarks: 4 })).toMatchObject({ ok: true, resolvedMarks: 4 });
+  });
+
+  it("allows any mark when there is no ClevMark on file to lower", () => {
+    const cleared = { ...base, currentMarks: null, expectedCurrentMarks: null };
+    expect(validateResolution({ ...cleared, newMarks: 1 })).toMatchObject({
+      ok: true,
+      resolvedMarks: 1,
+      writeMark: true,
+    });
+  });
 });
 
 describe("buildRemarkQueue", () => {

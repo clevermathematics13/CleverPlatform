@@ -48,6 +48,7 @@ import { writeCollapsedClassesCookie } from "@/lib/ai-grade-collapsed-classes";
 import type { AssessmentKind } from "@/lib/assessment-kind";
 // Not "@/lib/assignments": that module carries the AI prompt builders too.
 import { paperQuestionPrefixes } from "@/lib/paper-labels";
+import { describeKeptParts } from "@/lib/protected-marks";
 // Not "@/lib/standards-rubric": that module carries zod for the rubric's
 // parser, and the page parses the rubric on the server (standardsRubric).
 import { buildStandardsReport } from "@/lib/standards-report";
@@ -369,6 +370,13 @@ export function AiGradeClient({
   const [loading, setLoading] = useState(initial === null);
   const [error, setError] = useState<string | null>(null);
   const [statusLine, setStatusLine] = useState<string | null>(null);
+  /**
+   * Parts an accept left at their ClevMark because a lower value was chosen
+   * after the student self-assessed (lib/protected-marks.ts). Its own amber
+   * box rather than the status line: nothing failed, but what was chosen is
+   * not what is on file, and the teacher should see which parts.
+   */
+  const [keptNotice, setKeptNotice] = useState<string | null>(null);
   /**
    * Anyone a batch scan was confirmed for who has no marking at all -- their
    * pages could not be stored at the split, or never reached marking. Flagged
@@ -1265,10 +1273,40 @@ export function AiGradeClient({
     }
   };
 
+  /**
+   * What an accept response says beyond its count: the parts whose ClevMark
+   * was kept, and the parts that could not be saved at all. Both used to be
+   * dropped here, so a partial failure read as a clean accept.
+   */
+  const reportAcceptOutcome = (data: Record<string, unknown>) => {
+    const labelOf = (testItemId: string) => itemLabel(itemById.get(testItemId), paperPrefixes);
+    const kept = Array.isArray(data.kept)
+      ? (data.kept as { testItemId: string; kept: number; requested: number }[])
+      : [];
+    setKeptNotice(
+      describeKeptParts(kept.map((k) => ({ label: labelOf(k.testItemId), kept: k.kept, requested: k.requested }))) ||
+        null
+    );
+    const failures = Array.isArray(data.failures) ? (data.failures as { resultId: string; error: string }[]) : [];
+    if (failures.length > 0) {
+      const byResult = new Map(results.map((r) => [r.id, r.test_item_id]));
+      setError(
+        `${failures.length} part(s) could not be saved: ` +
+          failures
+            .map((f) => {
+              const itemId = byResult.get(f.resultId);
+              return `${itemId ? labelOf(itemId) : "a part"} (${f.error})`;
+            })
+            .join("; ")
+      );
+    }
+  };
+
   const acceptSelected = async () => {
     if (!focusRunId || selected.size === 0) return;
     setAccepting(true);
     setError(null);
+    setKeptNotice(null);
     try {
       const selections = [...selected].map((resultId) => ({
         resultId,
@@ -1285,6 +1323,7 @@ export function AiGradeClient({
         return;
       }
       setStatusLine(`${data.appliedCount} mark(s) written to ClevMarks.`);
+      reportAcceptOutcome(data);
       if (focusStudent) await loadResultsFor(focusStudent, { afterWrite: true });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not accept these marks.");
@@ -1293,11 +1332,12 @@ export function AiGradeClient({
     }
   };
 
-  // -- Accept a single result into Clev's Marks (per-row, from the Status column) --
+  // -- Accept a single result into ClevMarks (per-row, from the Status column) --
   const acceptOne = async (resultId: string) => {
     if (!focusRunId) return;
     setAcceptingRowId(resultId);
     setError(null);
+    setKeptNotice(null);
     try {
       const { ok, data } = await fetchJson(`/api/tests/${testId}/ai-grade/accept`, {
         method: "POST",
@@ -1312,6 +1352,7 @@ export function AiGradeClient({
         return;
       }
       setStatusLine(`${data.appliedCount} mark(s) written to ClevMarks.`);
+      reportAcceptOutcome(data);
       if (focusStudent) await loadResultsFor(focusStudent, { afterWrite: true });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not accept this mark.");
@@ -1328,19 +1369,26 @@ export function AiGradeClient({
   const acceptAll = async (scope?: { studentIds: string[]; label: string }) => {
     const who = scope ? `${scope.label} student's` : "student's";
     const about = scope ? ` for ${scope.label}` : "";
+    // Says what happens to a ClevMark already on file, which the old wording
+    // ("already-accepted marks are left as they are") got wrong: a suggestion
+    // not yet accepted replaces it -- unless that would lower it for a student
+    // who has self-assessed, which never happens.
     const ok = window.confirm(
       assessmentKind === "summative"
         ? `This is a summative. It writes only the suggestions Clev was fully confident about${about}, straight into ` +
             "ClevMarks without opening each student's review. Anything less confident, and anything marked " +
-            "with no working found, is left for you to check and accept yourself. Continue?"
-        : `This writes every suggested mark, for every question, for every ${who} latest completed run straight into ` +
-            "ClevMarks -- without opening each student's review first. Already-accepted marks are left as they are. " +
-            "Continue?"
+            "with no working found, is left for you to check and accept yourself. A ClevMark is never lowered " +
+            "for a student who has self-assessed. Continue?"
+        : `This writes every suggested mark not yet accepted, for every question, for every ${who} latest completed ` +
+            "run straight into ClevMarks -- without opening each student's review first. It replaces a ClevMark " +
+            "already on file for those parts, except that a ClevMark is never lowered for a student who has " +
+            "self-assessed. Continue?"
     );
     if (!ok) return;
     setAcceptingAll(!scope);
     if (scope) setAcceptingClass(scope.label);
     setError(null);
+    setKeptNotice(null);
     try {
       const { ok: reqOk, data } = await fetchJson(`/api/tests/${testId}/ai-grade/accept-all`, {
         method: "POST",
@@ -2714,6 +2762,22 @@ export function AiGradeClient({
                   </a>
                 </>
               )}
+            </div>
+          )}
+
+          {keptNotice && (
+            <div
+              role="status"
+              className="flex items-start gap-3 rounded-lg border border-amber-400/40 bg-amber-500/15 px-4 py-3 text-sm text-amber-200"
+            >
+              <p className="flex-1">{keptNotice}</p>
+              <button
+                type="button"
+                onClick={() => setKeptNotice(null)}
+                className="shrink-0 font-bold hover:underline"
+              >
+                Dismiss
+              </button>
             </div>
           )}
 

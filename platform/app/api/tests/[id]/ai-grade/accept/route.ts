@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getApiTeacher } from "@/lib/auth";
 import { markExportsStale } from "@/lib/self-assessment-export";
+import { COULD_NOT_CHECK_SELF_ASSESSMENT, COULD_NOT_READ_CLEVMARK, isProtectedDecrease } from "@/lib/protected-marks";
+import { selfAssessedStudentIds } from "@/lib/protected-marks-service";
 
 /**
  * POST /api/tests/[id]/ai-grade/accept
@@ -9,7 +11,7 @@ import { markExportsStale } from "@/lib/self-assessment-export";
  *   selections: { resultId: string, marks?: number, note?: string }[]
  * }
  *
- * Applies teacher-reviewed AI results to student_marks ("Clev's Marks").
+ * Applies teacher-reviewed AI results to student_marks ("ClevMarks").
  *
  * This is the ONLY path from an AI suggestion to a real mark. Every write is
  * logged to mark_changes with an explicit reason, so an AI-originated mark stays
@@ -20,6 +22,12 @@ import { markExportsStale } from "@/lib/self-assessment-export";
  * change how the part is marked from now on belongs on the item instead
  * (test_items.marking_notes, PUT .../items/[itemId]/marking-notes); this note
  * is the audit trail for this one mark.
+ *
+ * A ClevMark is never lowered once the student has self-assessed the test
+ * (lib/protected-marks.ts). A lower value chosen for such a student writes no
+ * mark and no mark_changes row: the ClevMark on file stays, the suggestion is
+ * still flagged accepted (the teacher has reviewed it, so it leaves the queue),
+ * and the part comes back in `kept` so the review panel can say so.
  */
 export async function POST(
   request: NextRequest,
@@ -79,7 +87,7 @@ export async function POST(
       { status: 400 }
     );
   }
-  // student_marks ("Clev's Marks") accepts either identity, mirroring
+  // student_marks (ClevMarks) accepts either identity, mirroring
   // ai_grade_runs: a run graded against an imported-but-not-yet-registered
   // student (student_id null, invited_student_id set) writes against
   // invited_student_id instead. auto_enroll_from_invitations reconciles it
@@ -103,8 +111,25 @@ export async function POST(
     );
   }
 
+  // Whether this student has self-assessed the test, which is what protects
+  // their ClevMarks from coming down. Checked once, before anything is written;
+  // a failed check writes nothing rather than risk an unreported decrease.
+  // An invited-only student has no account, so cannot have self-assessed.
+  let selfAssessed = false;
+  if (identity.student_id) {
+    try {
+      selfAssessed = (await selfAssessedStudentIds(supabase, testId, [identity.student_id])).has(identity.student_id);
+    } catch {
+      return NextResponse.json({ error: COULD_NOT_CHECK_SELF_ASSESSMENT }, { status: 503 });
+    }
+  }
+
+  const acceptedPatch = () => ({ accepted: true, accepted_at: new Date().toISOString(), accepted_by: user.id });
+
   const applied: { resultId: string; testItemId: string; marks: number }[] = [];
   const failures: { resultId: string; error: string }[] = [];
+  /** Parts whose ClevMark stayed because a lower value was chosen after the student self-assessed. */
+  const kept: { resultId: string; testItemId: string; kept: number; requested: number }[] = [];
 
   for (const r of results) {
     const override = overrides.get(r.id);
@@ -112,27 +137,59 @@ export async function POST(
     const marks = Math.max(0, Math.min(requested, r.max_marks));
     const wasOverridden = marks !== r.suggested_marks;
 
-    // Prior mark, for the audit log
+    // Prior mark, for the audit log and the protection check
     let existingQuery = supabase.from("student_marks").select("marks_awarded").eq("test_item_id", r.test_item_id);
     existingQuery = identity.student_id
       ? existingQuery.eq("student_id", identity.student_id)
       : existingQuery.eq("invited_student_id", identity.invited_student_id!);
-    const { data: existing } = await existingQuery.maybeSingle();
+    const { data: existing, error: existingErr } = await existingQuery.maybeSingle();
 
-    const oldMarks = existing?.marks_awarded ?? null;
+    // Without the mark on file there is no telling whether this write would
+    // lower it, so a protected student's part is left alone and reported.
+    if (existingErr && selfAssessed) {
+      failures.push({ resultId: r.id, error: COULD_NOT_READ_CLEVMARK });
+      continue;
+    }
 
-    const { error: upsertErr } = await supabase.from("student_marks").upsert(
-      {
-        test_item_id: r.test_item_id,
-        student_id: identity.student_id,
-        invited_student_id: identity.invited_student_id,
-        marks_awarded: marks,
-      },
-      { onConflict: marksConflictTarget }
-    );
+    const oldMarks: number | null = existing?.marks_awarded ?? null;
+
+    if (isProtectedDecrease({ existing: oldMarks, requested: marks, selfAssessed })) {
+      const { error: flagErr } = await supabase.from("ai_grade_results").update(acceptedPatch()).eq("id", r.id);
+      if (flagErr) {
+        failures.push({ resultId: r.id, error: flagErr.message });
+        continue;
+      }
+      kept.push({ resultId: r.id, testItemId: r.test_item_id, kept: oldMarks!, requested: marks });
+      continue;
+    }
+
+    const { data: written, error: upsertErr } = await supabase
+      .from("student_marks")
+      .upsert(
+        {
+          test_item_id: r.test_item_id,
+          student_id: identity.student_id,
+          invited_student_id: identity.invited_student_id,
+          marks_awarded: marks,
+        },
+        { onConflict: marksConflictTarget }
+      )
+      .select("marks_awarded")
+      .maybeSingle();
 
     if (upsertErr) {
       failures.push({ resultId: r.id, error: upsertErr.message });
+      continue;
+    }
+
+    // The database keeps a protected ClevMark rather than failing the write
+    // (the student_marks_protect_self_assessed trigger), for instance when the
+    // student self-assessed after the check above. What is on file now is what
+    // counts: if it is not the value sent, nothing changed, so nothing is logged.
+    const onFile = typeof written?.marks_awarded === "number" ? written.marks_awarded : marks;
+    if (onFile !== marks) {
+      await supabase.from("ai_grade_results").update(acceptedPatch()).eq("id", r.id);
+      kept.push({ resultId: r.id, testItemId: r.test_item_id, kept: onFile, requested: marks });
       continue;
     }
 
@@ -150,23 +207,22 @@ export async function POST(
         (notes.has(r.id) ? ` -- note: ${notes.get(r.id)}` : ""),
     });
 
-    await supabase
-      .from("ai_grade_results")
-      .update({ accepted: true, accepted_at: new Date().toISOString(), accepted_by: user.id })
-      .eq("id", r.id);
+    await supabase.from("ai_grade_results").update(acceptedPatch()).eq("id", r.id);
 
     applied.push({ resultId: r.id, testItemId: r.test_item_id, marks });
   }
 
-  // Clev's Marks just changed, so the stored PowerSchool export no longer
+  // ClevMarks just changed, so the stored PowerSchool export no longer
   // matches it. Nothing applied means nothing moved, so there is nothing to
-  // flag. Mirrors accept-all, which flags the whole test the same way.
+  // flag -- a kept part moved nothing either. Mirrors accept-all, which flags
+  // the whole test the same way.
   if (applied.length > 0) await markExportsStale({ testId });
 
   return NextResponse.json({
     appliedCount: applied.length,
     applied,
     failures,
+    kept,
     totalApplied: applied.reduce((sum, a) => sum + a.marks, 0),
   });
 }
