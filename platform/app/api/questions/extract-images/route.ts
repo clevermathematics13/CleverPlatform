@@ -2,8 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { getApiTeacher } from "@/lib/auth";
 import { getDriveToken } from "@/lib/google-drive";
 import { isBlockedQuestionImage } from "@/lib/question-image-filter";
-import { google } from "googleapis";
-import { OAuth2Client } from "google-auth-library";
+import {
+  downloadImage,
+  extensionForType,
+  getAuthedClient,
+  getDocImages,
+  isDocExtractionFileName,
+  isDriveFileNotFound,
+} from "@/lib/google-doc-images";
 
 export const maxDuration = 120; // allow long extraction runs
 
@@ -11,85 +17,11 @@ interface ExtractRequest {
   questionId: string; // ib_questions.id
 }
 
-function getAuthedClient(token: Record<string, unknown>) {
-  const oauth2 = new OAuth2Client(
-    process.env.GOOGLE_CLIENT_ID,
-    process.env.GOOGLE_CLIENT_SECRET
-  );
-  oauth2.setCredentials(token);
-  return oauth2;
-}
-
-/**
- * Extract all inline images from a Google Doc.
- * Returns array of { objectId, contentUri, width, height }.
- */
-async function getDocImages(
-  auth: OAuth2Client,
-  docId: string
-): Promise<
-  { objectId: string; contentUri: string; width: number; height: number }[]
-> {
-  const docs = google.docs({ version: "v1", auth });
-  const { data: doc } = await docs.documents.get({ documentId: docId });
-
-  const images: {
-    objectId: string;
-    contentUri: string;
-    width: number;
-    height: number;
-  }[] = [];
-
-  const inlineObjects = doc.inlineObjects ?? {};
-  for (const [objectId, obj] of Object.entries(inlineObjects)) {
-    const embedded = obj.inlineObjectProperties?.embeddedObject;
-    if (!embedded?.imageProperties?.contentUri) continue;
-
-    images.push({
-      objectId,
-      contentUri: embedded.imageProperties.contentUri,
-      width: embedded.size?.width?.magnitude ?? 0,
-      height: embedded.size?.height?.magnitude ?? 0,
-    });
-  }
-
-  return images;
-}
-
-/**
- * Download an image from a URI using the authenticated client.
- */
-async function downloadImage(
-  auth: OAuth2Client,
-  uri: string
-): Promise<{ buffer: Buffer; contentType: string }> {
-  const accessToken = (await auth.getAccessToken()).token;
-  const res = await fetch(uri, {
-    headers: { Authorization: `Bearer ${accessToken}` },
-  });
-  if (!res.ok) {
-    throw new Error(`Failed to download image: ${res.status} ${res.statusText}`);
-  }
-  const contentType = res.headers.get("content-type") ?? "image/png";
-  const arrayBuffer = await res.arrayBuffer();
-  return { buffer: Buffer.from(arrayBuffer), contentType };
-}
-
-function extensionForType(contentType: string): string {
-  if (contentType.includes("jpeg") || contentType.includes("jpg")) return "jpg";
-  if (contentType.includes("gif")) return "gif";
-  if (contentType.includes("webp")) return "webp";
-  if (contentType.includes("svg")) return "svg";
-  return "png";
-}
-
-function isDriveFileNotFound(err: unknown): boolean {
-  const status =
-    (err as { code?: number; response?: { status?: number } } | null)?.code ??
-    (err as { response?: { status?: number } } | null)?.response?.status;
-  const msg = err instanceof Error ? err.message : String(err ?? "");
-  return status === 404 || /file not found|requested entity was not found/i.test(msg);
-}
+// Images this route writes are shared by every part of the question
+// (part_id null). It used to link image i to the question's i-th part, which
+// has nothing to do with what the image shows, and the marking screen shows
+// a part its own images plus the shared ones, so a mislinked image hid from
+// the parts it belonged to.
 
 export async function POST(request: NextRequest) {
   const startedAt = Date.now();
@@ -188,17 +120,6 @@ export async function POST(request: NextRequest) {
 
   const driveAuth = getAuthedClient(token);
 
-  const { data: partRows } = await supabase
-    .from("question_parts")
-    .select("id")
-    .eq("question_id", question.id)
-    .order("sort_order", { ascending: true });
-  const partIds = (partRows ?? []).map((p) => p.id as string);
-  (diagnostics.phases as Record<string, unknown>).lookup = {
-    ...(diagnostics.phases as Record<string, Record<string, unknown>>).lookup,
-    partCount: partIds.length,
-  };
-
   const results: { type: string; storagePath: string; sortOrder: number }[] = [];
 
   // Extract from question doc
@@ -206,13 +127,15 @@ export async function POST(request: NextRequest) {
     const questionDocImages = await getDocImages(driveAuth, question.google_doc_id);
     (diagnostics.phases as Record<string, Record<string, unknown>>).questionDoc.scannedInlineObjects = questionDocImages.length;
 
-    // Delete all existing question image records so re-extraction is clean
-    // (removes stale rows if the doc now has fewer images than before)
+    // Delete the question images a Doc extraction wrote, so re-extraction is
+    // clean (the doc may now have fewer images). Only those: an image from
+    // anywhere else (uploaded by hand) has no source_google_doc_id and stays.
     await supabase
       .from("question_images")
       .delete()
       .eq("question_id", question.id)
-      .eq("image_type", "question");
+      .eq("image_type", "question")
+      .not("source_google_doc_id", "is", null);
 
     // Use writeIdx so blocked/skipped images don't create gaps in sort_order or filename numbering
     let writeIdx = 0;
@@ -266,7 +189,7 @@ export async function POST(request: NextRequest) {
       // Insert record in question_images table
       await supabase.from("question_images").insert({
         question_id: question.id,
-        part_id: partIds[writeIdx] ?? null,
+        part_id: null,
         image_type: "question",
         storage_path: storagePath,
         source_google_doc_id: question.google_doc_id,
@@ -295,7 +218,7 @@ export async function POST(request: NextRequest) {
         results.filter((r) => r.type === "question").map((r) => r.storagePath.split("/").pop())
       );
       const toRemove = (oldFiles ?? [])
-        .filter((f) => !keepNames.has(f.name))
+        .filter((f) => isDocExtractionFileName(f.name) && !keepNames.has(f.name))
         .map((f) => `${question.code}/question/${f.name}`);
       if (toRemove.length > 0) {
         await supabase.storage.from("question-images").remove(toRemove);
@@ -338,13 +261,15 @@ export async function POST(request: NextRequest) {
       const msDocImages = await getDocImages(driveAuth, question.google_ms_id);
       (diagnostics.phases as Record<string, Record<string, unknown>>).markschemeDoc.scannedInlineObjects = msDocImages.length;
 
-      // Delete all existing markscheme image records so re-extraction is clean
-      // (removes any stale rows introduced by previous runs)
+      // Delete the mark-scheme images a Doc extraction wrote, and only those:
+      // a scheme cropped from a past-paper PDF or uploaded by hand has no
+      // source_google_doc_id, and the mark-scheme build may rely on it.
       await supabase
         .from("question_images")
         .delete()
         .eq("question_id", question.id)
-        .eq("image_type", "markscheme");
+        .eq("image_type", "markscheme")
+        .not("source_google_doc_id", "is", null);
 
       let writeIdx = 0;
       for (let i = 0; i < msDocImages.length; i++) {
@@ -395,7 +320,7 @@ export async function POST(request: NextRequest) {
 
         await supabase.from("question_images").insert({
           question_id: question.id,
-          part_id: partIds[writeIdx] ?? null,
+          part_id: null,
           image_type: "markscheme",
           storage_path: storagePath,
           source_google_doc_id: question.google_ms_id,
@@ -422,7 +347,7 @@ export async function POST(request: NextRequest) {
           results.filter((r) => r.type === "markscheme").map((r) => r.storagePath.split("/").pop())
         );
         const toRemove = (oldFiles ?? [])
-          .filter((f) => !keepNames.has(f.name))
+          .filter((f) => isDocExtractionFileName(f.name) && !keepNames.has(f.name))
           .map((f) => `${question.code}/markscheme/${f.name}`);
         if (toRemove.length > 0) {
           await supabase.storage.from("question-images").remove(toRemove);

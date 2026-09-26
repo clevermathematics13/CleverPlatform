@@ -3,82 +3,21 @@ import { createClient } from "@/lib/supabase/server";
 import { getApiTeacher } from "@/lib/auth";
 import { getDriveToken } from "@/lib/google-drive";
 import { isBlockedQuestionImage } from "@/lib/question-image-filter";
-import { google } from "googleapis";
-import { OAuth2Client } from "google-auth-library";
+import { fetchAllRows } from "@/lib/supabase-paging";
+import {
+  downloadImage,
+  extensionForType,
+  getAuthedClient,
+  getDocImages,
+  isDriveFileNotFound,
+} from "@/lib/google-doc-images";
+import type { OAuth2Client } from "google-auth-library";
 
 export const maxDuration = 300; // 5 minutes for bulk extraction
 
-function getAuthedClient(token: Record<string, unknown>) {
-  const oauth2 = new OAuth2Client(
-    process.env.GOOGLE_CLIENT_ID,
-    process.env.GOOGLE_CLIENT_SECRET
-  );
-  oauth2.setCredentials(token);
-  return oauth2;
-}
-
-async function getDocImages(
-  auth: OAuth2Client,
-  docId: string
-): Promise<
-  { objectId: string; contentUri: string; width: number; height: number }[]
-> {
-  const docs = google.docs({ version: "v1", auth });
-  const { data: doc } = await docs.documents.get({ documentId: docId });
-
-  const images: {
-    objectId: string;
-    contentUri: string;
-    width: number;
-    height: number;
-  }[] = [];
-
-  const inlineObjects = doc.inlineObjects ?? {};
-  for (const [objectId, obj] of Object.entries(inlineObjects)) {
-    const embedded = obj.inlineObjectProperties?.embeddedObject;
-    if (!embedded?.imageProperties?.contentUri) continue;
-    images.push({
-      objectId,
-      contentUri: embedded.imageProperties.contentUri,
-      width: embedded.size?.width?.magnitude ?? 0,
-      height: embedded.size?.height?.magnitude ?? 0,
-    });
-  }
-
-  return images;
-}
-
-async function downloadImage(
-  auth: OAuth2Client,
-  uri: string
-): Promise<{ buffer: Buffer; contentType: string }> {
-  const accessToken = (await auth.getAccessToken()).token;
-  const res = await fetch(uri, {
-    headers: { Authorization: `Bearer ${accessToken}` },
-  });
-  if (!res.ok) {
-    throw new Error(`Failed to download image: ${res.status}`);
-  }
-  const contentType = res.headers.get("content-type") ?? "image/png";
-  const arrayBuffer = await res.arrayBuffer();
-  return { buffer: Buffer.from(arrayBuffer), contentType };
-}
-
-function extensionForType(contentType: string): string {
-  if (contentType.includes("jpeg") || contentType.includes("jpg")) return "jpg";
-  if (contentType.includes("gif")) return "gif";
-  if (contentType.includes("webp")) return "webp";
-  if (contentType.includes("svg")) return "svg";
-  return "png";
-}
-
-function isDriveFileNotFound(err: unknown): boolean {
-  const status =
-    (err as { code?: number; response?: { status?: number } } | null)?.code ??
-    (err as { response?: { status?: number } } | null)?.response?.status;
-  const msg = err instanceof Error ? err.message : String(err ?? "");
-  return status === 404 || /file not found|requested entity was not found/i.test(msg);
-}
+// As in the per-question Extract (extract-images/route.ts): images are shared
+// by every part of the question (part_id null), and re-extraction replaces
+// only the images a Doc extraction wrote (source_google_doc_id set).
 
 async function extractOneQuestion(
   supabase: Awaited<ReturnType<typeof createClient>>,
@@ -88,23 +27,17 @@ async function extractOneQuestion(
   let questionCount = 0;
   let msCount = 0;
 
-  const { data: partRows } = await supabase
-    .from("question_parts")
-    .select("id")
-    .eq("question_id", question.id)
-    .order("sort_order", { ascending: true });
-  const partIds = (partRows ?? []).map((p) => p.id as string);
-
   // Extract question doc images
   try {
     const images = await getDocImages(auth, question.google_doc_id);
 
-    // Delete all existing question image records so re-extraction is clean
+    // Delete the question images a Doc extraction wrote, so re-extraction is clean
     await supabase
       .from("question_images")
       .delete()
       .eq("question_id", question.id)
-      .eq("image_type", "question");
+      .eq("image_type", "question")
+      .not("source_google_doc_id", "is", null);
 
     for (let i = 0; i < images.length; i++) {
       const { buffer, contentType } = await downloadImage(auth, images[i].contentUri);
@@ -134,7 +67,7 @@ async function extractOneQuestion(
 
       await supabase.from("question_images").insert({
         question_id: question.id,
-        part_id: partIds[i] ?? null,
+        part_id: null,
         image_type: "question",
         storage_path: storagePath,
         source_google_doc_id: question.google_doc_id,
@@ -169,12 +102,14 @@ async function extractOneQuestion(
     try {
       const images = await getDocImages(auth, question.google_ms_id);
 
-      // Delete existing markscheme records for clean re-extraction
+      // Delete the mark-scheme images a Doc extraction wrote, for clean
+      // re-extraction; a scheme from a past-paper PDF or uploaded by hand stays
       await supabase
         .from("question_images")
         .delete()
         .eq("question_id", question.id)
-        .eq("image_type", "markscheme");
+        .eq("image_type", "markscheme")
+        .not("source_google_doc_id", "is", null);
 
       let writeIdx = 0;
       for (let i = 0; i < images.length; i++) {
@@ -205,7 +140,7 @@ async function extractOneQuestion(
 
         await supabase.from("question_images").insert({
           question_id: question.id,
-          part_id: partIds[writeIdx] ?? null,
+          part_id: null,
           image_type: "markscheme",
           storage_path: storagePath,
           source_google_doc_id: question.google_ms_id,
@@ -243,7 +178,7 @@ async function extractOneQuestion(
 export async function POST(request: NextRequest) {
   const auth = await getApiTeacher();
   if (!auth.ok) return auth.response;
-  const { supabase, user, profile } = auth;
+  const { supabase } = auth;
 
   const token = (await getDriveToken()) as Record<string, unknown> | null;
   if (!token) {
@@ -263,20 +198,33 @@ export async function POST(request: NextRequest) {
   } catch { /* no body */ }
 
   // Get all questions that have a google_doc_id
-  let { data: questions, error: qErr } = await supabase
+  const { data: questionRows, error: qErr } = await supabase
     .from("ib_questions")
     .select("id, code, google_doc_id, google_ms_id")
     .not("google_doc_id", "is", null)
     .order("code");
+  let questions = questionRows;
 
   if (!qErr && questions && skipExisting) {
-    const { data: existing } = await supabase
-      .from("question_images")
-      .select("question_id, image_type");
-    if (existing && existing.length > 0) {
+    // Paged: there are far more image rows than the 1000 one request returns,
+    // and a capped read made complete questions look empty, so they were
+    // pulled again.
+    let existing: { question_id: string; image_type: string }[];
+    try {
+      existing = await fetchAllRows<{ question_id: string; image_type: string }>((from, to) =>
+        supabase.from("question_images").select("question_id, image_type").order("id").range(from, to)
+      );
+    } catch (e) {
+      // Better to stop than to pull every question again for want of this list.
+      return NextResponse.json(
+        { error: `Could not read which questions already have images: ${e instanceof Error ? e.message : String(e)}` },
+        { status: 500 }
+      );
+    }
+    if (existing.length > 0) {
       // Build a map of question_id → set of image_types already loaded
       const loadedTypes = new Map<string, Set<string>>();
-      for (const r of existing as { question_id: string; image_type: string }[]) {
+      for (const r of existing) {
         if (!loadedTypes.has(r.question_id)) loadedTypes.set(r.question_id, new Set());
         loadedTypes.get(r.question_id)!.add(r.image_type);
       }
