@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { ExtractAllImagesButton } from "./components/ExtractAllImagesButton";
 import { QuestionReviewCard } from "./components/QuestionReviewCard";
-import type { Question } from "./components/review-types";
+import type { Question, QuestionPart } from "./components/review-types";
 import { SyncDriveDocsButton } from "./components/SyncDriveDocsButton";
 
 const SCROLL_KEY = "review-scroll-y";
@@ -42,6 +42,7 @@ export default function ReviewClient({
   }, []);
   const [filterImages, setFilterImages] = useState(false);
   const [filterNoLatex, setFilterNoLatex] = useState(false);
+  const [filterSchemeFlagged, setFilterSchemeFlagged] = useState(false);
   const [codeSearch, setCodeSearch] = useState("");
 
   const handleVerify = useCallback(
@@ -63,9 +64,19 @@ export default function ReviewClient({
     []
   );
 
+  // A flagged build was accepted (the question's parts come back) or dismissed.
+  const handleSchemeResolved = useCallback((id: string, parts: QuestionPart[] | null) => {
+    setQuestions((prev) =>
+      prev.map((q) => (q.id === id ? { ...q, scheme_build: null, ...(parts ? { question_parts: parts } : {}) } : q))
+    );
+  }, []);
+
+  const schemeFlaggedCount = questions.filter((q) => q.scheme_build).length;
+
   const visible = questions.filter((q) => {
     if (codeSearch && !q.code.toLowerCase().includes(codeSearch.toLowerCase()))
       return false;
+    if (filterSchemeFlagged && !q.scheme_build) return false;
     const allVerified = q.question_parts.every((p) => p.latex_verified);
     if (filterVerified === "verified" && !allVerified) return false;
     if (filterVerified === "unverified" && allVerified) return false;
@@ -163,6 +174,20 @@ export default function ReviewClient({
         >
           Missing LaTeX
         </button>
+        {(schemeFlaggedCount > 0 || filterSchemeFlagged) && (
+          <button
+            onClick={() => setFilterSchemeFlagged((v) => !v)}
+            className={`px-3 py-1.5 rounded-lg border text-sm font-medium transition-colors ${
+              filterSchemeFlagged
+                ? "bg-amber-600 text-white border-amber-600"
+                : "bg-da-surface text-amber-300 border-amber-400/40 hover:bg-da-hover"
+            }`}
+            title="Mark schemes the bulk build transcribed but held back for you to check"
+            suppressHydrationWarning
+          >
+            Scheme build flagged ({schemeFlaggedCount})
+          </button>
+        )}
         <span className="text-sm text-da-muted self-center">
           Showing {visible.length} of {questions.length}
         </span>
@@ -183,6 +208,7 @@ export default function ReviewClient({
               key={q.id}
               question={q}
               onVerify={handleVerify}
+              onSchemeResolved={handleSchemeResolved}
               autoExpand={focusId === q.id}
             />
           ))}

@@ -2,14 +2,18 @@ import { describe, expect, it } from "vitest";
 import {
   alignSubparts,
   checkTranscription,
+  decideAcceptance,
   isIdenticalSiblingCopy,
   isValidBankLabel,
   latexMathErrors,
   mathSpans,
   normalizeTranscription,
   planPartChanges,
+  proposalParts,
   questionNumberFromCode,
+  readStoredTranscription,
   realBankTotal,
+  schemeFromEdits,
   splitSubparts,
   toBankLabel,
   wholeQuestionLatex,
@@ -386,6 +390,119 @@ describe("sub-parts that share their parent's marks", () => {
       ["ai", 2],
       ["aii", 3],
     ]);
+  });
+});
+
+describe("a teacher's Accept in LaTeX Review", () => {
+  const original = scheme([partA, partB], { totalMarks: 5, misprints: ["a doubled sign"], unreadable: ["line 2"] });
+
+  it("reads a stored transcription, including one from before misprints and diagrams", () => {
+    const { misprints: _m, diagrams: _d, ...older } = scheme([partA]);
+    void _m;
+    void _d;
+    expect(readStoredTranscription(older)).toMatchObject({ misprints: [], diagrams: [], parts: [partA] });
+    expect(readStoredTranscription(scheme([partA], { misprints: ["x"] }))?.misprints).toEqual(["x"]);
+    expect(readStoredTranscription(null)).toBeNull();
+    expect(readStoredTranscription({ parts: "no" })).toBeNull();
+  });
+
+  it("proposes the parts in paper order with the marks the checks settled on", () => {
+    const t = scheme([
+      { label: "(b)", marks: null, latex: "$q$ \\hfill A1" },
+      { label: "(a)", marks: 2, latex: "$p$ \\hfill M1A1\n\\hfill [2 marks]" },
+    ]);
+    expect(proposalParts(t, [2, 1])).toEqual([
+      { label: "(a)", marks: 2, latex: "$p$ \\hfill M1A1\n\\hfill [2 marks]" },
+      { label: "(b)", marks: 1, latex: "$q$ \\hfill A1" },
+    ]);
+  });
+
+  it("takes the teacher's marks and restates them, keeping the misprints but not the doubts", () => {
+    const { scheme: s2, marks, problems } = schemeFromEdits(original, [
+      { label: "(a)", marks: 2, latex: partA.latex },
+      { label: "(b)", marks: 4, latex: `${partB.latex}` },
+    ]);
+    expect(problems).toEqual([]);
+    expect(marks).toEqual([2, 4]);
+    expect(s2.parts[1].latex.endsWith("\\hfill [4 marks]")).toBe(true);
+    expect(s2.parts[1].latex).not.toMatch(/\[3 marks\]/);
+    expect(s2.misprints).toEqual(["a doubled sign"]);
+    expect(s2.unreadable).toEqual([]);
+  });
+
+  it("refuses what the bank cannot hold", () => {
+    const { problems } = schemeFromEdits(original, [
+      { label: "(a)", marks: 1.5, latex: "$\\frac{1}{$ \\hfill A1" },
+      { label: "(a)", marks: 1, latex: "  " },
+      { label: "", marks: 1, latex: "$x$ \\hfill A1" },
+    ]);
+    const text = problems.join(" | ");
+    expect(text).toMatch(/appears twice/);
+    expect(text).toMatch(/unlabelled part sits beside labelled ones/);
+    expect(text).toMatch(/whole number/);
+    expect(text).toMatch(/no scheme text/);
+    expect(text).toMatch(/does not render/);
+    expect(schemeFromEdits(original, []).problems).toEqual(["There are no parts to save."]);
+  });
+
+  it("lets a teacher accept a soft flag, never a blocking one", () => {
+    const twoParts = normalizeTranscription(scheme([partA, partB], { totalMarks: 5 }));
+    const soft = planPartChanges({ existing: [part({ content_latex: "Find $x$." })], scheme: twoParts, marks: [2, 3], inUse: null });
+    expect(soft.actions).toEqual([]);
+    expect(soft.blocking).toEqual([]);
+    const accepted = planPartChanges({
+      existing: [part({ content_latex: "Find $x$." })],
+      scheme: twoParts,
+      marks: [2, 3],
+      inUse: null,
+      acceptFlags: true,
+    });
+    expect(accepted.actions.map((a) => a.kind)).toEqual(["relabel", "insert"]);
+    expect(accepted.resetImagePartIds).toBe(true);
+
+    const locked = planPartChanges({
+      existing: [part({ markscheme_latex: "kept \\hfill A1" })],
+      scheme: twoParts,
+      marks: [2, 3],
+      inUse: null,
+      acceptFlags: true,
+    });
+    expect(locked.actions).toEqual([]);
+    expect(locked.blocking).toEqual(["The unlabelled part already has a scheme; it will not be split."]);
+
+    const inUse = planPartChanges({
+      existing: [part({ marks: 7 })],
+      scheme: twoParts,
+      marks: [2, 3],
+      inUse: { labels: ["b"], maxMarks: {} },
+      acceptFlags: true,
+    });
+    expect(inUse.actions).toEqual([]);
+    expect(inUse.blocking).toEqual(inUse.flags);
+  });
+
+  it("decides an Accept: applies with the accepted flags on record, or says why not", () => {
+    const edits = [
+      { label: "(a)", marks: 2, latex: partA.latex },
+      { label: "(b)", marks: 3, latex: partB.latex },
+    ];
+    const ok = decideAcceptance({ transcription: original, edits, existing: [part({ command_terms: ["Find"] })], inUse: null });
+    expect(ok.ok).toBe(true);
+    if (ok.ok) {
+      expect(ok.plan.flags).toEqual([]);
+      expect(ok.plan.acceptedFlags.join(" ")).toMatch(/command term/);
+      expect(ok.plan.actions.map((a) => a.kind)).toEqual(["relabel", "insert"]);
+    }
+
+    expect(decideAcceptance({ transcription: original, edits: [{ label: "(a)", marks: -1, latex: "$x$" }], existing: [], inUse: null }))
+      .toMatchObject({ ok: false, reason: "invalid" });
+    expect(
+      decideAcceptance({ transcription: original, edits, existing: [], inUse: { labels: ["a", "b"], maxMarks: {} }, inUseConflicts: ["Its tests disagree on (a): 2 vs 3 marks."] })
+    ).toEqual({ ok: false, reason: "blocked", problems: ["Its tests disagree on (a): 2 vs 3 marks."] });
+    expect(decideAcceptance({ transcription: original, edits, existing: [part({ marks: 5 })], inUse: { labels: ["b"], maxMarks: {} } }))
+      .toMatchObject({ ok: false, reason: "blocked" });
+    const done = ["a", "b"].map((l) => part({ id: l, part_label: l, marks: l === "a" ? 2 : 3, latex_verified: true }));
+    expect(decideAcceptance({ transcription: original, edits, existing: done, inUse: null })).toMatchObject({ ok: false, reason: "nothing" });
   });
 });
 

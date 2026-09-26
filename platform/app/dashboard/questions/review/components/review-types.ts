@@ -61,6 +61,44 @@ export interface Question {
   parts_draft_latex?: string | null;
   parts_draft_markscheme_latex?: string | null;
   question_parts: QuestionPart[];
+  /** A mark-scheme build waiting for the teacher, when there is one. */
+  scheme_build?: SchemeBuildSummary | null;
+}
+
+/**
+ * A build of this question's mark scheme that its checks would not apply on
+ * their own (scripts/build-mark-schemes.ts). The page carries only why; the
+ * card loads the proposal when it opens.
+ */
+export interface SchemeBuildSummary {
+  id: string;
+  createdAt: string;
+  /** What the checks found in the transcription. */
+  issues: string[];
+  /** What the planner would not change on its own. */
+  flags: string[];
+}
+
+/** One part a build proposes, as the teacher edits it. */
+export interface ProposedPart {
+  /** As printed, e.g. "(a)" or "(b)(ii)"; "" when the question has no labelled parts. */
+  label: string;
+  marks: number | null;
+  latex: string;
+}
+
+export interface SchemeProposal {
+  build: {
+    id: string;
+    status: string;
+    createdAt: string;
+    promptVersion: string | null;
+    issues: string[];
+    warnings: string[];
+    flags: string[];
+    blocking: string[];
+  };
+  parts: ProposedPart[];
 }
 
 export interface SignedUrl {
@@ -162,4 +200,33 @@ export async function revertPartMetadata(partId: string, historyId?: string): Pr
   const data = await res.json();
   if (!res.ok) throw new Error(data?.error ?? "Failed to revert metadata");
   return data.part as QuestionPart;
+}
+
+export async function getSchemeProposal(buildId: string): Promise<SchemeProposal> {
+  const res = await fetch(`/api/questions/markscheme-builds/${encodeURIComponent(buildId)}`);
+  const data = await res.json();
+  if (!res.ok) throw new Error(data?.error ?? "Failed to load the proposed scheme");
+  return data as SchemeProposal;
+}
+
+export type SchemeDecision =
+  | { ok: true; parts: QuestionPart[] }
+  | { ok: false; error: string; problems: string[] };
+
+export async function acceptSchemeProposal(buildId: string, parts: ProposedPart[]): Promise<SchemeDecision> {
+  const res = await fetch(`/api/questions/markscheme-builds/${encodeURIComponent(buildId)}/accept`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ parts }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) return { ok: false, error: data?.error ?? "Failed to accept the scheme", problems: data?.problems ?? [] };
+  return { ok: true, parts: (data.parts ?? []) as QuestionPart[] };
+}
+
+export async function dismissSchemeProposal(buildId: string): Promise<SchemeDecision> {
+  const res = await fetch(`/api/questions/markscheme-builds/${encodeURIComponent(buildId)}/dismiss`, { method: "POST" });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) return { ok: false, error: data?.error ?? "Failed to dismiss the scheme", problems: [] };
+  return { ok: true, parts: [] };
 }
