@@ -6,6 +6,8 @@ import {
   G9_FORMATIVE_ASSESSMENT_MARKING_PRINCIPLES,
   G9_STANDARD_LEVEL_MARKING_PRINCIPLES,
   GRADING_SYSTEM_PROMPT,
+  IB_MARK_CODE_VALUES,
+  breakdownTotal,
   buildRegradeItemPrompt,
   MATHMEDIC_ACTIVITY_MARKING_PRINCIPLES,
   buildActivityRubricBlock,
@@ -1597,9 +1599,9 @@ describe("isImpliedToken", () => {
 });
 
 describe("buildGradingSystemPrompt", () => {
-  it("returns the base prompt unchanged when no unit is AA HL Paper 2", () => {
+  it("returns the base prompt and the IB code values, nothing more, when no unit is AA HL Paper 2", () => {
     const prompt = buildGradingSystemPrompt([unit({ curriculum: ["AA"], level: "SL", paper: 2 })]);
-    expect(prompt).toBe(GRADING_SYSTEM_PROMPT);
+    expect(prompt).toBe(`${GRADING_SYSTEM_PROMPT}\n\n${IB_MARK_CODE_VALUES}`);
   });
 
   // The confidence definition was rewritten once (20 Sep 2026) and measured
@@ -1634,7 +1636,24 @@ describe("buildGradingSystemPrompt", () => {
 
   it("does not append the Formative Assessment policy for bank-sourced units", () => {
     const prompt = buildGradingSystemPrompt([unit({ markschemeSource: "part_latex" })]);
-    expect(prompt).toBe(GRADING_SYSTEM_PROMPT);
+    expect(prompt).toBe(`${GRADING_SYSTEM_PROMPT}\n\n${IB_MARK_CODE_VALUES}`);
+  });
+
+  // A teacher's own scheme numbers its one-mark tokens freely (the Grade 9
+  // Standard Level policy writes M1, A1, A2, A3 in order), so the IB values
+  // must never reach a test made only of custom parts.
+  it("gives the IB code values only to tests with a bank part", () => {
+    expect(buildGradingSystemPrompt([unit({ markschemeSource: "custom" })])).not.toContain(IB_MARK_CODE_VALUES);
+    expect(buildGradingSystemPrompt(ka1Units())).not.toContain(IB_MARK_CODE_VALUES);
+    expect(
+      buildGradingSystemPrompt([unit({ testItemId: "item-1" }), unit({ testItemId: "item-2", markschemeSource: "custom" })])
+    ).toContain(IB_MARK_CODE_VALUES);
+  });
+
+  it("no longer tells the model that every token is one mark", () => {
+    expect(GRADING_SYSTEM_PROMPT).not.toContain("there is no M2 or A2");
+    expect(IB_MARK_CODE_VALUES).toContain("A2, M2 and R2 are two marks");
+    expect(IB_MARK_CODE_VALUES).toContain("AG (answer given) is worth no marks");
   });
 
   it("can append both policies at once for a mixed test", () => {
@@ -1644,6 +1663,128 @@ describe("buildGradingSystemPrompt", () => {
     ]);
     expect(prompt).toContain(AA_HL_PAPER_2_NUMERICAL_ACCURACY_POLICY);
     expect(prompt).toContain(G9_FORMATIVE_ASSESSMENT_MARKING_PRINCIPLES);
+  });
+});
+
+describe("IB mark code values in the breakdown", () => {
+  type Entry = { token: string; awarded: boolean; note?: string; numericCheck?: unknown };
+  const gradeOne = (breakdown: Entry[], suggestedMarks: number, overrides: Partial<GradingUnit> = {}) => {
+    const raw = JSON.stringify({
+      items: [
+        {
+          testItemId: "item-1",
+          suggestedMarks,
+          confidence: "high",
+          workFound: true,
+          markBreakdown: breakdown.map((b) => ({ note: "", ...b })),
+          reasoning: "",
+          evidence: "",
+        },
+      ],
+    });
+    const result = validateGradeResponse(raw, [unit(overrides)]);
+    if (!result.ok) throw new Error(result.error);
+    return { grade: result.outcome.grades[0], warnings: result.outcome.warnings };
+  };
+
+  it("counts an A2 as two marks and AG as none on a bank part", () => {
+    const { grade, warnings } = gradeOne(
+      [
+        { token: "M1", awarded: true },
+        { token: "A2", awarded: true },
+        { token: "AG", awarded: true },
+      ],
+      3,
+      { maxMarks: 3 }
+    );
+    expect(grade.clampedMarks).toBe(3);
+    expect(grade.confidence).toBe("high");
+    expect(warnings).toEqual([]);
+  });
+
+  it("does not let AG add a mark the scheme never gave", () => {
+    const { grade } = gradeOne(
+      [
+        { token: "M1", awarded: true },
+        { token: "A1", awarded: true },
+        { token: "AG", awarded: true },
+      ],
+      3,
+      { maxMarks: 3 }
+    );
+    expect(grade.clampedMarks).toBe(2);
+    expect(grade.confidence).toBe("low");
+  });
+
+  it("counts N marks for a bare answer, and never alongside M/A marks", () => {
+    const bare = gradeOne(
+      [
+        { token: "M1", awarded: false },
+        { token: "A1", awarded: false },
+        { token: "N2", awarded: true },
+      ],
+      2,
+      { maxMarks: 2 }
+    );
+    expect(bare.grade.clampedMarks).toBe(2);
+    expect(bare.grade.confidence).toBe("high");
+
+    const mixed = gradeOne(
+      [
+        { token: "M1", awarded: true },
+        { token: "A1", awarded: false },
+        { token: "N2", awarded: true },
+      ],
+      1,
+      { maxMarks: 2 }
+    );
+    expect(mixed.grade.clampedMarks).toBe(1);
+    expect(mixed.grade.confidence).toBe("low");
+    expect(mixed.warnings.some((w) => w.includes("N marks alongside M/A/R marks"))).toBe(true);
+  });
+
+  it("keeps one mark per token on a teacher's own scheme, whatever its numbering", () => {
+    const { grade, warnings } = gradeOne(
+      [
+        { token: "M1", awarded: true },
+        { token: "A1", awarded: true },
+        { token: "A2", awarded: true },
+        { token: "A3", awarded: false },
+      ],
+      3,
+      { maxMarks: 4, markschemeSource: "custom", questionCode: "" }
+    );
+    expect(grade.clampedMarks).toBe(3);
+    expect(grade.confidence).toBe("high");
+    expect(warnings).toEqual([]);
+  });
+
+  it("raises by a granted A2's full value", () => {
+    const { grade } = gradeOne(
+      [
+        { token: "M1", awarded: true },
+        {
+          token: "A2",
+          awarded: false,
+          note: "Value is incorrect.",
+          numericCheck: { reportedValue: "8.515", referenceValue: "8.51693", precisionType: "sf", precisionDigits: 3 },
+        },
+      ],
+      1,
+      { maxMarks: 3 }
+    );
+    expect(grade.item.markBreakdown[1].awarded).toBe(true);
+    expect(grade.clampedMarks).toBe(3);
+  });
+
+  it("values a breakdown the same way breakdownTotal does", () => {
+    const entries = [
+      { token: "A2", awarded: true },
+      { token: "AG", awarded: true },
+    ];
+    expect(breakdownTotal({ markschemeSource: "part_latex" }, entries)).toEqual({ marks: 2, mixedN: false });
+    expect(breakdownTotal({ markschemeSource: "custom" }, entries)).toEqual({ marks: 2, mixedN: false });
+    expect(breakdownTotal({ markschemeSource: "custom" }, [{ token: "A2", awarded: true }])).toEqual({ marks: 1, mixedN: false });
   });
 });
 

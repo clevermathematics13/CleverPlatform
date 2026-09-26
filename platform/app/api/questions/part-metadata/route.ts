@@ -8,6 +8,7 @@ import {
   omitUnsupportedColumns,
 } from "@/lib/question-parts-compat";
 import { DEFAULT_COMMAND_TERMS } from "@/lib/command-terms";
+import { sortOrderFromLabel } from "@/lib/part-labels";
 
 type Body = {
   partId?: unknown;
@@ -98,15 +99,6 @@ function sanitizeSubtopics(subtopicCodes: unknown): string[] {
     .filter((c): c is string => typeof c === "string")
     .map((c) => c.trim())
     .filter((c) => c.length > 0);
-}
-
-function sortOrderFromLabel(label: string, fallback: number): number {
-  if (!label) return 0;
-  const m = label.match(/^([a-z])(i|ii|iii|iv|v)?$/);
-  if (!m) return fallback;
-  const base = (m[1].charCodeAt(0) - 96) * 10;
-  const subMap: Record<string, number> = { i: 1, ii: 2, iii: 3, iv: 4, v: 5 };
-  return base + (m[2] ? subMap[m[2]] ?? 0 : 0);
 }
 
 function normalizeCommandTerm(commandTerm: unknown): string | null {
