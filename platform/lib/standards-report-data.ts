@@ -9,7 +9,7 @@ import {
 } from "./standards-rubric";
 
 /**
- * The class's strand levels for one Standard Level test, from Clev's Marks.
+ * The class's strand levels for one Standard Level test, from ClevMarks.
  *
  * Shared by the standards report page and its CSV route so the two cannot
  * disagree about who is on the roster or which marks count. The roster and

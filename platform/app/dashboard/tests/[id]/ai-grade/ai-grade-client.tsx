@@ -224,7 +224,7 @@ interface ResultRow {
   accepted_at: string | null;
   accepted_by: string | null;
   /**
-   * What is actually in Clev's Marks (student_marks.marks_awarded) for this
+   * What is actually in ClevMarks (student_marks.marks_awarded) for this
    * part right now, or null if nothing has been written yet. `suggested_marks`
    * never changes once the model has spoken -- it is the audit trail's record
    * of what the model said, and the "was N" comparison between runs depends on
@@ -424,8 +424,8 @@ export function AiGradeClient({
   /**
    * Whether the review panel's high-confidence parts are shown. They sit
    * behind one summary row, which starts OPEN: the panel still leads with the
-   * parts that need a human, but a confident mark is a mark going into Clev's
-   * Marks, so it is on screen unless the teacher folds it away. Reset to open
+   * parts that need a human, but a confident mark is a mark going into ClevMarks,
+   * so it is on screen unless the teacher folds it away. Reset to open
    * for every student -- a fold applies to the paper in front of you, not to
    * the next one.
    */
@@ -788,7 +788,7 @@ export function AiGradeClient({
       // blue confirmation and this runs straight after it, so a bare error
       // above that line said "41 mark(s) written" and "Not authenticated" at
       // once and left the teacher unable to tell which to believe. The marks
-      // are in Clev's Marks; only the list on screen is behind.
+      // are in ClevMarks; only the list on screen is behind.
       const describe = (reason: string) =>
         opts?.afterWrite
           ? `The marks were written to ClevMarks and are safe. The list below could not be refreshed: ${reason}`
@@ -830,8 +830,8 @@ export function AiGradeClient({
         setResults(rowsForLatest);
         setResultsStudent(studentId);
         setSelfScores(Array.isArray(data.self_scores) ? (data.self_scores as SelfScoreRef[]) : null);
-        // An accepted row's draft starts from what is actually in Clev's
-        // Marks, not the model's original suggestion -- suggested_marks
+        // An accepted row's draft starts from what is actually in ClevMarks,
+        // not the model's original suggestion -- suggested_marks
         // never moves once the model has spoken, so seeding the draft from
         // it here reset every accepted override back to the AI's first call
         // on the next load (e.g. right after accepting it). See marks_awarded
@@ -1094,7 +1094,7 @@ export function AiGradeClient({
     if (file && studentId) await runGrading(studentId, file);
   };
 
-  // -- Accept selected results into Clev's Marks --
+  // -- Accept selected results into ClevMarks --
   // -- A marking note on a part: the teacher's ruling, read by the marker on
   // every later mark of this paper. Saved on the test item, not the result,
   // because it is about the part, not this one student. --------------------
@@ -1612,7 +1612,7 @@ export function AiGradeClient({
   /**
    * Selects, or clears, every confident part the summary row is hiding, so a
    * teacher can accept the lot without expanding it. Only parts not already in
-   * Clev's Marks are touched -- an accepted one is done with.
+   * ClevMarks are touched -- an accepted one is done with.
    */
   const toggleAllHighConfidence = (rows: ResultRow[]) => {
     if (rows.length === 0) return;
@@ -1711,7 +1711,7 @@ export function AiGradeClient({
     const meta = itemById.get(r.test_item_id);
     const label = itemLabel(meta, paperPrefixes);
     const isOpen = expanded === r.id;
-    // What Clev's Marks actually holds for this part right now, so an edit
+    // What ClevMarks actually holds for this part right now, so an edit
     // after acceptance can tell "nothing changed" from "needs writing".
     const currentlyAccepted = r.accepted ? (r.marks_awarded ?? r.suggested_marks) : null;
     const draftDiffersFromAccepted = (drafts[r.id] ?? r.suggested_marks) !== currentlyAccepted;
@@ -2399,7 +2399,7 @@ export function AiGradeClient({
     const selfDiffCount = ordered.filter(selfDiffersFrom).length;
     const highSelfDiffers = high.filter(selfDiffersFrom).length;
     // The summary row's own checkbox covers the confident parts not yet in
-    // Clev's Marks -- the ones it is hiding that an accept would still act on.
+    // ClevMarks -- the ones it is hiding that an accept would still act on.
     const highPending = high.filter((r) => !r.accepted);
     const highPendingSelected = highPending.filter((r) => selected.has(r.id)).length;
     return (

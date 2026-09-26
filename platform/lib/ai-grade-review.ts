@@ -132,7 +132,7 @@ export interface AcceptanceRef {
 }
 
 /**
- * How many of each run's result rows are accepted into Clev's Marks, keyed by
+ * How many of each run's result rows are accepted into ClevMarks, keyed by
  * run id -- what the roster's status dot shows. A run with no rows gets no
  * entry at all, which the roster reads as "nothing to show".
  */
@@ -697,7 +697,7 @@ export interface SelfAssessmentSummary {
   byItem: Map<string, number | null>;
   /** The claimed total over every part on file; a blank adds nothing, as on the student's own form. */
   total: number;
-  /** When the rows were last written. The Compare step lets a student revise them after seeing Clev's Marks. */
+  /** When the rows were last written. The Compare step lets a student revise them after seeing ClevMarks. */
   lastSavedAt: string | null;
 }
 

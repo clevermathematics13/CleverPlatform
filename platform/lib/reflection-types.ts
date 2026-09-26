@@ -87,7 +87,7 @@ export interface ReflectionTest {
   paper_url: string | null;
   mark_scheme_url: string | null;
   hidden: boolean;
-  /** When false, a student sees Clev's Marks/feedback for this test without submitting a self-assessment first. */
+  /** When false, a student sees ClevMarks/feedback for this test without submitting a self-assessment first. */
   require_self_assessment: boolean;
 }
 

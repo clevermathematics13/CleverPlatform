@@ -327,7 +327,7 @@ export async function fetchAttachment(
 /* -------------------------------------------------------------------------- */
 
 /**
- * Writes Clev's Marks back to a submission. draftGrade is visible only to the
+ * Writes ClevMarks back to a submission. draftGrade is visible only to the
  * teacher; assignedGrade is what the student sees, and only after the work is
  * returned in Classroom.
  */

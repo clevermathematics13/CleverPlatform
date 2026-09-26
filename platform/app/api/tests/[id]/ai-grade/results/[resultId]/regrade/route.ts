@@ -31,7 +31,7 @@ import {
  * here -- the teacher-supplied text stands in for what the model would
  * otherwise have transcribed itself from the scan.
  *
- * If the result was already accepted into Clev's Marks, this clears that
+ * If the result was already accepted into ClevMarks, this clears that
  * flag: a correction changes the basis the accept happened on, so it needs
  * fresh teacher sign-off (via the normal accept route, which is also what
  * corrects the stale student_marks row) before it counts as final again.

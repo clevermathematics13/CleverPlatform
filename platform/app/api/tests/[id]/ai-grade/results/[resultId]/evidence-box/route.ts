@@ -27,7 +27,7 @@ export const maxDuration = 60;
  * evidence_box migration anticipated.
  *
  * DOES NOT TOUCH THE MARK. suggested_marks, mark_breakdown, accepted and the
- * student's Clev's Marks row are all untouched here, and no model is called.
+ * student's ClevMarks row are all untouched here, and no model is called.
  * That is not incidental: crops are cut after grading has already finished
  * and are never fed back into a grading call, so a wrong crop never produced a
  * wrong mark and a corrected crop must not produce a different one either.

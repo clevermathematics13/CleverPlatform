@@ -71,7 +71,7 @@ export function ReflectionClient({
   const disagreement = computeDisagreement(items, pendingRemarkItemIds(items));
 
   // Currently selected test object (paper/mark scheme URLs, and whether this
-  // test gates Clev's Marks behind self-assessment). Read before the step
+  // test gates ClevMarks behind self-assessment). Read before the step
   // state below, which depends on it.
   const selectedTest = tests.find((t) => t.id === selectedTestId) ?? null;
   const selfAssessmentRequired = selectedTest?.require_self_assessment ?? true;

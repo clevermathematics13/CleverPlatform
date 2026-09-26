@@ -7,7 +7,7 @@ import { BoundariesClient } from "./boundaries-client";
 
 /**
  * One assessment's grade boundaries: the lines in force and the stated
- * decision behind them, the class's scores (Clev's Marks where accepted, the
+ * decision behind them, the class's scores (ClevMarks where accepted, the
  * marker's suggestions otherwise), an AI suggestion, and the teacher's
  * guidance to the AI -- for this assessment only or as a general rule for
  * all of them. See lib/boundary-data.ts for what is loaded and

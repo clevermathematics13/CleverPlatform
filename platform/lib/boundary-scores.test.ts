@@ -26,7 +26,7 @@ describe("mergeSubjectScores", () => {
   ];
   const base = { name: "S", className: "9A", absent: false };
 
-  it("prefers Clev's Mark, then the suggestion, and counts a never-marked part as 0", () => {
+  it("prefers the ClevMark, then the suggestion, and counts a never-marked part as 0", () => {
     const [s] = mergeSubjectScores(items, 2, [
       {
         ...base,

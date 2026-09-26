@@ -25,7 +25,7 @@ import { DistributionMeter, ScoreMeter } from "@/components/StandardsStatsMeters
  * Standard Level" pools every class that sat it, including any whose work
  * was marked without that class being on the paper's track.
  *
- * Everything is from Clev's Marks -- accepted marks only -- and a part
+ * Everything is from ClevMarks -- accepted marks only -- and a part
  * nobody has accepted yet is absent from the averages rather than counted
  * as a zero, which is why every figure carries the number of students it is
  * over.

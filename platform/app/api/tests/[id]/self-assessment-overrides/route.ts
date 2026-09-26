@@ -11,7 +11,7 @@ import {
  * Body: { overrides: { [courseId]: boolean | null } }
  *
  * Per-class exceptions to `tests.require_self_assessment`, which is the gate
- * on a student seeing Clev's Marks before they have self-graded. The flag
+ * on a student seeing ClevMarks before they have self-graded. The flag
  * lives on the test and a test is sat by its whole track family, so without
  * this the only way to release one class of 20 was to release all four,
  * roughly 69 students.

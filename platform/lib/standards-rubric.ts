@@ -16,7 +16,7 @@
  * are still graded one at a time by lib/ai-grading.ts against each part's own
  * "a full-mark response shows..." descriptor (stored as that item's
  * markscheme_text, source = 'custom'), and still accepted one at a time into
- * Clev's Marks. What this module adds is everything that follows from the
+ * ClevMarks. What this module adds is everything that follows from the
  * marks: which strand each part feeds, where the level thresholds fall for a
  * strand of that size, and the per-student report. It is stored as
  * `tests.standards_rubric` (jsonb) and is the only thing that makes a test

@@ -23,7 +23,7 @@ export const maxDuration = 300;
  * is here, scoped to the student whose work is on screen.
  *
  * WHAT IT DOES NOT TOUCH. suggested_marks, mark_breakdown, accepted and the
- * student's Clev's Marks row are untouched, no model is called, and a region
+ * student's ClevMarks row are untouched, no model is called, and a region
  * drawn by a teacher is never re-cut. Crops are cut after grading has finished
  * and never re-enter it: a wrong crop never produced a wrong mark, and a
  * corrected one must not produce a different one.
