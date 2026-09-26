@@ -15,7 +15,7 @@ import { LevelChip } from "@/components/StandardsReportTable";
  * The class's strand levels for a Grade 9 Standard Level assessment.
  *
  * What the teacher rubric's "score record" page is for, done for the whole
- * class at once from Clev's Marks: each student's marks and level per
+ * class at once from ClevMarks: each student's marks and level per
  * strand, the overall level, and how many students sit at each level of
  * each strand. Levels come from accepted marks only -- a student whose
  * paper is half accepted shows a faded, provisional level.

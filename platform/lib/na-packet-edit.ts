@@ -39,7 +39,7 @@ export type PacketLock =
  *
  * That is the point where an edit can produce a wrong mark rather than merely
  * a stale document: crops have been taken at the anchors' coordinates and
- * Clev's Marks grades them against na_rubric_items, so renumbering a question
+ * ClevMarks grades them against na_rubric_items, so renumbering a question
  * or changing its marks afterwards leaves the marking key describing a paper
  * the students never wrote on, with nothing downstream reporting the
  * mismatch.

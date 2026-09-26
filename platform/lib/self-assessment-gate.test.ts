@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { resolveSelfAssessmentRequired } from "./self-assessment-gate";
 
 /**
- * The gate that decides whether a student sees Clev's Marks before they have
+ * The gate that decides whether a student sees ClevMarks before they have
  * self-graded, once a class can carry its own answer.
  *
  * The case this exists for: Formative Assessment 1 hangs off 9G and is sat by

@@ -1386,7 +1386,7 @@ It fails closed: where two overrides disagree, the gate stays up.
 |---|---|---|
 | `test_id` | uuid | part of primary key, FK tests(id) on delete cascade |
 | `course_id` | uuid | part of primary key, FK courses(id) on delete cascade |
-| `require_self_assessment` | boolean | false releases Clev's Marks to this course without self-grading first; true re-imposes the gate even where the test has it switched off |
+| `require_self_assessment` | boolean | false releases ClevMarks to this course without self-grading first; true re-imposes the gate even where the test has it switched off |
 | `updated_at` | timestamp with time zone | default `now()`, maintained by `public.set_updated_at()` |
 
 Students read only their own class's row, via the security-definer
@@ -1404,6 +1404,17 @@ siblings. Teachers read and write all rows.
 | `marks_awarded` | integer | default `0` |
 | `created_at` | timestamp with time zone | default `now()` |
 | `invited_student_id` | uuid, nullable | FK invited_students(id) on delete set null; unique together with test_item_id |
+
+**A mark is never lowered or cleared once the student has self-assessed the
+test** -- any `student_self_scores` row for the student on any part of it. The
+trigger `student_marks_protect_self_assessed` (BEFORE UPDATE OR DELETE, security
+definer) enforces it without raising: an UPDATE that would lower
+`marks_awarded` keeps the old value, and a DELETE is skipped while the part
+still exists, each with a WARNING. Raising a mark, changing only the identity
+columns, rows with no `student_id`, and deletes whose part is gone (deleting a
+test or part) are unaffected. Read the value back after a write. The routes
+check first and report kept marks: `lib/protected-marks.ts`, and
+`platform/docs/HANDOFF.md` section 42.
 
 ### `student_responses`
 
@@ -1423,10 +1434,14 @@ siblings. Teachers read and write all rows.
 | `id` | uuid | default `gen_random_uuid()` |
 | `test_item_id` | uuid |  |
 | `student_id` | uuid |  |
-| `self_marks` | integer | default `0` |
+| `self_marks` | integer, nullable | no default; null is a part left blank (or cleared by a Redo) -- the row still exists |
 | `submitted_at` | timestamp with time zone | default `now()` |
 | `override_by` | uuid, nullable |  |
 | `override_at` | timestamp with time zone, nullable |  |
+
+Any row for a student on any part of a test means that student has
+self-assessed it, for the ClevMark protection on `student_marks` -- wider than
+the reveal gate, which needs at least one non-null `self_marks`.
 
 ### `students`
 
@@ -1577,8 +1592,8 @@ Unique on `(test_id, question_number, part_label)`.
 | `short_name` | text, nullable | short label for generated filenames, e.g. `Form1` for "Formative Assessment 1"; falls back to an abbreviation of `name` (lib/assessment-short-name.ts) |
 | `hidden_from_gradebook` | boolean | default `false` — omits the test's column from the **teacher** gradebook grid. Deliberately separate from `hidden`: a paper with an approximate boundary set belongs out of the students' hands and still in front of the teacher, and vice versa |
 | `assessment_kind` | text | default `'formative'` — `'formative'` or `'summative'` (CHECK); see lib/assessment-kind.ts |
-| `standards_rubric` | jsonb, nullable | strand rubric of a Grade 9 **Standard Level** paper (strands, the CCSS standards each assesses, part-to-strand map, level bands, level descriptors), validated by `StandardsRubricSchema` in lib/standards-rubric.ts. Non-null makes lib/ai-grading.ts load `grading_policies/g9_standard_level_marking_principles.md` in place of the Formative Assessment principles, and makes the review UI and `/dashboard/tests/[id]/standards-report` compute Exceeding / Meeting / Approaching / Beginning per strand from Clev's Marks. Null = graded by marks and boundary set as usual |
-| `activity_rubric` | jsonb, nullable | learning-target rubric of a Math Medic **Exploration or homework**, validated by `ActivityRubricSchema` in lib/activity-rubric.ts. Non-null makes the test an ACTIVITY: lib/ai-grading.ts loads `grading_policies/mathmedic_activity_marking_principles.md` IN PLACE OF BOTH the Formative Assessment and the Standard Level principles, and `/dashboard/tests/[id]/activity-report` reports Got it / Almost / Not yet per learning target from Clev's Marks. Marks behind it are plumbing, not a grade: an activity is saved `hidden`, with `require_self_assessment = false` and `hidden_from_gradebook` true unless the teacher opts in. A test carrying both this and `standards_rubric` is marked as an activity, with a warning. Null = graded and reported as before |
+| `standards_rubric` | jsonb, nullable | strand rubric of a Grade 9 **Standard Level** paper (strands, the CCSS standards each assesses, part-to-strand map, level bands, level descriptors), validated by `StandardsRubricSchema` in lib/standards-rubric.ts. Non-null makes lib/ai-grading.ts load `grading_policies/g9_standard_level_marking_principles.md` in place of the Formative Assessment principles, and makes the review UI and `/dashboard/tests/[id]/standards-report` compute Exceeding / Meeting / Approaching / Beginning per strand from ClevMarks. Null = graded by marks and boundary set as usual |
+| `activity_rubric` | jsonb, nullable | learning-target rubric of a Math Medic **Exploration or homework**, validated by `ActivityRubricSchema` in lib/activity-rubric.ts. Non-null makes the test an ACTIVITY: lib/ai-grading.ts loads `grading_policies/mathmedic_activity_marking_principles.md` IN PLACE OF BOTH the Formative Assessment and the Standard Level principles, and `/dashboard/tests/[id]/activity-report` reports Got it / Almost / Not yet per learning target from ClevMarks. Marks behind it are plumbing, not a grade: an activity is saved `hidden`, with `require_self_assessment = false` and `hidden_from_gradebook` true unless the teacher opts in. A test carrying both this and `standards_rubric` is marked as an activity, with a warning. Null = graded and reported as before |
 
 ### `topics`
 

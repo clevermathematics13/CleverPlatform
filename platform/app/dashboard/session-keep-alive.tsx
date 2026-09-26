@@ -17,7 +17,7 @@ import { createClient } from "@/lib/supabase/client";
  *
  * That is what happened on 10 Sep 2026: the accept wrote all 41 marks, and the
  * refresh fired immediately after it 401'd, leaving a red "Not authenticated"
- * stacked above a blue "41 mark(s) written to Clev's Marks." with no way for
+ * stacked above a blue "41 mark(s) written to ClevMarks." with no way for
  * the teacher to tell which one to believe.
  *
  * createBrowserClient runs its own autoRefreshToken ticker, and being the

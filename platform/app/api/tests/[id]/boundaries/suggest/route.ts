@@ -34,7 +34,7 @@ const SOURCE_WORDS: Record<string, string> = {
  * POST /api/tests/[id]/boundaries/suggest
  *
  * Asks the model for this assessment's grade boundaries (lib/boundary-suggestion.ts)
- * from every student's current total -- Clev's Marks where accepted, the
+ * from every student's current total -- ClevMarks where accepted, the
  * marker's suggestions otherwise -- and the teacher's guidance. Stores the
  * suggestion and returns it. Changes no level: only a decision does.
  */

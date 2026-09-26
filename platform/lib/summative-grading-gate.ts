@@ -8,7 +8,7 @@
  * anyone.
  *
  * On a summative it is not the same click. A paper that counts cannot have a
- * mark the model itself was unsure about written into Clev's Marks because
+ * mark the model itself was unsure about written into ClevMarks because
  * nobody opened that part. So batch accept covers only what the model was
  * fully confident about, and everything else stays unaccepted -- waiting in
  * the review UI, where accepting one IS the teacher looking at it.

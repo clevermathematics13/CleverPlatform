@@ -6,7 +6,7 @@
  * A boundary decision cannot wait for every mark to be accepted, so a total
  * here counts, part by part:
  *
- *   1. Clev's Mark (student_marks), when the part has been accepted;
+ *   1. The ClevMark (student_marks), when the part has been accepted;
  *   2. otherwise the marker's suggested mark from the student's newest
  *      complete run (ai_grade_results.suggested_marks);
  *   3. otherwise 0 -- the marker never returned the part -- and the part is
@@ -36,7 +36,7 @@ export interface SubjectMarksInput {
   name: string;
   className: string | null;
   absent: boolean;
-  /** test_items.id -> Clev's Mark. */
+  /** test_items.id -> ClevMark. */
   accepted: ReadonlyMap<string, number>;
   /** test_items.id -> suggested mark from the newest complete run; null when the student has no run. */
   suggested: ReadonlyMap<string, number> | null;

@@ -62,7 +62,7 @@ export default async function ReflectionPage({
           ? await getReflectionItems(selectedTestId, viewAs.profileId)
           : await getReflectionItemsForInvitedStudent(selectedTestId, viewAs.invitedStudentId);
 
-      // Same gate a real student hits: Clev's Marks stay hidden until they
+      // Same gate a real student hits: ClevMarks stay hidden until they
       // submit their own self-assessment for this test -- unless the teacher
       // has marked this test's self-assessment step optional
       // (tests.require_self_assessment), in which case the preview shows
@@ -181,7 +181,7 @@ export default async function ReflectionPage({
 
   // Key the client on the data it seeds its state from. After a student
   // submits self-marks the client calls router.refresh(); the server then
-  // re-renders with Clev's Marks unlocked, but a client component keeps its
+  // re-renders with ClevMarks unlocked, but a client component keeps its
   // useState across a refresh, so without this key the page kept showing the
   // pre-submit copy (marks blanked, self-marks null) and told the student to
   // wait for the teacher. A changed key remounts it from the fresh props.

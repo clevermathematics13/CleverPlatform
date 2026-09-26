@@ -1,5 +1,5 @@
 /**
- * Whether a student still has to self-grade before Clev's Marks appear.
+ * Whether a student still has to self-grade before ClevMarks appear.
  *
  * `tests.require_self_assessment` is the gate, and it lives on the test.
  * A test belongs to one course but is sat by its whole track family

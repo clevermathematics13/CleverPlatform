@@ -16,6 +16,7 @@
  * remark-requests.test.ts.
  */
 import type { ReflectionItem, ReflectionRemark, RemarkStatus } from "./reflection-types";
+import { protectedRefusalMessage } from "./protected-marks";
 
 /** Short enough to stop "pls" and "remark this", long enough for a sentence. */
 export const REMARK_TEXT_MIN = 15;
@@ -180,6 +181,12 @@ export type ResolutionResult =
  * mark moved in between -- a gradebook edit, an accept on the marking
  * screen -- the answer was given against numbers that no longer exist, so it
  * is refused (409) rather than applied on top of them.
+ *
+ * "changed" can only raise the mark. A request is only ever made after the
+ * student self-assessed (remarkEligibility), and a ClevMark never comes down
+ * after that (lib/protected-marks.ts), so a student who says they were given
+ * too much is answered "Mark stands". No lookup is needed for that, which is
+ * why it holds here rather than in the route.
  */
 export function validateResolution(input: {
   outcome: unknown;
@@ -233,6 +240,13 @@ export function validateResolution(input: {
       ok: false,
       status: 400,
       error: `${newMarks} is the mark the student asked about. Choose Mark stands to keep it.`,
+    };
+  }
+  if (input.currentMarks !== null && newMarks < input.currentMarks) {
+    return {
+      ok: false,
+      status: 409,
+      error: `${protectedRefusalMessage({ kept: input.currentMarks, requested: newMarks })} Choose Mark stands.`,
     };
   }
   return {

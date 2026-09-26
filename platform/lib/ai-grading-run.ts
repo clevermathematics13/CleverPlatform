@@ -545,7 +545,7 @@ export async function persistGradeOutcome(args: {
   // fully reviewed student flipped all of it back to "needs review" even when
   // the new suggestion was identical. The teacher's earlier decision still
   // holds for any part where the model suggests the same mark it did last
-  // time (Clev's Marks already carries whatever they accepted for it). Only
+  // time (ClevMarks already carries whatever they accepted for it). Only
   // parts whose suggestion moved need a fresh look. Scoped to the most recent
   // COMPLETE run before this one, so a failed attempt in between is ignored.
   const priorAccepted = new Map<string, { suggested_marks: number; accepted_at: string | null; accepted_by: string | null }>();

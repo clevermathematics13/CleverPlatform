@@ -35,6 +35,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { normaliseTariffs } from "@/lib/latex-hfill";
+import { generationLessonsBlock } from "@/lib/generation-lessons";
 
 export const PRACTICE_GENERATOR_MODEL = "claude-opus-5";
 
@@ -101,8 +102,13 @@ const ROLE_PREAMBLE = `You write original mathematics questions for IB Diploma P
 
 The rules that follow are the teacher's own, loaded from the platform at runtime. Follow them exactly. They are not suggestions, and the first of them -- that your question must not be a reworded copy of the source -- is the entire reason this task exists.`;
 
+/**
+ * Ends with AAHL's lessons from marking (generation_lessons/,
+ * lib/generation-lessons.ts): these questions are all AAHL, and a practice
+ * question is marked like any other.
+ */
 export function buildAuthoringSystemPrompt(): string {
-  return `${ROLE_PREAMBLE}\n\n---\n\n${askWhatYouMarkBlock()}\n\n---\n\n${mathematicalRegisterBlock()}\n\n---\n\n${AUTHORING_GUIDE}`;
+  return `${ROLE_PREAMBLE}\n\n---\n\n${askWhatYouMarkBlock()}\n\n---\n\n${mathematicalRegisterBlock()}\n\n---\n\n${AUTHORING_GUIDE}\n\n---\n\n${generationLessonsBlock("ibdp_aa_hl")}`;
 }
 
 /** The per-question instruction. Exported for the tests, which assert that the

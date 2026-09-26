@@ -48,6 +48,7 @@ import { writeCollapsedClassesCookie } from "@/lib/ai-grade-collapsed-classes";
 import type { AssessmentKind } from "@/lib/assessment-kind";
 // Not "@/lib/assignments": that module carries the AI prompt builders too.
 import { paperQuestionPrefixes } from "@/lib/paper-labels";
+import { describeKeptParts } from "@/lib/protected-marks";
 // Not "@/lib/standards-rubric": that module carries zod for the rubric's
 // parser, and the page parses the rubric on the server (standardsRubric).
 import { buildStandardsReport } from "@/lib/standards-report";
@@ -223,7 +224,7 @@ interface ResultRow {
   accepted_at: string | null;
   accepted_by: string | null;
   /**
-   * What is actually in Clev's Marks (student_marks.marks_awarded) for this
+   * What is actually in ClevMarks (student_marks.marks_awarded) for this
    * part right now, or null if nothing has been written yet. `suggested_marks`
    * never changes once the model has spoken -- it is the audit trail's record
    * of what the model said, and the "was N" comparison between runs depends on
@@ -370,6 +371,13 @@ export function AiGradeClient({
   const [error, setError] = useState<string | null>(null);
   const [statusLine, setStatusLine] = useState<string | null>(null);
   /**
+   * Parts an accept left at their ClevMark because a lower value was chosen
+   * after the student self-assessed (lib/protected-marks.ts). Its own amber
+   * box rather than the status line: nothing failed, but what was chosen is
+   * not what is on file, and the teacher should see which parts.
+   */
+  const [keptNotice, setKeptNotice] = useState<string | null>(null);
+  /**
    * Anyone a batch scan was confirmed for who has no marking at all -- their
    * pages could not be stored at the split, or never reached marking. Flagged
    * on their row with a way to recover them (recoverFromBatch).
@@ -416,8 +424,8 @@ export function AiGradeClient({
   /**
    * Whether the review panel's high-confidence parts are shown. They sit
    * behind one summary row, which starts OPEN: the panel still leads with the
-   * parts that need a human, but a confident mark is a mark going into Clev's
-   * Marks, so it is on screen unless the teacher folds it away. Reset to open
+   * parts that need a human, but a confident mark is a mark going into ClevMarks,
+   * so it is on screen unless the teacher folds it away. Reset to open
    * for every student -- a fold applies to the paper in front of you, not to
    * the next one.
    */
@@ -780,7 +788,7 @@ export function AiGradeClient({
       // blue confirmation and this runs straight after it, so a bare error
       // above that line said "41 mark(s) written" and "Not authenticated" at
       // once and left the teacher unable to tell which to believe. The marks
-      // are in Clev's Marks; only the list on screen is behind.
+      // are in ClevMarks; only the list on screen is behind.
       const describe = (reason: string) =>
         opts?.afterWrite
           ? `The marks were written to ClevMarks and are safe. The list below could not be refreshed: ${reason}`
@@ -822,8 +830,8 @@ export function AiGradeClient({
         setResults(rowsForLatest);
         setResultsStudent(studentId);
         setSelfScores(Array.isArray(data.self_scores) ? (data.self_scores as SelfScoreRef[]) : null);
-        // An accepted row's draft starts from what is actually in Clev's
-        // Marks, not the model's original suggestion -- suggested_marks
+        // An accepted row's draft starts from what is actually in ClevMarks,
+        // not the model's original suggestion -- suggested_marks
         // never moves once the model has spoken, so seeding the draft from
         // it here reset every accepted override back to the AI's first call
         // on the next load (e.g. right after accepting it). See marks_awarded
@@ -1086,7 +1094,7 @@ export function AiGradeClient({
     if (file && studentId) await runGrading(studentId, file);
   };
 
-  // -- Accept selected results into Clev's Marks --
+  // -- Accept selected results into ClevMarks --
   // -- A marking note on a part: the teacher's ruling, read by the marker on
   // every later mark of this paper. Saved on the test item, not the result,
   // because it is about the part, not this one student. --------------------
@@ -1265,10 +1273,40 @@ export function AiGradeClient({
     }
   };
 
+  /**
+   * What an accept response says beyond its count: the parts whose ClevMark
+   * was kept, and the parts that could not be saved at all. Both used to be
+   * dropped here, so a partial failure read as a clean accept.
+   */
+  const reportAcceptOutcome = (data: Record<string, unknown>) => {
+    const labelOf = (testItemId: string) => itemLabel(itemById.get(testItemId), paperPrefixes);
+    const kept = Array.isArray(data.kept)
+      ? (data.kept as { testItemId: string; kept: number; requested: number }[])
+      : [];
+    setKeptNotice(
+      describeKeptParts(kept.map((k) => ({ label: labelOf(k.testItemId), kept: k.kept, requested: k.requested }))) ||
+        null
+    );
+    const failures = Array.isArray(data.failures) ? (data.failures as { resultId: string; error: string }[]) : [];
+    if (failures.length > 0) {
+      const byResult = new Map(results.map((r) => [r.id, r.test_item_id]));
+      setError(
+        `${failures.length} part(s) could not be saved: ` +
+          failures
+            .map((f) => {
+              const itemId = byResult.get(f.resultId);
+              return `${itemId ? labelOf(itemId) : "a part"} (${f.error})`;
+            })
+            .join("; ")
+      );
+    }
+  };
+
   const acceptSelected = async () => {
     if (!focusRunId || selected.size === 0) return;
     setAccepting(true);
     setError(null);
+    setKeptNotice(null);
     try {
       const selections = [...selected].map((resultId) => ({
         resultId,
@@ -1285,6 +1323,7 @@ export function AiGradeClient({
         return;
       }
       setStatusLine(`${data.appliedCount} mark(s) written to ClevMarks.`);
+      reportAcceptOutcome(data);
       if (focusStudent) await loadResultsFor(focusStudent, { afterWrite: true });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not accept these marks.");
@@ -1293,11 +1332,12 @@ export function AiGradeClient({
     }
   };
 
-  // -- Accept a single result into Clev's Marks (per-row, from the Status column) --
+  // -- Accept a single result into ClevMarks (per-row, from the Status column) --
   const acceptOne = async (resultId: string) => {
     if (!focusRunId) return;
     setAcceptingRowId(resultId);
     setError(null);
+    setKeptNotice(null);
     try {
       const { ok, data } = await fetchJson(`/api/tests/${testId}/ai-grade/accept`, {
         method: "POST",
@@ -1312,6 +1352,7 @@ export function AiGradeClient({
         return;
       }
       setStatusLine(`${data.appliedCount} mark(s) written to ClevMarks.`);
+      reportAcceptOutcome(data);
       if (focusStudent) await loadResultsFor(focusStudent, { afterWrite: true });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not accept this mark.");
@@ -1328,19 +1369,26 @@ export function AiGradeClient({
   const acceptAll = async (scope?: { studentIds: string[]; label: string }) => {
     const who = scope ? `${scope.label} student's` : "student's";
     const about = scope ? ` for ${scope.label}` : "";
+    // Says what happens to a ClevMark already on file, which the old wording
+    // ("already-accepted marks are left as they are") got wrong: a suggestion
+    // not yet accepted replaces it -- unless that would lower it for a student
+    // who has self-assessed, which never happens.
     const ok = window.confirm(
       assessmentKind === "summative"
         ? `This is a summative. It writes only the suggestions Clev was fully confident about${about}, straight into ` +
             "ClevMarks without opening each student's review. Anything less confident, and anything marked " +
-            "with no working found, is left for you to check and accept yourself. Continue?"
-        : `This writes every suggested mark, for every question, for every ${who} latest completed run straight into ` +
-            "ClevMarks -- without opening each student's review first. Already-accepted marks are left as they are. " +
-            "Continue?"
+            "with no working found, is left for you to check and accept yourself. A ClevMark is never lowered " +
+            "for a student who has self-assessed. Continue?"
+        : `This writes every suggested mark not yet accepted, for every question, for every ${who} latest completed ` +
+            "run straight into ClevMarks -- without opening each student's review first. It replaces a ClevMark " +
+            "already on file for those parts, except that a ClevMark is never lowered for a student who has " +
+            "self-assessed. Continue?"
     );
     if (!ok) return;
     setAcceptingAll(!scope);
     if (scope) setAcceptingClass(scope.label);
     setError(null);
+    setKeptNotice(null);
     try {
       const { ok: reqOk, data } = await fetchJson(`/api/tests/${testId}/ai-grade/accept-all`, {
         method: "POST",
@@ -1564,7 +1612,7 @@ export function AiGradeClient({
   /**
    * Selects, or clears, every confident part the summary row is hiding, so a
    * teacher can accept the lot without expanding it. Only parts not already in
-   * Clev's Marks are touched -- an accepted one is done with.
+   * ClevMarks are touched -- an accepted one is done with.
    */
   const toggleAllHighConfidence = (rows: ResultRow[]) => {
     if (rows.length === 0) return;
@@ -1663,7 +1711,7 @@ export function AiGradeClient({
     const meta = itemById.get(r.test_item_id);
     const label = itemLabel(meta, paperPrefixes);
     const isOpen = expanded === r.id;
-    // What Clev's Marks actually holds for this part right now, so an edit
+    // What ClevMarks actually holds for this part right now, so an edit
     // after acceptance can tell "nothing changed" from "needs writing".
     const currentlyAccepted = r.accepted ? (r.marks_awarded ?? r.suggested_marks) : null;
     const draftDiffersFromAccepted = (drafts[r.id] ?? r.suggested_marks) !== currentlyAccepted;
@@ -2351,7 +2399,7 @@ export function AiGradeClient({
     const selfDiffCount = ordered.filter(selfDiffersFrom).length;
     const highSelfDiffers = high.filter(selfDiffersFrom).length;
     // The summary row's own checkbox covers the confident parts not yet in
-    // Clev's Marks -- the ones it is hiding that an accept would still act on.
+    // ClevMarks -- the ones it is hiding that an accept would still act on.
     const highPending = high.filter((r) => !r.accepted);
     const highPendingSelected = highPending.filter((r) => selected.has(r.id)).length;
     return (
@@ -2714,6 +2762,22 @@ export function AiGradeClient({
                   </a>
                 </>
               )}
+            </div>
+          )}
+
+          {keptNotice && (
+            <div
+              role="status"
+              className="flex items-start gap-3 rounded-lg border border-amber-400/40 bg-amber-500/15 px-4 py-3 text-sm text-amber-200"
+            >
+              <p className="flex-1">{keptNotice}</p>
+              <button
+                type="button"
+                onClick={() => setKeptNotice(null)}
+                className="shrink-0 font-bold hover:underline"
+              >
+                Dismiss
+              </button>
             </div>
           )}
 

@@ -47,8 +47,9 @@ describe("buildMarkChangeRows", () => {
     ]);
   });
 
-  // Agustina's cohort is the live case: every one of them is marked by
-  // roster row, with no account and so no profiles.id to attribute to.
+  // A class imported before anyone signs in is the live case: every student
+  // is marked by roster row, with no account and so no profiles.id to
+  // attribute to.
   it("writes a roster mark against invited_student_id and leaves student_id null", () => {
     const [row] = buildMarkChangeRows(
       [{ testItemId: "t1", subject: invited, oldMarks: null, newMarks: 3 }],

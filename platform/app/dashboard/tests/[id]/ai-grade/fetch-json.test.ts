@@ -5,11 +5,11 @@
  * "Not authenticated".
  *
  * The bug, seen on 10 Sep 2026: a teacher accepted 41 AI-suggested marks. The
- * accept succeeded -- all 41 reached Clev's Marks -- and the refresh fired
+ * accept succeeded -- all 41 reached ClevMarks -- and the refresh fired
  * immediately afterwards came back 401, because the access token had lapsed
  * while the tab sat open. Every call site passed `data.error` straight into
  * the red banner, so the screen showed "Not authenticated" above "41 mark(s)
- * written to Clev's Marks." with nothing to say which was true or what to do.
+ * written to ClevMarks." with nothing to say which was true or what to do.
  *
  * The server string is correct and unusable: lib/auth.ts returns it whenever
  * supabase.auth.getUser() finds no user. Rewriting it here, once, fixes every

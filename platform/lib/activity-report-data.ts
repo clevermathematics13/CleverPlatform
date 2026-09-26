@@ -12,8 +12,7 @@ import {
 } from "./activity-rubric";
 
 /**
- * The class's learning targets for one Exploration or homework, from Clev's
- * Marks.
+ * The class's learning targets for one Exploration or homework, from ClevMarks.
  *
  * Shared by the activity report page and its CSV route so the two cannot
  * disagree about who is on the roster or which marks count. The roster and

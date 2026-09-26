@@ -61,7 +61,7 @@ interface ResultRow {
  *     the test per student, and `parts_without_mark`, the parts each student
  *     has no mark for at all (partsWithoutMarkBySubject);
  *   - with studentId (one student's review panel): their last few runs with
- *     full result rows, signed evidence crops, PPQ images, what Clev's Marks
+ *     full result rows, signed evidence crops, PPQ images, what ClevMarks
  *     holds for each part and on the whole test (`clev_marks`), and their
  *     self-assessment of the test as `self_scores` (see loadSelfScores
  *     below).
@@ -150,14 +150,14 @@ export async function GET(
     return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 500 });
   }
 
-  // -- What Clev's Marks actually holds right now, per part -------------------
+  // -- What ClevMarks actually holds right now, per part -------------------
   // suggested_marks never changes once the model has spoken -- it is the
   // audit trail's record of what the model said, and the "was N" comparison
   // between runs depends on it staying put -- so it cannot double as "what
   // was accepted" once a teacher overrides it. Without this, reopening an
   // already-accepted row's review showed the model's original number again
   // instead of the teacher's override, which read as the edit having
-  // reverted even though Clev's Marks itself was correct. Per part only for
+  // reverted even though ClevMarks itself was correct. Per part only for
   // a single student's review pane, not the whole-class overview, which
   // never shows individual mark inputs. The same read gives the whole test's
   // total, so an accept made in the pane moves the roster's ClevMarks figure.

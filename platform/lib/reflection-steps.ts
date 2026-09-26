@@ -7,13 +7,13 @@ import type { ReflectionStep } from "./reflection-types";
  * The flow is Self-Grade (1) -> Compare (2) -> Upload Corrections (3) ->
  * Done (4), and it used to always open on step 1 for anyone who had not
  * self-graded. That is right when self-assessment is the gate on seeing
- * Clev's Marks, but tests.require_self_assessment can now turn that gate
+ * ClevMarks, but tests.require_self_assessment can now turn that gate
  * off per test -- and with it off, opening on Self-Grade still put the
  * self-assessment in front of the feedback, which is the exact thing
  * switching it off is meant to stop.
  *
  * So when the gate is off and the student has not self-graded, the flow
- * opens on Compare, where Clev's Marks already are. Self-Grade is not taken
+ * opens on Compare, where ClevMarks already are. Self-Grade is not taken
  * away: it stays a step they can walk back to (see StepTracker's onSelect),
  * because a student who wants to predict their own marks after the fact
  * should still be able to, and the disagreement score only means anything
@@ -26,12 +26,12 @@ export interface InitialReflectionStepInput {
   hasSelfScores: boolean;
   /** The teacher has entered at least one mark for this test. */
   hasTeacherMarks: boolean;
-  /** computeDisagreement()'s result: the gap between self-marks and Clev's
-   *  Marks, or null when there is nothing to compare yet. Only an exact 0
+  /** computeDisagreement()'s result: the gap between self-marks and ClevMarks,
+   *  or null when there is nothing to compare yet. Only an exact 0
    *  opens the corrections step, so null behaves as "still disagreeing" --
    *  the same comparison the flow used before this was extracted. */
   disagreement: number | null;
-  /** tests.require_self_assessment -- false means Clev's Marks are visible
+  /** tests.require_self_assessment -- false means ClevMarks are visible
    *  without self-grading first. */
   selfAssessmentRequired: boolean;
 }
@@ -42,7 +42,7 @@ export function initialReflectionStep(input: InitialReflectionStepInput): Reflec
     return input.hasTeacherMarks && input.disagreement === 0 ? 3 : 2;
   }
   // Nothing self-graded yet. Skipping ahead to Compare is only an
-  // improvement when there is something there to read: with no Clev's Marks
+  // improvement when there is something there to read: with no ClevMarks
   // in yet, Compare is an empty table and Self-Grade is the one step that
   // actually works, so an unmarked test still opens there however the gate is
   // set. Otherwise open on the marks the student came for.

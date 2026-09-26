@@ -46,7 +46,7 @@ export function getNavigation(role: string, isGrade9 = false): NavigationItem[] 
     // A Grade 9 student's use of the platform was ONLY reading feedback --
     // not a Dashboard whose tiles lead where they have no reason to go --
     // and that comes from two separate places: Nuanced Analysis packets
-    // (na-feedback) and Clev's Marks on a Tests-based assessment like a
+    // (na-feedback) and ClevMarks on a Tests-based assessment like a
     // Formative Assessment (reflection). Both need a menu entry, or a
     // student whose class only uses one of the two has no way to reach it.
     //

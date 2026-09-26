@@ -239,7 +239,7 @@ export function countHints(draft: AssignmentDraft): number {
 }
 
 /**
- * Whether students must self-grade before Clev's Marks appear.
+ * Whether students must self-grade before ClevMarks appear.
  *
  * A summative forces it on and does not take no for an answer. The teacher
  * asked for exactly this: students self-assess BEFORE seeing the marks the

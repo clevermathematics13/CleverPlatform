@@ -20,7 +20,7 @@
  * So, exactly as on the Standard Level side, the rubric is DATA on the test
  * (`tests.activity_rubric`, jsonb) and not a second grading pipeline. Parts are
  * still graded one at a time by lib/ai-grading.ts against each part's own
- * descriptor, and still accepted one at a time into Clev's Marks. What this
+ * descriptor, and still accepted one at a time into ClevMarks. What this
  * module adds is everything that follows from the marks: which learning target
  * each part feeds, and what a student's marks in that target mean.
  *

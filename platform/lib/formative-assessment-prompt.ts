@@ -54,7 +54,17 @@ export type FormativeAssessmentInput = {
   timeAllowedMinutes?: number;
 };
 
-export function buildFormativeAssessmentSystemPrompt(kind: AssessmentKind = "formative"): string {
+/**
+ * `lessons` is the course family's generation lessons (generation_lessons/,
+ * lib/generation-lessons.ts): what marking real scripts showed a paper should
+ * do differently. It is passed in, not loaded here, because this runs in the
+ * browser; the sandbox fetches it from /api/generation-lessons. It goes last,
+ * after the summative rules, and without it the prompt is exactly what it was.
+ */
+export function buildFormativeAssessmentSystemPrompt(
+  kind: AssessmentKind = "formative",
+  lessons?: string,
+): string {
   const summative = kind === "summative";
   const q = String.fromCharCode(34);
   return [
@@ -140,6 +150,7 @@ export function buildFormativeAssessmentSystemPrompt(kind: AssessmentKind = "for
           "S8. THE PAPER MUST FIT THE TIME. Where the user message gives a time allowed, the estimatedMinutes across all levels must sum to no more than it, and should leave a few minutes for reading and checking. A paper that cannot be finished in the time printed on its own cover measures speed, not mathematics.",
         ]
       : []),
+    ...(lessons ? ["", lessons] : []),
   ].join("\n");
 }
 

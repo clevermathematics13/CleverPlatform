@@ -1,5 +1,5 @@
 // Grading eval: re-grades scans whose marks a teacher has already accepted
-// into Clev's Marks and compares the model's fresh suggestion against what
+// into ClevMarks and compares the model's fresh suggestion against what
 // was accepted. The golden set is student_marks (the teacher's final mark,
 // override included) for every ai_grade_results row with accepted = true
 // whose run still has its scan on file. Nothing is written back except one
@@ -67,7 +67,7 @@ interface GoldenPart {
   testItemId: string;
   label: string;
   maxMarks: number;
-  /** What the teacher accepted into Clev's Marks (override included). */
+  /** What the teacher accepted into ClevMarks (override included). */
   golden: number;
   /** What the model suggested at the time it was accepted. */
   suggestedThen: number;
@@ -119,7 +119,7 @@ async function loadGoldenSet(): Promise<GoldenStudent[]> {
     marksNeeded.push({ testItemId: r.test_item_id, studentId: run.student_id });
   }
 
-  // Golden = the teacher's final mark in Clev's Marks, which may differ from
+  // Golden = the teacher's final mark in ClevMarks, which may differ from
   // the suggestion they accepted (an override at accept time).
   const { data: marks } = await supabase
     .from("student_marks")

@@ -7,7 +7,7 @@ import { fetchAllRows } from "./na-scanning";
 const PRIOR_MARK_ITEM_CHUNK = 40;
 
 /**
- * Audit-logging for Clev's Marks written outside the AI-grading flow.
+ * Audit-logging for ClevMarks written outside the AI-grading flow.
  *
  * The AI accept routes have always written a mark_changes row beside every
  * student_marks write, which is why an AI-graded mark can be traced back to

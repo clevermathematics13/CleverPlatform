@@ -14,11 +14,22 @@
  *
  * A course with no continuity row yet returns an empty context and 200, not a
  * 404 — the first packet in a course is a normal state, not a missing resource.
+ *
+ * It also returns the course family's generation lessons (`lessons`, with
+ * `lessonsFamily` naming the family): what marking real scripts showed a
+ * packet should do differently. They are read from generation_lessons/ on the
+ * server, which is why they come from here rather than from the browser's own
+ * prompt builder; a course with no family gets an empty string. A failure to
+ * work out the family is reported in `lessonsError` rather than failing the
+ * route: losing the continuity would be worse than losing the lessons, and
+ * the page says which happened.
  */
 
 import { NextResponse } from "next/server";
 import { getApiTeacher } from "@/lib/auth";
 import { buildContinuityContext, loadContinuity } from "@/lib/na-continuity";
+import { generationLessonsBlock, loadGenerationFamilyForCourse } from "@/lib/generation-lessons";
+import { GENERATION_FAMILY_LABELS, type GenerationFamily } from "@/lib/generation-family";
 
 export const runtime = "nodejs";
 
@@ -37,8 +48,18 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "courseId is required and must be a UUID" }, { status: 400 });
   }
 
-  const record = await loadContinuity(supabase, courseId);
+  const [record, lessonsLookup] = await Promise.all([
+    loadContinuity(supabase, courseId),
+    loadGenerationFamilyForCourse(supabase, courseId).then(
+      (family): { family: GenerationFamily | null; error: string | null } => ({ family, error: null }),
+      (e: unknown) => ({
+        family: null,
+        error: `Could not work out which writing lessons apply to this course: ${e instanceof Error ? e.message : String(e)}`,
+      }),
+    ),
+  ]);
   const context = buildContinuityContext(record, section);
+  const lessonsFamily = lessonsLookup.family;
 
   // nextSection is a convenience for the UI's section picker: the first entry
   // in the spine that is not yet marked done.
@@ -60,6 +81,10 @@ export async function GET(req: Request) {
       packets: record?.packets ?? [],
       nextSection,
       context,
+      lessonsFamily,
+      lessonsLabel: lessonsFamily ? GENERATION_FAMILY_LABELS[lessonsFamily] : null,
+      lessons: lessonsFamily ? generationLessonsBlock(lessonsFamily) : "",
+      lessonsError: lessonsLookup.error,
     },
     { status: 200 },
   );

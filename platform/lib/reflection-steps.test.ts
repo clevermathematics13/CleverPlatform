@@ -26,13 +26,13 @@ describe("initialReflectionStep", () => {
   describe("when the test does not require self-assessment", () => {
     const open = { ...base, selfAssessmentRequired: false };
 
-    it("skips Self-Grade and opens on Compare, where Clev's Marks are", () => {
+    it("skips Self-Grade and opens on Compare, where ClevMarks are", () => {
       expect(initialReflectionStep({ ...open, hasTeacherMarks: true })).toBe(2);
     });
 
     // Skipping ahead is only worth it if there is something to skip TO.
     // With no marks in, Compare is an empty table whose Self column has
-    // nothing in it either, and the page would claim "Clev's Marks are
+    // nothing in it either, and the page would claim "ClevMarks are
     // already here" directly above "waiting for your teacher to enter marks".
     it("still opens on Self-Grade when the teacher has not marked yet", () => {
       expect(initialReflectionStep(open)).toBe(1);

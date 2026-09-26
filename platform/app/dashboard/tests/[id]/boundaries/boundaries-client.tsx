@@ -408,7 +408,7 @@ export function BoundariesClient({ data }: { data: BoundaryPageData }) {
       <section className={card}>
         <h2 className={h2}>Scores</h2>
         <p className={`mt-1 ${hint}`}>
-          Each part counts Clev&apos;s Mark where it has been accepted, otherwise the marker&apos;s suggestion. A part the
+          Each part counts its ClevMark where it has been accepted, otherwise the marker&apos;s suggestion. A part the
           marker never returned counts 0
           {summary.neverMarkedParts > 0 ? ` (${summary.neverMarkedParts} such part${summary.neverMarkedParts === 1 ? "" : "s"} across the class)` : ""}.
           {summary.mean !== null && summary.median !== null

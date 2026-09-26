@@ -83,6 +83,10 @@ export function TeacherDashboard({ tests }: TeacherDashboardProps) {
   const [editValue, setEditValue] = useState("");
   const [saving, setSaving] = useState<CellKey | null>(null);
   const [savedCells, setSavedCells] = useState<Set<CellKey>>(new Set());
+  // Why the last edit did not save. Shown to the teacher, but this component
+  // ships in the student bundle too (reflection-client imports it), so the
+  // text is the route's own and says nothing about AI.
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [selectedStudentId, setSelectedStudentId] = useState<string>("");
   const [copyStatus, setCopyStatus] = useState<"idle" | "copied" | "failed">("idle");
   const containerRef = useRef<HTMLDivElement>(null);
@@ -147,32 +151,37 @@ export function TeacherDashboard({ tests }: TeacherDashboardProps) {
     async (studentId: string, testItemId: string, newMarks: number) => {
       const key: CellKey = `${studentId}:${testItemId}`;
       setSaving(key);
+      setSaveError(null);
+      const showMarks = (marks: number) =>
+        setData((prev) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            rows: prev.rows.map((row) =>
+              row.student_id === studentId
+                ? {
+                    ...row,
+                    items: row.items.map((cell) =>
+                      cell.test_item_id === testItemId ? { ...cell, marks_awarded: marks } : cell
+                    ),
+                  }
+                : row
+            ),
+          };
+        });
       try {
         const res = await fetch("/api/reflection/update-mark", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ testItemId, studentId, newMarks }),
         });
-        const result = await res.json();
-        if (res.ok) {
-          setData((prev) => {
-            if (!prev) return prev;
-            return {
-              ...prev,
-              rows: prev.rows.map((row) =>
-                row.student_id === studentId
-                  ? {
-                      ...row,
-                      items: row.items.map((cell) =>
-                        cell.test_item_id === testItemId
-                          ? { ...cell, marks_awarded: result.marks_awarded }
-                          : cell
-                      ),
-                    }
-                  : row
-              ),
-            };
-          });
+        const result = (await res.json().catch(() => ({}))) as {
+          marks_awarded?: number;
+          keptMarks?: number;
+          error?: string;
+        };
+        if (res.ok && typeof result.marks_awarded === "number") {
+          showMarks(result.marks_awarded);
           setSavedCells((prev) => new Set(prev).add(key));
           setTimeout(() => {
             setSavedCells((prev) => {
@@ -181,7 +190,15 @@ export function TeacherDashboard({ tests }: TeacherDashboardProps) {
               return next;
             });
           }, 1500);
+        } else {
+          // A 409 carries the ClevMark that stayed (the student has
+          // self-assessed, so it cannot come down): show that value, not the
+          // one typed.
+          if (typeof result.keptMarks === "number") showMarks(result.keptMarks);
+          setSaveError(result.error ?? "The mark could not be saved. Try again.");
         }
+      } catch {
+        setSaveError("The mark could not be saved. Try again.");
       } finally {
         setSaving(null);
         setEditingCell(null);
@@ -349,6 +366,18 @@ export function TeacherDashboard({ tests }: TeacherDashboardProps) {
       </div>
 
       {loading && <p className="text-sm text-da-muted">Loading…</p>}
+
+      {saveError && (
+        <div
+          role="status"
+          className="flex items-start gap-3 rounded-lg border border-amber-400/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-200"
+        >
+          <p className="flex-1">{saveError}</p>
+          <button type="button" onClick={() => setSaveError(null)} className="shrink-0 font-bold hover:underline">
+            Dismiss
+          </button>
+        </div>
+      )}
 
       {data && data.items.length > 0 && (
         <div className="flex items-start gap-4">

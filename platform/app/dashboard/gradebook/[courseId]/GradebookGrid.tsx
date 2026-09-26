@@ -7,6 +7,7 @@ import {
   type GradeBoundary,
 } from "@/lib/grade-bands";
 import { inSection, type TestSection } from "@/lib/test-sections";
+import { refusedCellsMessage } from "@/lib/protected-marks";
 
 export type { GradeBoundary };
 
@@ -502,6 +503,11 @@ export function GradebookGrid({
   // Marking the cell red would tell the teacher to re-enter a mark that is
   // already stored.
   const [auditWarning, setAuditWarning] = useState<string | null>(null);
+  // Cells put back to the ClevMark on file because the edit would have lowered
+  // or cleared it after the student self-assessed (lib/protected-marks.ts).
+  // Amber, not a cellError, for the same reason as above: re-entering the
+  // lower value would only be refused again.
+  const [cellNotices, setCellNotices] = useState<Record<string, string>>({});
 
   // -- Handlers ----------------------------------------------------------------
 
@@ -805,6 +811,25 @@ export function GradebookGrid({
     []
   );
 
+  /** Put cells back to the ClevMark the server kept, and say why on each one. */
+  const showKeptCells = useCallback((cells: { itemId: string; profileId: string; keptMarks: number }[]) => {
+    if (cells.length === 0) return;
+    setMarks((prev) => {
+      const next = { ...prev };
+      for (const { itemId, profileId, keptMarks } of cells) {
+        next[itemId] = { ...(next[itemId] ?? {}), [profileId]: keptMarks };
+      }
+      return next;
+    });
+    setCellNotices((prev) => {
+      const next = { ...prev };
+      for (const { itemId, profileId, keptMarks } of cells) {
+        next[`${itemId}:${profileId}`] = `Kept at ${keptMarks} (self-assessed)`;
+      }
+      return next;
+    });
+  }, []);
+
   const saveCell = useCallback(
     async (itemId: string, profileId: string, value: number | null, maxMarks: number) => {
       const key = `${itemId}:${profileId}`;
@@ -813,6 +838,12 @@ export function GradebookGrid({
         return;
       }
       setCellErrors((prev) => {
+        const n = { ...prev };
+        delete n[key];
+        return n;
+      });
+      setCellNotices((prev) => {
+        if (!(key in prev)) return prev;
         const n = { ...prev };
         delete n[key];
         return n;
@@ -827,8 +858,13 @@ export function GradebookGrid({
         const d = (await res.json().catch(() => ({}))) as {
           error?: string;
           auditWarning?: string;
+          keptMarks?: number;
         };
-        if (!res.ok) {
+        if (res.status === 409 && typeof d.keptMarks === "number") {
+          // Not saved, and not a failure to retry: the ClevMark on file stays.
+          showKeptCells([{ itemId, profileId, keptMarks: d.keptMarks }]);
+          if (d.error) setAuditWarning(d.error);
+        } else if (!res.ok) {
           setCellErrors((prev) => ({ ...prev, [key]: "Save failed" }));
           console.error("Mark save error:", d.error);
         } else {
@@ -845,7 +881,7 @@ export function GradebookGrid({
         });
       }
     },
-    [scheduleRebuild, testIdByItem]
+    [scheduleRebuild, testIdByItem, showKeptCells]
   );
 
   const handleBlur = useCallback(
@@ -913,6 +949,11 @@ export function GradebookGrid({
         for (const { itemId, profileId } of updates) delete next[`${itemId}:${profileId}`];
         return next;
       });
+      setCellNotices((prev) => {
+        const next = { ...prev };
+        for (const { itemId, profileId } of updates) delete next[`${itemId}:${profileId}`];
+        return next;
+      });
       setSaving((prev) => {
         const next = new Set(prev);
         for (const { itemId, profileId } of updates) next.add(`${itemId}:${profileId}`);
@@ -934,12 +975,16 @@ export function GradebookGrid({
           const d = (await res.json().catch(() => ({}))) as {
             error?: string;
             auditWarning?: string;
+            refused?: { testItemId: string; studentId: string; keptMarks: number }[];
           };
           if (res.ok) {
             for (const id of new Set(updates.map((u) => testIdByItem[u.itemId]))) {
               scheduleRebuild(id ?? null);
             }
           }
+          // The rest of the paste saved; these cells kept their ClevMark.
+          const refused = res.ok && Array.isArray(d.refused) ? d.refused : [];
+          showKeptCells(refused.map((r) => ({ itemId: r.testItemId, profileId: r.studentId, keptMarks: r.keptMarks })));
           if (!res.ok) {
             console.error("Mark paste error:", d.error);
             setCellErrors((prev) => {
@@ -948,8 +993,8 @@ export function GradebookGrid({
                 next[`${itemId}:${profileId}`] = "Paste save failed";
               return next;
             });
-          } else if (d.auditWarning) {
-            setAuditWarning(d.auditWarning);
+          } else if (refused.length > 0 || d.auditWarning) {
+            setAuditWarning([refusedCellsMessage(refused.length), d.auditWarning ?? ""].filter(Boolean).join(" "));
           }
         })
         .catch(() => {
@@ -968,7 +1013,7 @@ export function GradebookGrid({
           });
         });
     },
-    [tests, testViews, students, saveCell]
+    [tests, testViews, students, saveCell, showKeptCells]
   );
 
   // -- Styles -------------------------------------------------------------------
@@ -1498,6 +1543,7 @@ export function GradebookGrid({
                               null;
                             const isSaving = saving.has(cellKey);
                             const err = cellErrors[cellKey];
+                            const notice = cellNotices[cellKey];
 
                             return (
                               <td key={item.id} className={`${tdBase} p-1`}>
@@ -1538,10 +1584,12 @@ export function GradebookGrid({
                                       ? "border-red-500 focus:ring-red-500"
                                       : isSaving
                                       ? "border-da-accent/60 focus:ring-da-accent/40"
+                                      : notice
+                                      ? "border-amber-400 focus:ring-amber-400/60"
                                       : "border-da-border focus:ring-da-accent/50 focus:border-da-accent",
                                     "text-da-text",
                                   ].join(" ")}
-                                  title={err ? `⚠ ${err}` : `Max: ${item.max_marks}`}
+                                  title={err ? `⚠ ${err}` : notice ? notice : `Max: ${item.max_marks}`}
                                 />
                               </td>
                             );

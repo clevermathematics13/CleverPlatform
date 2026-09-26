@@ -209,6 +209,23 @@ function newSection(): AssignmentSection {
   return { heading: "LEVEL -- NEW LEVEL", estimatedMinutes: 10, questions: [newQuestion()] };
 }
 
+/**
+ * The writing lessons for a paper written for this course (or, with no course
+ * yet, this grade). Throws with the route's own message, so a generation that
+ * cannot get them stops and says why.
+ */
+async function fetchGenerationLessons(
+  courseId: string,
+  gradeLevel: string,
+): Promise<{ label: string | null; lessons: string }> {
+  const params = new URLSearchParams({ gradeLevel });
+  if (courseId) params.set("courseId", courseId);
+  const res = await fetch(`/api/generation-lessons?${params.toString()}`);
+  const data = (await res.json().catch(() => ({}))) as { error?: string; label?: string | null; lessons?: string };
+  if (!res.ok) throw new Error(data.error ?? `Could not load the writing lessons (${res.status})`);
+  return { label: data.label ?? null, lessons: data.lessons ?? "" };
+}
+
 export function FormativeAssessmentSandbox() {
   const [draft, setDraft] = useState<AssignmentDraft>(DEFAULT_DRAFT);
   const [formatting, setFormatting] = useState<FormattingRequirements>(DEFAULT_FORMATTING);
@@ -223,6 +240,13 @@ export function FormativeAssessmentSandbox() {
   const [pdfsArchived, setPdfsArchived] = useState(false);
   const [requireSelfAssessment, setRequireSelfAssessment] = useState(true);
   const [kind, setKind] = useState<AssessmentKind>("formative");
+  /**
+   * Which writing lessons a generation here gets (/api/generation-lessons):
+   * shown under Generate so the teacher can see them follow the course. The
+   * generation itself fetches them again, fresh, and refuses to run without
+   * them -- this copy is only for the label.
+   */
+  const [lessonsLabel, setLessonsLabel] = useState<{ label: string | null; error: string | null } | null>(null);
   const [boundarySets, setBoundarySets] = useState<BoundarySetOption[]>([]);
   const [boundarySetId, setBoundarySetId] = useState("");
   /** The open assessment already has its own grade boundaries (decided on its
@@ -371,6 +395,21 @@ export function FormativeAssessmentSandbox() {
     () => courses.find((c) => c.id === courseId)?.name ?? "",
     [courses, courseId],
   );
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const { label } = await fetchGenerationLessons(courseId, gradeLevel);
+        if (!cancelled) setLessonsLabel({ label, error: null });
+      } catch (e) {
+        if (!cancelled) setLessonsLabel({ label: null, error: e instanceof Error ? e.message : String(e) });
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [courseId, gradeLevel]);
 
   const totalMarks = draft.sections.reduce((sum, section) => sum + sectionMarks(section), 0);
 
@@ -580,11 +619,16 @@ export function FormativeAssessmentSandbox() {
         }
       }
 
+      // The family's lessons from marking. Fetched fresh for this generation,
+      // and a failure stops it: a paper written without them looks exactly
+      // like one written with them.
+      const { lessons } = await fetchGenerationLessons(courseId, gradeLevel);
+
       const response = await fetch("/api/claude", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          system: buildFormativeAssessmentSystemPrompt(kind),
+          system: buildFormativeAssessmentSystemPrompt(kind, lessons || undefined),
           messages: [
             {
               role: "user",
@@ -1291,6 +1335,16 @@ export function FormativeAssessmentSandbox() {
                   </button>
                 )}
               </>
+            )}
+
+            {lessonsLabel && (
+              <p className={`text-xs ${lessonsLabel.error ? "text-red-300" : "text-da-muted"}`}>
+                {lessonsLabel.error
+                  ? `Writing lessons could not be loaded, so Generate will not run: ${lessonsLabel.error}`
+                  : lessonsLabel.label
+                    ? `Writing lessons: ${lessonsLabel.label}`
+                    : "Writing lessons: none for this course"}
+              </p>
             )}
 
             <NoticeLine notice={noticeAt("start")} />

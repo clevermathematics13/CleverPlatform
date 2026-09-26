@@ -43,7 +43,7 @@ export function canCopySourceWhole(
  * 15 Sep 2026), the batch was still marked split with every segment
  * confirmed, the tab that had shown "1 could not be sent" was closed, and
  * nothing anywhere said she had never been marked -- until she self-assessed
- * and found no Clev's Marks nine days later.
+ * and found no ClevMarks nine days later.
  */
 export interface ConfirmedSegment {
   label: string;
