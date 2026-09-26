@@ -4055,3 +4055,178 @@ that, but a booklet cover can read as a second row for the same student
   teacher then asked for them and approved them outside auto mode. The rule
   only removes the prompt: minting still needs the teacher's OK in the
   conversation every time.
+
+## 42. A ClevMark is never lowered after self-assessment; the grader and the generators learn from Key Assessment 1 (25-26 Sep 2026)
+
+The teacher reviewed Grade 9 Extended Key Assessment 1 scripts that had been
+marked from pages scanned upside down, and set a rule (25 Sep 2026): **once a
+student has self-assessed a test, no ClevMark already allocated on it is
+lowered or cleared** -- for every grade-down, future, present and past. Before
+the student has self-assessed, marking down can be considered. Either way, the
+instances found go to the grader and to the generators, keeping the
+distinctions between Grade 9 Extended, Grade 9 Standard and AAHL.
+
+Two marks the review found too high stay as they are for that reason: a part
+in at 3 that earns 1, and a blank part in at 1. Past cases: of the 15
+decreases in `mark_changes` platform-wide, none came after the student
+self-assessed, so nothing needed undoing.
+
+### The rule, and where it holds
+
+"Has self-assessed" means **any `student_self_scores` row for the student on
+any part of the test**. That is deliberately wider than the reveal gate
+(`summariseSelfAssessment` in `lib/ai-grade-review.ts`, which needs a non-null
+self mark): a Redo, or an all-blank submit, leaves rows whose marks are null,
+and neither reopens a student's marks to being lowered. An invited-only student
+has no account, so cannot have self-assessed.
+
+- `lib/protected-marks.ts` (pure, client-safe) holds the rule and every
+  message. No "AI" in it: the reflection dashboard ships in the student
+  bundle. `lib/protected-marks-service.ts` does the paged lookups and throws
+  on a failed read, so a caller that cannot check writes nothing (503).
+- The six write paths check before writing and read the value back after:
+  - accept and accept-all keep the ClevMark, still flag the suggestion
+    accepted (the teacher has reviewed it), and report it (`kept[]`;
+    `keptCount`, `keptStudents` and the message);
+  - the gradebook cell and the reflection edit answer 409 with `keptMarks`;
+  - the gradebook paste skips those cells and returns `refused[]`;
+  - "Mark changed" on a re-mark request is refused below the current mark
+    (`validateResolution`, no lookup needed: a request only exists after
+    self-assessment), and if the database keeps the mark anyway the request
+    stays pending.
+- On screen: the review page shows kept parts in amber, and now shows the
+  per-part failures it used to drop; the accept-all confirm says what happens
+  to a ClevMark on file (the old "already-accepted marks are left as they are"
+  was wrong); the gradebook puts a kept cell back to its value with an amber
+  border and "Kept at N (self-assessed)"; the reflection dashboard shows save
+  errors, which were silent; the re-mark form will not offer a lower mark.
+- The backstop is the trigger `student_marks_protect_self_assessed`
+  (migration `student_marks_keep_after_self_assessment`): BEFORE UPDATE OR
+  DELETE on `student_marks`, SECURITY DEFINER, `search_path = ''`, EXECUTE
+  revoked from public, anon and authenticated. **It never raises**, so a batch
+  write never fails on it: a lowering keeps the old value, and a delete is
+  skipped while the part exists, each with a WARNING in the Postgres log.
+  Always allowed: a raise or the same value, an update that changes only the
+  identity columns (`auto_enroll_from_invitations`, the `invited_students`
+  set-null), a row with no `student_id`, and a delete whose part is gone --
+  deleting a test or a part still removes its marks through the cascade.
+  Because it keeps rather than raises, a caller learns what happened by
+  reading back: the routes compare the value an upsert returns, or whether a
+  delete returned the row.
+- Dry-run on production inside a block that rolled back (26 Sep 2026), from
+  the migration file's own statements: a lowering kept; an upsert lowering
+  kept, with RETURNING giving the kept value; a raise and the same value
+  written; a student who has not self-assessed lowered and cleared; a
+  protected delete skipped (row count 0); another test's marks unprotected;
+  an invited-only row lowered; an identity-only update written; a part
+  delete and a test delete removing their marks and self-scores. Afterwards:
+  no function, trigger or scratch row left.
+
+### What it costs
+
+- A mistaken mark on a self-assessed student cannot be lowered or cleared
+  from any screen. Only an admin disabling the trigger can, and only on the
+  teacher's explicit instruction. That was the trade the teacher chose.
+- A student who says in a re-mark request that they were given too much can
+  only be answered "Mark stands".
+- A kept part writes no `mark_changes` row, so a note typed with a lower
+  override on the review page is not stored anywhere.
+- `student_marks.student_id` has no ON DELETE action, so deleting a profile
+  needs its marks gone first; for a self-assessed student the trigger skips
+  those deletes until the student's self-scores are gone.
+- Deploy window: between applying the trigger and deploying this code, the
+  old routes can write a `mark_changes` row for a lowering the trigger kept.
+  Check after deploy (below) and report any; do not rewrite the audit.
+
+### Teaching the grader
+
+- `grading_policies/reading_integrity_principles.md` -- what counts as the
+  student's work: only what is on the page, never the scheme's working; a
+  blank area is no response; erased pencil is not written (crossed-out work
+  keeps its own rules); a rotated or illegible page is read in its true
+  orientation or reported at "low", never rebuilt; a part's own space; the
+  answer the student marks as final; the student's favour is for writing
+  that is there; digit by digit; the evidence box follows the transcription;
+  a teacher's transcription is the page. Interpolated into
+  `GRADING_SYSTEM_PROMPT` between rule 20 and WORKING ORDER, so every paper
+  type gets it, with named rules rather than numbers (13, 14, 15, 18 and 20
+  are cited by number elsewhere). Step 1 of WORKING ORDER and the user
+  prompt's "search the whole document" line now say the same.
+- The system prompt changed, so its prompt cache and the eval baseline both
+  start again, and "low" confidence on unreadable pages should become more
+  common -- so a summative Accept all will hold more parts back.
+- Migration `ka1_extended_marking_notes_from_review`: grader-only rulings on
+  nine parts of the paper (3.2(a), 3.2(c), 3.3(a), 3.3(b), 3.4(b), 3.4(c),
+  4.3(a), 4.3(b), 4.4(a)), each agreeing with the scheme students see, the
+  two existing notes kept intact at the start. md5-guarded; dry-run and
+  rolled back (the notes come to 275-1319 characters).
+
+### Teaching the generators
+
+- `generation_lessons/{g9_extended,g9_standard,ibdp_aa_hl}_generation_lessons.md`,
+  one per family and each in its own marking language: M/A/R/FT for Grade 9
+  Extended, strand descriptors (never mark codes) for Grade 9 Standard, IB
+  conventions for AAHL. The same lessons, in each family's terms: name the
+  wrong routes students take and what each earns; say what a blank or
+  unsupported answer earns and state the follow-through; list what does not
+  count as an explanation; one labelled space per part; "cross out, don't
+  rub out" and "box the final answer"; no variable names that read as
+  digits.
+- `lib/generation-family.ts` (pure) decides the family: the Grade 9 tracks
+  by name, a roster class by the track it follows, a DP course by its code
+  (`AH` only; AA SL and AI get none). `lib/generation-lessons.ts` (server)
+  loads the files at module init, fatal if one is missing.
+- Where they go: the NA generator (the continuity route returns them; placed
+  before the continuity block), `/admin/create` (AAHL), the Assessment
+  Creator (`GET /api/generation-lessons`: a chosen course decides, the grade
+  level is the fallback; it shows "Writing lessons: X" under Generate and
+  refuses to generate if they cannot be loaded), and practice questions
+  (AAHL). Grade 9 Standard papers are imported, so no paper generator reads
+  that file yet. Not touched: `/api/claude`, the workflow,
+  `ask-what-you-mark.ts`, `mathematical-register.ts`.
+
+### Also in this change
+
+- `worker/Dockerfile`: `grading_policies/` is load-bearing, not insurance --
+  the worker imports `lib/ai-grading.ts` (worker/segment-and-split.ts ->
+  lib/na-scanning.ts -> lib/ai-grading.ts), which reads every file there at
+  module init. `lib/worker-runtime-files.test.ts` walks the worker's imports
+  and fails if a folder any of them reads is not copied.
+- The ClevMarks rename is finished in comments, test titles,
+  `scripts/eval-grading.ts`, SCHEMA.md and the boundaries page ("Each part
+  counts its ClevMark where it has been accepted"). **Sections 1-41 of this
+  file**, the migrations, and printed-packet sources
+  (`scripts/na_derive_anchors.py`, `scripts/na_packet_a2.json`, the
+  numbering-validator fixture) still say "Clev's Marks" on purpose.
+- Two comments that named students (in `lib/ai-grading.ts` and
+  `lib/mark-audit.test.ts`) are anonymised. Real names remain in older test
+  fixtures (`lib/ai-grading.test.ts`, `lib/powerschool-rows.test.ts`,
+  `lib/zip.test.ts` and others) -- a follow-up, since the repository is
+  public.
+
+### For agents
+
+- Before ANY grade-down, including SQL through MCP, check
+  `student_self_scores` for that student on that test. Any row means no.
+- After writing `student_marks`, read the value back.
+- Never disable the trigger without the teacher's explicit instruction.
+
+### Applying (when the teacher says merge)
+
+Both migrations carry provisional versions until applied. Per
+`supabase/migrations/README.md`: apply each through MCP `apply_migration`
+with the same name; read its version back **by name** (the ledger holds
+other sessions' versions, e.g. `20260925040006_mark_scheme_explanations`
+still has no file on main); rename the file to it; md5 against
+`array_to_string(statements, E'\n')`; commit on this branch before merging.
+Then re-run the trigger checks against the live trigger inside a rolled-back
+block, and check the catalog: one trigger, enabled, BEFORE, ROW, on UPDATE
+and DELETE only; SECURITY DEFINER, `search_path=""`, owner postgres; no
+EXECUTE for anon or authenticated.
+
+### After deploy
+
+- `mark_changes` rows written between the apply and the deploy with
+  `new_marks < old_marks` (or null) for a student who has self-scores on
+  that test: each is a lowering the trigger kept. Report them.
+- The Postgres logs for "has self-assessed this test".
