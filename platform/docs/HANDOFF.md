@@ -262,9 +262,14 @@ must exercise Server Actions.
 
 ## 4. Database and migrations
 
-**The migration ledger and the repo agree on versions: 187 files, 187 rows**
-(verified 25 Sep 2026 once §40's two migrations and §42's one were on one
-branch, by comparing the two version lists; it read 184/184 on 24 Sep after §38's two migrations, 181/181 that morning, 83/83 when this handoff was written, 95/95 after
+**The migration ledger and the repo agree on versions: 189 files, 191 rows,
+two of them in flight** (verified 26 Sep 2026 when §42's branch merged #318's
+two migrations, by comparing the two version lists. Every file is in the
+ledger; the ledger's `20260925213111` and `20260926133817` were applied
+through MCP from `claude/zen-maxwell-5nc5t8`, which carries their files, and
+match once that branch merges - the README's fail-safe, not drift. It read
+187/187 on 25 Sep once §40's two migrations and §42's one were on one branch,
+184/184 on 24 Sep after §38's two migrations, 181/181 that morning, 83/83 when this handoff was written, 95/95 after
 the second reconciliation, 116/116 after the third, 149/149 on 13 Sep and
 171/171 on 20 Sep). Two
 rows applied through MCP on 18 Sep (`20260918205816`, `20260918210444`) had no
